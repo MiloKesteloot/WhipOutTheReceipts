@@ -140,6 +140,18 @@ export default function TripDetail() {
     setClosing(false)
   }
 
+  async function deleteTrip() {
+    if (!confirm(`Delete "${trip.name}"? This will remove all receipts, items, and claims. This cannot be undone.`)) return
+    await supabase.from('trips').delete().eq('id', id)
+    navigate('/')
+  }
+
+  async function deleteReceipt(receiptId, storeName) {
+    if (!confirm(`Delete the ${storeName} receipt? All its items and claims will be removed.`)) return
+    await supabase.from('receipts').delete().eq('id', receiptId)
+    await loadData()
+  }
+
   function copyLink() {
     navigator.clipboard.writeText(window.location.href)
     setCopied(true)
@@ -187,6 +199,12 @@ export default function TripDetail() {
             className="text-sm px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
           >
             {copied ? 'Copied!' : 'Share'}
+          </button>
+          <button
+            onClick={deleteTrip}
+            className="text-sm px-3 py-1.5 border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition"
+          >
+            Delete
           </button>
           {trip.closed ? (
             <button
@@ -285,6 +303,12 @@ export default function TripDetail() {
                       Edit
                     </Link>
                   )}
+                  <button
+                    onClick={() => deleteReceipt(receipt.id, receipt.store_name)}
+                    className="text-xs text-red-400 hover:text-red-600 hover:underline"
+                  >
+                    Delete
+                  </button>
                 </div>
                 <span className="text-xs text-gray-400">paid by {receipt.paid_by}</span>
               </div>
