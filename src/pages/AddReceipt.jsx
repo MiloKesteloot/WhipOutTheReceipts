@@ -40,22 +40,38 @@ export default function AddReceipt() {
   }, [tripId])
 
   function updateItem(index, field, value) {
-    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
-  }
-
-  function addItem() {
-    setLineItems(prev => [...prev, newItem()])
+    setLineItems(prev => {
+      const next = prev.map((item, i) => i === index ? { ...item, [field]: value } : item)
+      // Auto-append a new empty row when the last item gets content
+      if (index === prev.length - 1) {
+        const last = next[next.length - 1]
+        if (last.name.trim() || last.price !== '') {
+          return [...next, newItem()]
+        }
+      }
+      return next
+    })
   }
 
   function removeItem(index) {
-    setLineItems(prev => prev.filter((_, i) => i !== index))
+    setLineItems(prev => {
+      const next = prev.filter((_, i) => i !== index)
+      // Always keep at least one row
+      return next.length > 0 ? next : [newItem()]
+    })
+  }
+
+  // Items with at least a name or price filled in
+  function filledItems() {
+    return lineItems.filter(item => item.name.trim() || item.price !== '')
   }
 
   function validate() {
     const errs = {}
     if (!storeName.trim()) errs.storeName = 'Store name is required.'
     if (!paidBy.trim()) errs.paidBy = 'Payer name is required.'
-    lineItems.forEach((item, i) => {
+    if (filledItems().length === 0) errs.items = 'Add at least one item.'
+    filledItems().forEach((item, i) => {
       if (!item.name.trim()) errs[`name-${i}`] = 'Required'
       const p = parseFloat(item.price)
       if (isNaN(p) || p < 0) errs[`price-${i}`] = 'Invalid'
@@ -79,7 +95,7 @@ export default function AddReceipt() {
     if (receiptErr) { alert('Error saving receipt: ' + receiptErr.message); setSaving(false); return }
 
     const { error: itemsErr } = await supabase.from('items').insert(
-      lineItems.map(item => ({
+      filledItems().map(item => ({
         receipt_id: receipt.id,
         name: item.name.trim(),
         price: parseFloat(item.price),
@@ -170,6 +186,7 @@ export default function AddReceipt() {
                 {lineItems.length > 1 && (
                   <button
                     type="button"
+                    tabIndex={-1}
                     onClick={() => removeItem(i)}
                     className="mt-2 text-gray-400 hover:text-red-500 transition text-sm"
                     aria-label="Remove item"
@@ -181,20 +198,13 @@ export default function AddReceipt() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={addItem}
-            className="mt-3 text-sm text-indigo-600 hover:underline"
-          >
-            + Add another item
-          </button>
         </div>
 
         {/* Total preview */}
         <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex justify-between items-center">
           <span className="text-sm text-gray-500">Receipt total</span>
           <span className="font-semibold text-gray-900">
-            ${lineItems.reduce((s, i) => s + (parseFloat(i.price) || 0), 0).toFixed(2)}
+            ${filledItems().reduce((s, i) => s + (parseFloat(i.price) || 0), 0).toFixed(2)}
           </span>
         </div>
 

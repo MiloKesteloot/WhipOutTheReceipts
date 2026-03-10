@@ -16,7 +16,7 @@ export default function TripDetail() {
   const [myClaims, setMyClaims] = useState(new Set()) // item_ids I've claimed
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [showSummary, setShowSummary] = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
   const [closing, setClosing] = useState(false)
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -319,40 +319,39 @@ export default function TripDetail() {
 
       {/* Summary */}
       {items.length > 0 && claims.length > 0 && (
-        <div className="mt-6">
-          <button
-            onClick={() => setShowSummary(s => !s)}
-            className="w-full text-left px-4 py-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition flex justify-between items-center"
-          >
-            <span>View Summary</span>
-            <span className="text-gray-400">{showSummary ? '▲' : '▼'}</span>
-          </button>
+        <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+          <div>
+            <h3 className="font-semibold text-gray-800 mb-2">Who owes what</h3>
+            {debts.length === 0 ? (
+              <p className="text-gray-400 text-sm">No debts — either everyone paid their own items, or nothing has been claimed.</p>
+            ) : (
+              <ul className="space-y-1">
+                {debts.map((d, i) => (
+                  <li key={i} className="flex justify-between text-sm">
+                    <span className="text-gray-700">
+                      <strong>{d.debtor}</strong> owes <strong>{d.creditor}</strong>
+                    </span>
+                    <span className="font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-          {showSummary && (
-            <div className="mt-2 bg-white border border-gray-200 rounded-xl p-4 space-y-4">
-              <div>
-                <h3 className="font-semibold text-gray-800 mb-2">Who owes what</h3>
-                {debts.length === 0 ? (
-                  <p className="text-gray-400 text-sm">No debts — either everyone paid their own items, or nothing has been claimed.</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {debts.map((d, i) => (
-                      <li key={i} className="flex justify-between text-sm">
-                        <span className="text-gray-700">
-                          <strong>{d.debtor}</strong> owes <strong>{d.creditor}</strong>
-                        </span>
-                        <span className="font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+          {Object.keys(breakdown).length > 0 && (
+            <div>
+              <button
+                onClick={() => setShowBreakdown(s => !s)}
+                className="flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
+              >
+                <span>{showBreakdown ? '▲' : '▼'}</span>
+                <span>Itemized breakdown</span>
+              </button>
 
-              {Object.keys(breakdown).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-gray-800 mb-2">Itemized breakdown</h3>
+              {showBreakdown && (
+                <div className="mt-2 space-y-3">
                   {Object.entries(breakdown).map(([person, entries]) => (
-                    <div key={person} className="mb-3">
+                    <div key={person}>
                       <p className="text-sm font-medium text-indigo-700 mb-1">{person}</p>
                       <ul className="space-y-0.5">
                         {entries.map((e, i) => (
