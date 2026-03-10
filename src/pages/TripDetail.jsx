@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { Fragment, useEffect, useState, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
@@ -10,10 +10,11 @@ export default function TripDetail() {
   const [trip, setTrip] = useState(null)
   const [receipts, setReceipts] = useState([])
   const [items, setItems] = useState([])
-  const [claims, setClaims] = useState([]) // all claims for this trip
+  const [meals, setMeals] = useState([])
+  const [claims, setClaims] = useState([])
   const [myName, setMyName] = useState('')
   const [nameInput, setNameInput] = useState('')
-  const [myClaims, setMyClaims] = useState(new Set()) // item_ids I've claimed
+  const [myClaims, setMyClaims] = useState(new Set())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
@@ -21,8 +22,8 @@ export default function TripDetail() {
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [expandedMeals, setExpandedMeals] = useState(new Set())
 
-  // Known names in this trip (for autocomplete)
   const knownNames = [...new Set([
     ...receipts.map(r => r.paid_by),
     ...claims.map(c => c.roommate),
@@ -42,10 +43,13 @@ export default function TripDetail() {
 
     if (receiptData.length > 0) {
       const receiptIds = receiptData.map(r => r.id)
-      const { data: itemData } = await supabase
-        .from('items').select('*').in('receipt_id', receiptIds).order('created_at')
+      const [{ data: itemData }, { data: mealData }] = await Promise.all([
+        supabase.from('items').select('*').in('receipt_id', receiptIds).order('created_at'),
+        supabase.from('meals').select('*').in('receipt_id', receiptIds).order('created_at'),
+      ])
       const allItems = itemData || []
       setItems(allItems)
+      setMeals(mealData || [])
 
       if (allItems.length > 0) {
         const itemIds = allItems.map(i => i.id)
@@ -57,6 +61,7 @@ export default function TripDetail() {
       }
     } else {
       setItems([])
+      setMeals([])
       setClaims([])
     }
 
@@ -67,7 +72,6 @@ export default function TripDetail() {
     loadData()
   }, [loadData])
 
-  // Restore saved name from localStorage
   useEffect(() => {
     const saved = localStorage.getItem(`trip-name-${id}`)
     if (saved) {
@@ -82,10 +86,9 @@ export default function TripDetail() {
     const mine = claims.filter(c => c.roommate === myName).map(c => c.item_id)
     const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
     if (mine.length > 0) {
-      // User has existing claims — use them but always force-include always_split items
       setMyClaims(new Set([...mine, ...alwaysSplitIds]))
     } else {
-      // New user with no saved claims — default to everything checked
+      // New user — default everything checked
       setMyClaims(new Set(items.map(i => i.id)))
     }
   }, [myName, claims, items])
@@ -111,24 +114,53 @@ export default function TripDetail() {
     setSaved(false)
   }
 
+  function toggleMeal(mealId, mealItems) {
+    if (!myName || trip?.closed) return
+    const toggleableIds = mealItems.filter(i => !i.always_split).map(i => i.id)
+    const allChecked = toggleableIds.every(id => myClaims.has(id))
+    setMyClaims(prev => {
+      const next = new Set(prev)
+      if (allChecked) {
+        toggleableIds.forEach(id => next.delete(id))
+      } else {
+        toggleableIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+    setSaved(false)
+  }
+
+  function getMealCheckState(mealItems) {
+    if (mealItems.length === 0) return 'empty'
+    const checkedCount = mealItems.filter(i => myClaims.has(i.id)).length
+    if (checkedCount === 0) return 'none'
+    if (checkedCount === mealItems.length) return 'all'
+    return 'some'
+  }
+
+  function toggleExpandMeal(mealId) {
+    setExpandedMeals(prev => {
+      const next = new Set(prev)
+      next.has(mealId) ? next.delete(mealId) : next.add(mealId)
+      return next
+    })
+  }
+
   async function saveClaims() {
     if (!myName) return
     setSaving(true)
 
-    // Delete existing claims for this user on items in this trip
     const itemIds = items.map(i => i.id)
     await supabase.from('claims')
       .delete()
       .eq('roommate', myName)
       .in('item_id', itemIds)
 
-    // Insert new claims
     const newClaims = [...myClaims].map(item_id => ({ item_id, roommate: myName }))
     if (newClaims.length > 0) {
       await supabase.from('claims').insert(newClaims)
     }
 
-    // Reload claims
     await loadData()
     setSaving(false)
     setSaved(true)
@@ -171,7 +203,6 @@ export default function TripDetail() {
     .filter(i => myClaims.has(i.id))
     .reduce((sum, item) => {
       const claimers = claims.filter(c => c.item_id === item.id).map(c => c.roommate)
-      // If I just toggled, my name may not be in DB yet — treat myClaims as ground truth
       const effectiveClaimers = new Set(claimers)
       if (myClaims.has(item.id)) effectiveClaimers.add(myName)
       return sum + item.price / effectiveClaimers.size
@@ -180,19 +211,58 @@ export default function TripDetail() {
   const debts = calculateDebts(receipts, items, claims)
   const breakdown = getItemizedBreakdown(receipts, items, claims)
 
-  // Members who haven't made any claims yet
   const claimerNames = new Set(claims.map(c => c.roommate))
   const waitingOn = (trip?.members || []).filter(m => !claimerNames.has(m))
 
-  // Group items by receipt
   const itemsByReceipt = {}
   for (const item of items) {
     if (!itemsByReceipt[item.receipt_id]) itemsByReceipt[item.receipt_id] = []
     itemsByReceipt[item.receipt_id].push(item)
   }
 
+  const mealsByReceipt = {}
+  for (const meal of meals) {
+    if (!mealsByReceipt[meal.receipt_id]) mealsByReceipt[meal.receipt_id] = []
+    mealsByReceipt[meal.receipt_id].push(meal)
+  }
+
   if (loading) return <div className="max-w-xl mx-auto p-8 text-gray-400">Loading…</div>
   if (error) return <div className="max-w-xl mx-auto p-8 text-red-500">{error}</div>
+
+  function renderItemRow(item) {
+    const itemClaims = claims.filter(c => c.item_id === item.id)
+    const claimerList = itemClaims.map(c => c.roommate)
+    const isMine = myClaims.has(item.id)
+    const locked = item.always_split
+
+    return (
+      <li
+        key={item.id}
+        className={`flex items-center gap-3 px-4 py-3 ${!trip.closed && myName && !locked ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+        onClick={() => toggleClaim(item.id)}
+      >
+        <input
+          type="checkbox"
+          checked={isMine}
+          readOnly
+          disabled={!myName || trip.closed || locked}
+          className="h-4 w-4 rounded accent-indigo-600 cursor-pointer"
+        />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">
+            {item.name}
+            {locked && <span className="ml-1.5 text-xs text-gray-400" title="Everyone splits this item">🔒</span>}
+          </p>
+          {claimerList.length > 0 && (
+            <p className="text-xs text-gray-400 truncate">{claimerList.join(', ')}</p>
+          )}
+        </div>
+        <span className="text-sm font-medium text-gray-700 shrink-0">
+          ${Number(item.price).toFixed(2)}
+        </span>
+      </li>
+    )
+  }
 
   return (
     <div className="max-w-xl mx-auto p-4 py-8">
@@ -299,74 +369,121 @@ export default function TripDetail() {
         <p className="text-gray-400 text-center py-8">No receipts yet. Add one above!</p>
       ) : (
         <div className="space-y-6 mb-6">
-          {receipts.map(receipt => (
-            <div key={receipt.id}>
-              <div className="flex items-baseline justify-between mb-2">
-                <div className="flex items-baseline gap-2">
-                  <h2 className="font-semibold text-gray-700">{receipt.store_name}</h2>
-                  {!trip.closed && (
-                    <Link
-                      to={`/trip/${id}/receipt/${receipt.id}/edit`}
-                      className="text-xs text-indigo-500 hover:underline"
-                    >
-                      Edit
-                    </Link>
-                  )}
-                  <button
-                    onClick={() => deleteReceipt(receipt.id, receipt.store_name)}
-                    className="text-xs text-red-400 hover:text-red-600 hover:underline"
-                  >
-                    Delete
-                  </button>
-                </div>
-                <span className="text-xs text-gray-400">paid by {receipt.paid_by}</span>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                {(itemsByReceipt[receipt.id] || []).length === 0 ? (
-                  <p className="text-gray-400 text-sm px-4 py-3">No items.</p>
-                ) : (
-                  <ul className="divide-y divide-gray-100">
-                    {(itemsByReceipt[receipt.id] || []).map(item => {
-                      const itemClaims = claims.filter(c => c.item_id === item.id)
-                      const claimerNames = itemClaims.map(c => c.roommate)
-                      const isMine = myClaims.has(item.id)
-                      const locked = item.always_split
+          {receipts.map(receipt => {
+            const receiptItems = itemsByReceipt[receipt.id] || []
+            const receiptMeals = mealsByReceipt[receipt.id] || []
+            const ungroupedItems = receiptItems.filter(i => !i.meal_id)
 
-                      return (
-                        <li
-                          key={item.id}
-                          className={`flex items-center gap-3 px-4 py-3 ${!trip.closed && myName && !locked ? 'cursor-pointer hover:bg-gray-50' : ''}`}
-                          onClick={() => toggleClaim(item.id)}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isMine}
-                            readOnly
-                            disabled={!myName || trip.closed || locked}
-                            className="h-4 w-4 rounded accent-indigo-600 cursor-pointer"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {item.name}
-                              {locked && <span className="ml-1.5 text-xs text-gray-400" title="Everyone splits this item">🔒</span>}
-                            </p>
-                            {claimerNames.length > 0 && (
-                              <p className="text-xs text-gray-400 truncate">
-                                {claimerNames.join(', ')}
-                              </p>
-                            )}
-                          </div>
-                          <span className="text-sm font-medium text-gray-700 shrink-0">
-                            ${Number(item.price).toFixed(2)}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
+            return (
+              <div key={receipt.id}>
+                <div className="flex items-baseline justify-between mb-2">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="font-semibold text-gray-700">{receipt.store_name}</h2>
+                    {!trip.closed && (
+                      <Link
+                        to={`/trip/${id}/receipt/${receipt.id}/edit`}
+                        className="text-xs text-indigo-500 hover:underline"
+                      >
+                        Edit
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => deleteReceipt(receipt.id, receipt.store_name)}
+                      className="text-xs text-red-400 hover:text-red-600 hover:underline"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  <span className="text-xs text-gray-400">paid by {receipt.paid_by}</span>
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  {receiptItems.length === 0 ? (
+                    <p className="text-gray-400 text-sm px-4 py-3">No items.</p>
+                  ) : (
+                    <ul className="divide-y divide-gray-100">
+                      {/* Ungrouped items */}
+                      {ungroupedItems.map(item => renderItemRow(item))}
+
+                      {/* Meal groups */}
+                      {receiptMeals.map(meal => {
+                        const mealItems = receiptItems.filter(i => i.meal_id === meal.id)
+                        const expanded = expandedMeals.has(meal.id)
+                        const checkState = getMealCheckState(mealItems)
+                        const mealTotal = mealItems.reduce((s, i) => s + Number(i.price), 0)
+                        const canInteract = myName && !trip.closed
+
+                        return (
+                          <Fragment key={meal.id}>
+                            {/* Meal header row */}
+                            <li
+                              className={`flex items-center gap-3 px-4 py-3 bg-gray-50 ${canInteract ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                              onClick={() => toggleMeal(meal.id, mealItems)}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checkState === 'all'}
+                                ref={el => { if (el) el.indeterminate = checkState === 'some' }}
+                                readOnly
+                                disabled={!canInteract}
+                                className="h-4 w-4 rounded accent-indigo-600"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-700">{meal.name}</p>
+                                <p className="text-xs text-gray-400">{mealItems.length} item{mealItems.length !== 1 ? 's' : ''}</p>
+                              </div>
+                              <span className="text-sm font-medium text-gray-700 shrink-0">
+                                ${mealTotal.toFixed(2)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={e => { e.stopPropagation(); toggleExpandMeal(meal.id) }}
+                                className="text-xs text-gray-400 hover:text-gray-600 px-1 shrink-0"
+                              >
+                                {expanded ? '▲' : '▼'}
+                              </button>
+                            </li>
+
+                            {/* Expanded meal items */}
+                            {expanded && mealItems.map(item => {
+                              const isMine = myClaims.has(item.id)
+                              const locked = item.always_split
+                              const claimerList = claims.filter(c => c.item_id === item.id).map(c => c.roommate)
+                              return (
+                                <li
+                                  key={item.id}
+                                  className={`flex items-center gap-3 pl-10 pr-4 py-2.5 border-t border-gray-100 ${!trip.closed && myName && !locked ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                                  onClick={() => toggleClaim(item.id)}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isMine}
+                                    readOnly
+                                    disabled={!myName || trip.closed || locked}
+                                    className="h-3.5 w-3.5 rounded accent-indigo-600"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-gray-700 truncate">
+                                      {item.name}
+                                      {locked && <span className="ml-1 text-gray-400">🔒</span>}
+                                    </p>
+                                    {claimerList.length > 0 && (
+                                      <p className="text-xs text-gray-400 truncate">{claimerList.join(', ')}</p>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-gray-500 shrink-0">${Number(item.price).toFixed(2)}</span>
+                                </li>
+                              )
+                            })}
+                          </Fragment>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
