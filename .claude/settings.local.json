@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(printf 'node_modules\\\\ndist\\\\n.env\\\\n.env.local\\\\n')",
+      "Bash(\"c:\\\\Users\\\\milo\\\\Documents\\\\GitHub\\\\WhipOutTheReceipts\\\\.gitignore\")",
+      "Bash(npm run:*)"
+    ]
+  }
+}
