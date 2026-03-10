@@ -55,11 +55,22 @@ export default function AddReceipt() {
         const savedName = localStorage.getItem(`trip-name-${tripId}`)
         if (savedName) setPaidBy(savedName)
       }
+      loadComplete.current = true
     }
     load()
   }, [tripId, receiptId, isEditing])
 
+  function markDirty() {
+    if (loadComplete.current) setIsDirty(true)
+  }
+
+  function handleBack() {
+    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return
+    navigate(`/trip/${tripId}`)
+  }
+
   function updateItem(index, field, value) {
+    markDirty()
     setLineItems(prev => {
       const next = prev.map((item, i) => i === index ? { ...item, [field]: value } : item)
       if (index === prev.length - 1) {
@@ -73,6 +84,7 @@ export default function AddReceipt() {
   }
 
   function removeItem(index) {
+    markDirty()
     setLineItems(prev => {
       const next = prev.filter((_, i) => i !== index)
       return next.length > 0 ? next : [newItem()]
@@ -163,16 +175,17 @@ export default function AddReceipt() {
   if (trip?.closed) {
     return (
       <div className="max-w-xl mx-auto p-8 text-center text-gray-500">
-        This trip is closed. <Link to={`/trip/${tripId}`} className="text-indigo-500 underline">Go back</Link>
+        This trip is closed.{' '}
+        <button onClick={handleBack} className="text-indigo-500 underline">Go back</button>
       </div>
     )
   }
 
   return (
     <div className="max-w-xl mx-auto p-4 py-8">
-      <Link to={`/trip/${tripId}`} className="text-sm text-indigo-500 hover:underline mb-2 inline-block">
+      <button onClick={handleBack} className="text-sm text-indigo-500 hover:underline mb-2 inline-block">
         ← Back to trip
-      </Link>
+      </button>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
         {isEditing ? 'Edit Receipt' : 'Add Receipt'}
       </h1>
@@ -190,7 +203,7 @@ export default function AddReceipt() {
           <input
             type="text"
             value={storeName}
-            onChange={e => { setStoreName(e.target.value); setErrors(v => ({ ...v, storeName: undefined })) }}
+            onChange={e => { markDirty(); setStoreName(e.target.value); setErrors(v => ({ ...v, storeName: undefined })) }}
             placeholder="e.g. Costco"
             className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors.storeName ? 'border-red-400' : 'border-gray-300'}`}
             autoFocus={!isEditing}
@@ -205,7 +218,7 @@ export default function AddReceipt() {
             list="payer-names"
             type="text"
             value={paidBy}
-            onChange={e => { setPaidBy(e.target.value); setErrors(v => ({ ...v, paidBy: undefined })) }}
+            onChange={e => { markDirty(); setPaidBy(e.target.value); setErrors(v => ({ ...v, paidBy: undefined })) }}
             placeholder="Who paid?"
             className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'}`}
           />

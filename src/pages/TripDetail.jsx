@@ -152,6 +152,10 @@ export default function TripDetail() {
   const debts = calculateDebts(receipts, items, claims)
   const breakdown = getItemizedBreakdown(receipts, items, claims)
 
+  // Members who haven't made any claims yet
+  const claimerNames = new Set(claims.map(c => c.roommate))
+  const waitingOn = (trip?.members || []).filter(m => !claimerNames.has(m))
+
   // Group items by receipt
   const itemsByReceipt = {}
   for (const item of items) {
@@ -227,6 +231,14 @@ export default function TripDetail() {
           >
             Change
           </button>
+        </div>
+      )}
+
+      {/* Still waiting on */}
+      {waitingOn.length > 0 && items.length > 0 && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+          <span className="shrink-0">Still waiting on:</span>
+          <span className="font-medium">{waitingOn.join(', ')}</span>
         </div>
       )}
 
