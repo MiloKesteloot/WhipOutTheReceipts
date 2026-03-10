@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js'
 
 // dbId: the real Supabase item id if loaded from DB, null if newly added
 function newItem(dbId = null) {
-  return { id: crypto.randomUUID(), dbId, name: '', price: '' }
+  return { id: crypto.randomUUID(), dbId, name: '', price: '', always_split: false }
 }
 
 export default function AddReceipt() {
@@ -48,6 +48,7 @@ export default function AddReceipt() {
           dbId: item.id,       // preserve original DB id
           name: item.name,
           price: String(item.price),
+          always_split: item.always_split || false,
         }))
         setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
         setLineItems([...loaded, newItem()])
@@ -129,7 +130,7 @@ export default function AddReceipt() {
       const toUpdate = filled.filter(i => i.dbId)
       for (const item of toUpdate) {
         await supabase.from('items')
-          .update({ name: item.name.trim(), price: parseFloat(item.price) })
+          .update({ name: item.name.trim(), price: parseFloat(item.price), always_split: item.always_split })
           .eq('id', item.dbId)
       }
 
@@ -141,6 +142,7 @@ export default function AddReceipt() {
             receipt_id: receiptId,
             name: item.name.trim(),
             price: parseFloat(item.price),
+            always_split: item.always_split,
           }))
         )
       }
@@ -164,6 +166,7 @@ export default function AddReceipt() {
           receipt_id: receipt.id,
           name: item.name.trim(),
           price: parseFloat(item.price),
+          always_split: item.always_split,
         }))
       )
       if (itemsErr) { alert('Error saving items: ' + itemsErr.message); setSaving(false); return }
@@ -230,7 +233,10 @@ export default function AddReceipt() {
 
         {/* Line items */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Items</label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700">Items</label>
+            <span className="text-xs text-gray-400">🔒 = everyone always splits</span>
+          </div>
           {errors.items && <p className="text-xs text-red-500 mb-2">{errors.items}</p>}
           <div className="space-y-2">
             {lineItems.map((item, i) => (
@@ -258,6 +264,16 @@ export default function AddReceipt() {
                     />
                   </div>
                 </div>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => updateItem(i, 'always_split', !item.always_split)}
+                  title={item.always_split ? 'Always split — click to allow unchecking' : 'Click to force everyone to split this item'}
+                  className={`mt-1.5 text-base transition ${item.always_split ? 'text-indigo-500' : 'text-gray-300 hover:text-gray-400'}`}
+                  aria-label="Toggle always split"
+                >
+                  {item.always_split ? '🔒' : '🔓'}
+                </button>
                 {lineItems.length > 1 && (
                   <button
                     type="button"

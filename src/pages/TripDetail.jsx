@@ -76,12 +76,19 @@ export default function TripDetail() {
     }
   }, [id])
 
-  // Sync my claims when name or claims change
+  // Sync my claims when name, claims, or items change
   useEffect(() => {
-    if (!myName) return
-    const mine = new Set(claims.filter(c => c.roommate === myName).map(c => c.item_id))
-    setMyClaims(mine)
-  }, [myName, claims])
+    if (!myName || items.length === 0) return
+    const mine = claims.filter(c => c.roommate === myName).map(c => c.item_id)
+    const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
+    if (mine.length > 0) {
+      // User has existing claims — use them but always force-include always_split items
+      setMyClaims(new Set([...mine, ...alwaysSplitIds]))
+    } else {
+      // New user with no saved claims — default to everything checked
+      setMyClaims(new Set(items.map(i => i.id)))
+    }
+  }, [myName, claims, items])
 
   function handleNameSubmit(e) {
     e.preventDefault()
@@ -93,6 +100,8 @@ export default function TripDetail() {
 
   function toggleClaim(itemId) {
     if (!myName || trip?.closed) return
+    const item = items.find(i => i.id === itemId)
+    if (item?.always_split) return
     setMyClaims(prev => {
       const next = new Set(prev)
       if (next.has(itemId)) next.delete(itemId)
@@ -321,22 +330,26 @@ export default function TripDetail() {
                       const itemClaims = claims.filter(c => c.item_id === item.id)
                       const claimerNames = itemClaims.map(c => c.roommate)
                       const isMine = myClaims.has(item.id)
+                      const locked = item.always_split
 
                       return (
                         <li
                           key={item.id}
-                          className={`flex items-center gap-3 px-4 py-3 ${!trip.closed && myName ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                          className={`flex items-center gap-3 px-4 py-3 ${!trip.closed && myName && !locked ? 'cursor-pointer hover:bg-gray-50' : ''}`}
                           onClick={() => toggleClaim(item.id)}
                         >
                           <input
                             type="checkbox"
                             checked={isMine}
                             readOnly
-                            disabled={!myName || trip.closed}
+                            disabled={!myName || trip.closed || locked}
                             className="h-4 w-4 rounded accent-indigo-600 cursor-pointer"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {item.name}
+                              {locked && <span className="ml-1.5 text-xs text-gray-400" title="Everyone splits this item">🔒</span>}
+                            </p>
                             {claimerNames.length > 0 && (
                               <p className="text-xs text-gray-400 truncate">
                                 {claimerNames.join(', ')}
