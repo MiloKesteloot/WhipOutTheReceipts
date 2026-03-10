@@ -6,6 +6,7 @@ const DEFAULT_MEMBERS = ['Alex', 'Clouey', 'Milo', 'Niko']
 
 export default function Home() {
   const [trips, setTrips] = useState([])
+  const [claimersByTrip, setClaimersByTrip] = useState({})
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [tripName, setTripName] = useState('')
@@ -25,12 +26,23 @@ export default function Home() {
   }, [])
 
   async function fetchTrips() {
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const [tripsRes, claimsRes] = await Promise.all([
+      supabase.from('trips').select('*').order('created_at', { ascending: false }),
+      supabase.from('claims').select('roommate, items!inner(receipts!inner(trip_id))'),
+    ])
 
-    if (!error) setTrips(data)
+    if (!tripsRes.error) setTrips(tripsRes.data)
+
+    // Build map of trip_id → Set of claimers
+    const map = {}
+    for (const claim of claimsRes.data || []) {
+      const tripId = claim.items?.receipts?.trip_id
+      if (!tripId) continue
+      if (!map[tripId]) map[tripId] = new Set()
+      map[tripId].add(claim.roommate)
+    }
+    setClaimersByTrip(map)
+
     setLoading(false)
   }
 
@@ -169,31 +181,42 @@ export default function Home() {
         <p className="text-gray-400">No trips yet. Create one above!</p>
       ) : (
         <ul className="space-y-2">
-          {trips.map(trip => (
-            <li key={trip.id}>
-              <Link
-                to={`/trip/${trip.id}`}
-                className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 hover:shadow-sm transition"
-              >
-                <div>
-                  <p className="font-medium text-gray-900">{trip.name}</p>
-                  <p className="text-xs text-gray-400">
-                    {new Date(trip.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {trip.closed && (
-                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Closed</span>
-                  )}
-                  <span className="text-gray-300">›</span>
-                </div>
-              </Link>
-            </li>
-          ))}
+          {trips.map(trip => {
+            const claimers = claimersByTrip[trip.id] || new Set()
+            const waitingOn = claimers.size > 0 && !trip.closed
+              ? (trip.members || []).filter(m => !claimers.has(m))
+              : []
+            return (
+              <li key={trip.id}>
+                <Link
+                  to={`/trip/${trip.id}`}
+                  className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 hover:shadow-sm transition"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900">{trip.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(trip.created_at).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </p>
+                    {waitingOn.length > 0 && (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        Waiting on: {waitingOn.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 shrink-0">
+                    {trip.closed && (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Closed</span>
+                    )}
+                    <span className="text-gray-300">›</span>
+                  </div>
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

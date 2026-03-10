@@ -133,6 +133,13 @@ export default function TripDetail() {
     setClosing(false)
   }
 
+  async function reopenTrip() {
+    setClosing(true)
+    await supabase.from('trips').update({ closed: false }).eq('id', id)
+    setTrip(t => ({ ...t, closed: false }))
+    setClosing(false)
+  }
+
   function copyLink() {
     navigator.clipboard.writeText(window.location.href)
     setCopied(true)
@@ -181,7 +188,15 @@ export default function TripDetail() {
           >
             {copied ? 'Copied!' : 'Share'}
           </button>
-          {!trip.closed && (
+          {trip.closed ? (
+            <button
+              onClick={reopenTrip}
+              disabled={closing}
+              className="text-sm px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600 disabled:opacity-50"
+            >
+              Reopen
+            </button>
+          ) : (
             <button
               onClick={closeTrip}
               disabled={closing}
