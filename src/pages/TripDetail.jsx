@@ -248,7 +248,17 @@ export default function TripDetail() {
           {receipts.map(receipt => (
             <div key={receipt.id}>
               <div className="flex items-baseline justify-between mb-2">
-                <h2 className="font-semibold text-gray-700">{receipt.store_name}</h2>
+                <div className="flex items-baseline gap-2">
+                  <h2 className="font-semibold text-gray-700">{receipt.store_name}</h2>
+                  {!trip.closed && (
+                    <Link
+                      to={`/trip/${id}/receipt/${receipt.id}/edit`}
+                      className="text-xs text-indigo-500 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                  )}
+                </div>
                 <span className="text-xs text-gray-400">paid by {receipt.paid_by}</span>
               </div>
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">

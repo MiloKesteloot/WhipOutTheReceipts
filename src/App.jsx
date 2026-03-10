@@ -10,6 +10,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/trip/:id" element={<TripDetail />} />
         <Route path="/trip/:id/add-receipt" element={<AddReceipt />} />
+        <Route path="/trip/:id/receipt/:receiptId/edit" element={<AddReceipt />} />
       </Routes>
     </div>
   )
