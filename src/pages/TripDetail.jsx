@@ -23,6 +23,8 @@ export default function TripDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedMeals, setExpandedMeals] = useState(new Set())
+  const [settlements, setSettlements] = useState([])
+  const [settling, setSettling] = useState(false)
 
   const knownNames = [...new Set([
     ...receipts.map(r => r.paid_by),
@@ -30,13 +32,15 @@ export default function TripDetail() {
   ])].filter(Boolean)
 
   const loadData = useCallback(async () => {
-    const [tripRes, receiptsRes] = await Promise.all([
+    const [tripRes, receiptsRes, settlementRes] = await Promise.all([
       supabase.from('trips').select('*').eq('id', id).single(),
       supabase.from('receipts').select('*').eq('trip_id', id).order('created_at'),
+      supabase.from('settlements').select('*').eq('trip_id', id),
     ])
 
     if (tripRes.error) { setError('Trip not found.'); setLoading(false); return }
     setTrip(tripRes.data)
+    setSettlements(settlementRes.data || [])
 
     const receiptData = receiptsRes.data || []
     setReceipts(receiptData)
@@ -166,6 +170,28 @@ export default function TripDetail() {
     setSaved(true)
   }
 
+  async function markSettled(debtor, creditor) {
+    setSettling(true)
+    await supabase.from('settlements').upsert(
+      { trip_id: id, debtor, creditor },
+      { onConflict: 'trip_id,debtor,creditor' }
+    )
+    await loadData()
+    setSettling(false)
+  }
+
+  async function unmarkSettled(debtor, creditor) {
+    setSettling(true)
+    await supabase.from('settlements').delete()
+      .eq('trip_id', id).eq('debtor', debtor).eq('creditor', creditor)
+    await loadData()
+    setSettling(false)
+  }
+
+  function isSettled(debtor, creditor) {
+    return settlements.some(s => s.debtor === debtor && s.creditor === creditor)
+  }
+
   async function closeTrip() {
     if (!confirm('Mark this trip as closed? It will become read-only.')) return
     setClosing(true)
@@ -199,14 +225,17 @@ export default function TripDetail() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const runningTotal = items
-    .filter(i => myClaims.has(i.id))
-    .reduce((sum, item) => {
-      const claimers = claims.filter(c => c.item_id === item.id).map(c => c.roommate)
-      const effectiveClaimers = new Set(claimers)
-      if (myClaims.has(item.id)) effectiveClaimers.add(myName)
-      return sum + item.price / effectiveClaimers.size
-    }, 0)
+  // Synthetic claims: others' saved claims + my current (unsaved) selections
+  // Used for running total so tip/tax is included proportionally
+  const syntheticClaims = myName ? [
+    ...claims.filter(c => c.roommate !== myName),
+    ...[...myClaims].map(item_id => ({ item_id, roommate: myName })),
+  ] : claims
+  const runningTotal = myName
+    ? calculateDebts(receipts, items, syntheticClaims)
+        .filter(d => d.debtor === myName)
+        .reduce((s, d) => s + d.amount, 0)
+    : 0
 
   const debts = calculateDebts(receipts, items, claims)
   const breakdown = getItemizedBreakdown(receipts, items, claims)
@@ -516,15 +545,46 @@ export default function TripDetail() {
             {debts.length === 0 ? (
               <p className="text-gray-400 text-sm">No debts — either everyone paid their own items, or nothing has been claimed.</p>
             ) : (
-              <ul className="space-y-1">
-                {debts.map((d, i) => (
-                  <li key={i} className="flex justify-between text-sm">
-                    <span className="text-gray-700">
-                      <strong>{d.debtor}</strong> owes <strong>{d.creditor}</strong>
-                    </span>
-                    <span className="font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
-                  </li>
-                ))}
+              <ul className="space-y-2">
+                {debts.map((d, i) => {
+                  const settled = isSettled(d.debtor, d.creditor)
+                  return (
+                    <li key={i} className="flex items-center justify-between text-sm gap-2">
+                      <span className={`text-gray-700 ${settled ? 'line-through text-gray-400' : ''}`}>
+                        <strong>{d.debtor}</strong> owes <strong>{d.creditor}</strong>
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
+                        {settled ? (
+                          myName === d.debtor ? (
+                            <button
+                              onClick={() => unmarkSettled(d.debtor, d.creditor)}
+                              disabled={settling}
+                              className="text-xs text-green-600 font-medium hover:text-gray-400 transition disabled:opacity-50"
+                              title="Click to undo"
+                            >
+                              ✓ Sent
+                            </button>
+                          ) : (
+                            <span className="text-xs text-green-600 font-medium">✓ Sent</span>
+                          )
+                        ) : (
+                          myName === d.debtor ? (
+                            <button
+                              onClick={() => markSettled(d.debtor, d.creditor)}
+                              disabled={settling}
+                              className="text-xs px-2 py-0.5 border border-indigo-200 text-indigo-600 rounded-md hover:bg-indigo-50 transition disabled:opacity-50"
+                            >
+                              Mark sent
+                            </button>
+                          ) : myName === d.creditor ? (
+                            <span className="text-xs text-amber-500">awaiting</span>
+                          ) : null
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>

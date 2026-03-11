@@ -23,6 +23,8 @@ export default function AddReceipt() {
   const [meals, setMeals] = useState([])
   const [originalDbIds, setOriginalDbIds] = useState(new Set())
   const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
+  const [tip, setTip] = useState('')
+  const [tax, setTax] = useState('')
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   const [isDirty, setIsDirty] = useState(false)
@@ -45,6 +47,8 @@ export default function AddReceipt() {
         if (receipt) {
           setStoreName(receipt.store_name)
           setPaidBy(receipt.paid_by)
+          setTip(receipt.tip ? String(receipt.tip) : '')
+          setTax(receipt.tax ? String(receipt.tax) : '')
         }
 
         const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
@@ -223,7 +227,7 @@ export default function AddReceipt() {
     if (isEditing) {
       const { error: updateErr } = await supabase
         .from('receipts')
-        .update({ store_name: storeName.trim(), paid_by: paidBy.trim() })
+        .update({ store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0 })
         .eq('id', receiptId)
       if (updateErr) { alert('Error updating receipt: ' + updateErr.message); setSaving(false); return }
 
@@ -270,7 +274,7 @@ export default function AddReceipt() {
     } else {
       const { data: receipt, error: receiptErr } = await supabase
         .from('receipts')
-        .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim() })
+        .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0 })
         .select()
         .single()
       if (receiptErr) { alert('Error saving receipt: ' + receiptErr.message); setSaving(false); return }
@@ -503,13 +507,58 @@ export default function AddReceipt() {
           </button>
         </div>
 
-        {/* Total preview */}
-        <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex justify-between items-center">
-          <span className="text-sm text-gray-500">Receipt total</span>
-          <span className="font-semibold text-gray-900">
-            ${filledItems().reduce((s, i) => s + (parseFloat(i.price) || 0), 0).toFixed(2)}
-          </span>
+        {/* Tip & Tax */}
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tip</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+              <input
+                type="number" min="0" step="0.01"
+                value={tip}
+                onChange={e => { markDirty(); setTip(e.target.value) }}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tax</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+              <input
+                type="number" min="0" step="0.01"
+                value={tax}
+                onChange={e => { markDirty(); setTax(e.target.value) }}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          </div>
         </div>
+
+        {/* Total preview */}
+        {(() => {
+          const itemsTotal = filledItems().reduce((s, i) => s + (parseFloat(i.price) || 0), 0)
+          const tipAmt = parseFloat(tip) || 0
+          const taxAmt = parseFloat(tax) || 0
+          const grandTotal = itemsTotal + tipAmt + taxAmt
+          return (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-500">Receipt total</span>
+                <span className="font-semibold text-gray-900">${grandTotal.toFixed(2)}</span>
+              </div>
+              {(tipAmt > 0 || taxAmt > 0) && (
+                <p className="text-xs text-gray-400 mt-0.5 text-right">
+                  ${itemsTotal.toFixed(2)} items
+                  {tipAmt > 0 && ` + $${tipAmt.toFixed(2)} tip`}
+                  {taxAmt > 0 && ` + $${taxAmt.toFixed(2)} tax`}
+                </p>
+              )}
+            </div>
+          )
+        })()}
 
         <button
           type="submit"
