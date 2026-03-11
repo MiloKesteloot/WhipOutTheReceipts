@@ -8,7 +8,9 @@ const DEFAULT_MEMBERS = ['Alex', 'Clouey', 'Milo', 'Niko']
 export default function Home() {
   const [trips, setTrips] = useState([])
   const [claimersByTrip, setClaimersByTrip] = useState({})
+  const [tripsWithItems, setTripsWithItems] = useState(new Set())
   const [owedToMe, setOwedToMe] = useState([])
+  const [iOwe, setIOwe] = useState([])
   const [rawData, setRawData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -28,7 +30,7 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (rawData) computeOwedToMe(myName, rawData)
+    if (rawData) computeDebts(myName, rawData)
   }, [rawData])
 
   async function fetchTrips() {
@@ -63,17 +65,24 @@ export default function Home() {
     }
     setClaimersByTrip(map)
 
+    // Track which trips have items
+    const twi = new Set()
+    for (const r of allReceipts) twi.add(r.trip_id)
+    setTripsWithItems(twi)
+
     const data = { trips, allReceipts, allItems, allClaims, settlements }
     setRawData(data)
-    computeOwedToMe(localStorage.getItem('global-name') || '', data)
+    computeDebts(localStorage.getItem('global-name') || '', data)
 
     setLoading(false)
   }
 
-  function computeOwedToMe(name, { trips, allReceipts, allItems, allClaims, settlements }) {
-    if (!name) { setOwedToMe([]); return }
+  function computeDebts(name, { trips, allReceipts, allItems, allClaims, settlements }) {
+    if (!name) { setOwedToMe([]); setIOwe([]); return }
 
-    const result = []
+    const owedResult = []
+    const iOweResult = []
+
     for (const trip of trips) {
       const tripReceipts = allReceipts.filter(r => r.trip_id === trip.id)
       if (!tripReceipts.length) continue
@@ -84,14 +93,20 @@ export default function Home() {
       const tripClaims = allClaims.filter(c => itemIds.has(c.item_id))
 
       for (const debt of calculateDebts(tripReceipts, tripItems, tripClaims)) {
-        if (debt.creditor !== name) continue
         const settled = settlements.some(
-          s => s.trip_id === trip.id && s.debtor === debt.debtor && s.creditor === name
+          s => s.trip_id === trip.id && s.debtor === debt.debtor && s.creditor === debt.creditor
         )
-        result.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+        if (debt.creditor === name) {
+          owedResult.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+        }
+        if (debt.debtor === name) {
+          iOweResult.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+        }
       }
     }
-    setOwedToMe(result)
+
+    setOwedToMe(owedResult)
+    setIOwe(iOweResult)
   }
 
   function toggleMember(name) {
@@ -133,63 +148,92 @@ export default function Home() {
 
   const pendingTotal = owedToMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
 
-  return (
-    <div className="max-w-xl mx-auto p-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-1">Whip Out the Receipts</h1>
-      <p className="text-gray-500 mb-6">Fair grocery splits for roommates.</p>
+  // Trips that need the user's attention
+  const actionTripIds = new Set()
+  if (myName) {
+    for (const trip of trips) {
+      if (trip.closed) continue
+      if (!(trip.members || []).includes(myName)) continue
+      if (!tripsWithItems.has(trip.id)) continue
+      const claimers = claimersByTrip[trip.id] || new Set()
+      if (!claimers.has(myName)) actionTripIds.add(trip.id)
+    }
+    for (const debt of iOwe) {
+      if (!debt.settled) actionTripIds.add(debt.tripId)
+    }
+  }
+  const actionTrips = trips.filter(t => actionTripIds.has(t.id))
 
-      {/* People who owe you */}
-      {myName && owedToMe.length > 0 && (
-        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-800">People who owe you</h2>
-            {pendingTotal > 0 && (
-              <span className="text-sm font-semibold text-indigo-600">${pendingTotal.toFixed(2)} pending</span>
+  function renderTripRow(trip, { showReasons = false } = {}) {
+    const claimers = claimersByTrip[trip.id] || new Set()
+    const waitingOn = claimers.size > 0 && !trip.closed
+      ? (trip.members || []).filter(m => !claimers.has(m))
+      : []
+
+    const needsClaiming = showReasons && myName && !trip.closed
+      && (trip.members || []).includes(myName)
+      && !claimers.has(myName)
+      && tripsWithItems.has(trip.id)
+    const unsettledDebt = showReasons
+      ? iOwe.filter(d => d.tripId === trip.id && !d.settled)
+      : []
+
+    return (
+      <li key={trip.id}>
+        <Link
+          to={`/trip/${trip.id}`}
+          className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 hover:shadow-sm transition"
+        >
+          <div className="min-w-0">
+            <p className="font-medium text-gray-900">{trip.name}</p>
+            <p className="text-xs text-gray-400">
+              {new Date(trip.created_at).toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric',
+              })}
+            </p>
+            {needsClaiming && (
+              <p className="text-xs text-indigo-600 mt-0.5 font-medium">Check off your items</p>
+            )}
+            {unsettledDebt.map((d, i) => (
+              <p key={i} className="text-xs text-amber-600 mt-0.5">
+                Send ${d.amount.toFixed(2)} to {d.creditor}
+              </p>
+            ))}
+            {!showReasons && waitingOn.length > 0 && (
+              <p className="text-xs text-amber-600 mt-0.5">
+                Waiting on: {waitingOn.join(', ')}
+              </p>
             )}
           </div>
-          <ul className="space-y-2">
-            {owedToMe.map((entry, i) => (
-              <li key={i} className="flex items-center justify-between text-sm gap-2">
-                <div className="min-w-0">
-                  <span className={`font-medium ${entry.settled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                    {entry.debtor}
-                  </span>
-                  <Link
-                    to={`/trip/${entry.tripId}`}
-                    className="ml-1.5 text-xs text-indigo-400 hover:text-indigo-600 hover:underline"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {entry.tripName}
-                  </Link>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`font-semibold ${entry.settled ? 'text-gray-400' : 'text-gray-900'}`}>
-                    ${entry.amount.toFixed(2)}
-                  </span>
-                  {entry.settled
-                    ? <span className="text-xs text-green-600 font-medium">✓ Sent</span>
-                    : <span className="text-xs text-amber-500">awaiting</span>
-                  }
-                </div>
-              </li>
-            ))}
-          </ul>
-          {owedToMe.every(e => e.settled) && (
-            <p className="text-xs text-green-600 mt-3 font-medium">All paid up ✓</p>
-          )}
-        </div>
-      )}
+          <div className="flex items-center gap-2 ml-3 shrink-0">
+            {trip.closed && (
+              <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Closed</span>
+            )}
+            <span className="text-gray-300">›</span>
+          </div>
+        </Link>
+      </li>
+    )
+  }
 
-      {/* New trip button / form */}
-      {!showForm ? (
+  return (
+    <div className="max-w-xl mx-auto p-4 py-8">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Whip Out the Receipts</h1>
+          <p className="text-gray-500">Fair grocery splits for roommates.</p>
+        </div>
         <button
-          onClick={() => setShowForm(true)}
-          className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition mb-8"
+          onClick={() => setShowForm(s => !s)}
+          className="mt-1 shrink-0 text-sm px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition"
         >
           + New Trip
         </button>
-      ) : (
-        <form onSubmit={createTrip} className="mb-8 bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
+      </div>
+
+      {/* New trip form */}
+      {showForm && (
+        <form onSubmit={createTrip} className="mb-6 bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Trip name</label>
             <input
@@ -261,47 +305,67 @@ export default function Home() {
         </form>
       )}
 
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Trip History</h2>
+      {/* People who owe you */}
+      {myName && owedToMe.length > 0 && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-800">People who owe you</h2>
+            {pendingTotal > 0 && (
+              <span className="text-sm font-semibold text-indigo-600">${pendingTotal.toFixed(2)} pending</span>
+            )}
+          </div>
+          <ul className="space-y-2">
+            {owedToMe.map((entry, i) => (
+              <li key={i} className="flex items-center justify-between text-sm gap-2">
+                <div className="min-w-0">
+                  <span className={`font-medium ${entry.settled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                    {entry.debtor}
+                  </span>
+                  <Link
+                    to={`/trip/${entry.tripId}`}
+                    className="ml-1.5 text-xs text-indigo-400 hover:text-indigo-600 hover:underline"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {entry.tripName}
+                  </Link>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`font-semibold ${entry.settled ? 'text-gray-400' : 'text-gray-900'}`}>
+                    ${entry.amount.toFixed(2)}
+                  </span>
+                  {entry.settled
+                    ? <span className="text-xs text-green-600 font-medium">✓ Sent</span>
+                    : <span className="text-xs text-amber-500">awaiting</span>
+                  }
+                </div>
+              </li>
+            ))}
+          </ul>
+          {owedToMe.every(e => e.settled) && (
+            <p className="text-xs text-green-600 mt-3 font-medium">All paid up ✓</p>
+          )}
+        </div>
+      )}
+
+      {/* Trips needing attention */}
+      {!loading && actionTrips.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Needs your attention</h2>
+          <ul className="space-y-2">
+            {actionTrips.map(trip => renderTripRow(trip, { showReasons: true }))}
+          </ul>
+        </div>
+      )}
+
+      {/* All trips */}
+      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">All Trips</h2>
       {loading ? (
         <p className="text-gray-400">Loading…</p>
       ) : trips.length === 0 ? (
-        <p className="text-gray-400">No trips yet. Create one above!</p>
+        <p className="text-gray-400">No trips yet. Hit "+ New Trip" above to get started.</p>
       ) : (
         <ul className="space-y-2">
-          {trips.map(trip => {
-            const claimers = claimersByTrip[trip.id] || new Set()
-            const waitingOn = claimers.size > 0 && !trip.closed
-              ? (trip.members || []).filter(m => !claimers.has(m))
-              : []
-            return (
-              <li key={trip.id}>
-                <Link
-                  to={`/trip/${trip.id}`}
-                  className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-indigo-300 hover:shadow-sm transition"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900">{trip.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {new Date(trip.created_at).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                      })}
-                    </p>
-                    {waitingOn.length > 0 && (
-                      <p className="text-xs text-amber-600 mt-0.5">
-                        Waiting on: {waitingOn.join(', ')}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 ml-3 shrink-0">
-                    {trip.closed && (
-                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Closed</span>
-                    )}
-                    <span className="text-gray-300">›</span>
-                  </div>
-                </Link>
-              </li>
-            )
-          })}
+          {trips.map(trip => renderTripRow(trip))}
         </ul>
       )}
     </div>

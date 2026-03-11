@@ -328,12 +328,14 @@ export default function TripDetail() {
 
       {/* Add Receipt */}
       {!trip.closed && (
-        <Link
-          to={`/trip/${id}/add-receipt`}
-          className="block w-full text-center py-2.5 mb-6 border-2 border-dashed border-indigo-300 text-indigo-600 font-medium rounded-xl hover:bg-indigo-50 transition"
-        >
-          + Add Receipt
-        </Link>
+        <div className="mb-6">
+          <Link
+            to={`/trip/${id}/add-receipt`}
+            className="text-sm text-indigo-500 hover:underline"
+          >
+            + Add Receipt
+          </Link>
+        </div>
       )}
 
       {/* Items */}
