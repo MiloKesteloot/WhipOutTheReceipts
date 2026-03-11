@@ -1,49 +1,120 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
+import { calculateDebts } from '../lib/splitLogic.js'
 
 const DEFAULT_MEMBERS = ['Alex', 'Clouey', 'Milo', 'Niko']
 
 export default function Home() {
   const [trips, setTrips] = useState([])
   const [claimersByTrip, setClaimersByTrip] = useState({})
+  const [owedToMe, setOwedToMe] = useState([])
+  const [allNames, setAllNames] = useState([])
+  const [rawData, setRawData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [tripName, setTripName] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [members, setMembers] = useState([...DEFAULT_MEMBERS])
   const [newMemberInput, setNewMemberInput] = useState('')
+  const [myName, setMyName] = useState(() => localStorage.getItem('global-name') || '')
+  const [nameInput, setNameInput] = useState('')
   const navigate = useNavigate()
 
   const today = new Date().toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
+    month: 'long', day: 'numeric', year: 'numeric',
   })
 
   useEffect(() => {
     fetchTrips()
   }, [])
 
+  useEffect(() => {
+    if (rawData) computeOwedToMe(myName, rawData)
+  }, [myName, rawData])
+
   async function fetchTrips() {
-    const [tripsRes, claimsRes] = await Promise.all([
+    const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes] = await Promise.all([
       supabase.from('trips').select('*').order('created_at', { ascending: false }),
-      supabase.from('claims').select('roommate, items!inner(receipts!inner(trip_id))'),
+      supabase.from('receipts').select('id, trip_id, paid_by, tip, tax'),
+      supabase.from('items').select('id, receipt_id, price'),
+      supabase.from('claims').select('item_id, roommate'),
+      supabase.from('settlements').select('trip_id, debtor, creditor'),
     ])
 
-    if (!tripsRes.error) setTrips(tripsRes.data)
+    const trips = tripsRes.data || []
+    const allReceipts = receiptsRes.data || []
+    const allItems = itemsRes.data || []
+    const allClaims = claimsRes.data || []
+    const settlements = settlementsRes.data || []
 
-    // Build map of trip_id → Set of claimers
+    setTrips(trips)
+
+    // Build claimersByTrip
+    const receiptIdToTripId = {}
+    for (const r of allReceipts) receiptIdToTripId[r.id] = r.trip_id
+    const itemIdToReceiptId = {}
+    for (const item of allItems) itemIdToReceiptId[item.id] = item.receipt_id
+
     const map = {}
-    for (const claim of claimsRes.data || []) {
-      const tripId = claim.items?.receipts?.trip_id
+    for (const claim of allClaims) {
+      const tripId = receiptIdToTripId[itemIdToReceiptId[claim.item_id]]
       if (!tripId) continue
       if (!map[tripId]) map[tripId] = new Set()
       map[tripId].add(claim.roommate)
     }
     setClaimersByTrip(map)
 
+    // All known names for autocomplete
+    const names = new Set([
+      ...allReceipts.map(r => r.paid_by),
+      ...allClaims.map(c => c.roommate),
+    ].filter(Boolean))
+    setAllNames([...names].sort())
+
+    const data = { trips, allReceipts, allItems, allClaims, settlements }
+    setRawData(data)
+    computeOwedToMe(localStorage.getItem('global-name') || '', data)
+
     setLoading(false)
+  }
+
+  function computeOwedToMe(name, { trips, allReceipts, allItems, allClaims, settlements }) {
+    if (!name) { setOwedToMe([]); return }
+
+    const result = []
+    for (const trip of trips) {
+      const tripReceipts = allReceipts.filter(r => r.trip_id === trip.id)
+      if (!tripReceipts.length) continue
+      const receiptIds = new Set(tripReceipts.map(r => r.id))
+      const tripItems = allItems.filter(i => receiptIds.has(i.receipt_id))
+      if (!tripItems.length) continue
+      const itemIds = new Set(tripItems.map(i => i.id))
+      const tripClaims = allClaims.filter(c => itemIds.has(c.item_id))
+
+      for (const debt of calculateDebts(tripReceipts, tripItems, tripClaims)) {
+        if (debt.creditor !== name) continue
+        const settled = settlements.some(
+          s => s.trip_id === trip.id && s.debtor === debt.debtor && s.creditor === name
+        )
+        result.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+      }
+    }
+    setOwedToMe(result)
+  }
+
+  function handleSetName(e) {
+    e.preventDefault()
+    const name = nameInput.trim()
+    if (!name) return
+    setMyName(name)
+    localStorage.setItem('global-name', name)
+    setNameInput('')
+  }
+
+  function clearName() {
+    setMyName('')
+    localStorage.removeItem('global-name')
   }
 
   function toggleMember(name) {
@@ -79,18 +150,88 @@ export default function Home() {
       .single()
 
     setCreating(false)
-    if (error) {
-      alert('Failed to create trip: ' + error.message)
-      return
-    }
+    if (error) { alert('Failed to create trip: ' + error.message); return }
     navigate(`/trip/${data.id}`)
   }
+
+  const pendingTotal = owedToMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
 
   return (
     <div className="max-w-xl mx-auto p-4 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-1">Whip Out the Receipts</h1>
       <p className="text-gray-500 mb-6">Fair grocery splits for roommates.</p>
 
+      {/* Name selector */}
+      {myName ? (
+        <div className="flex items-center justify-between mb-4 text-sm text-gray-500">
+          <span>Viewing as <strong className="text-gray-800">{myName}</strong></span>
+          <button onClick={clearName} className="text-xs text-indigo-500 hover:underline">Change name</button>
+        </div>
+      ) : (
+        <form onSubmit={handleSetName} className="flex gap-2 mb-4">
+          <input
+            list="all-names"
+            type="text"
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            placeholder="Your name to see what you're owed…"
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          <datalist id="all-names">
+            {allNames.map(n => <option key={n} value={n} />)}
+          </datalist>
+          <button
+            type="submit"
+            className="px-3 py-2 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition"
+          >
+            Set
+          </button>
+        </form>
+      )}
+
+      {/* People who owe you */}
+      {myName && owedToMe.length > 0 && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-800">People who owe you</h2>
+            {pendingTotal > 0 && (
+              <span className="text-sm font-semibold text-indigo-600">${pendingTotal.toFixed(2)} pending</span>
+            )}
+          </div>
+          <ul className="space-y-2">
+            {owedToMe.map((entry, i) => (
+              <li key={i} className="flex items-center justify-between text-sm gap-2">
+                <div className="min-w-0">
+                  <span className={`font-medium ${entry.settled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                    {entry.debtor}
+                  </span>
+                  <Link
+                    to={`/trip/${entry.tripId}`}
+                    className="ml-1.5 text-xs text-indigo-400 hover:text-indigo-600 hover:underline"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {entry.tripName}
+                  </Link>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`font-semibold ${entry.settled ? 'text-gray-400' : 'text-gray-900'}`}>
+                    ${entry.amount.toFixed(2)}
+                  </span>
+                  {entry.settled
+                    ? <span className="text-xs text-green-600 font-medium">✓ Sent</span>
+                    : <span className="text-xs text-amber-500">awaiting</span>
+                  }
+                </div>
+              </li>
+            ))}
+          </ul>
+          {owedToMe.every(e => e.settled) && (
+            <p className="text-xs text-green-600 mt-3 font-medium">All paid up ✓</p>
+          )}
+        </div>
+      )}
+
+      {/* New trip button / form */}
       {!showForm ? (
         <button
           onClick={() => setShowForm(true)}
@@ -100,7 +241,6 @@ export default function Home() {
         </button>
       ) : (
         <form onSubmit={createTrip} className="mb-8 bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
-          {/* Trip name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Trip name</label>
             <input
@@ -113,7 +253,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Members */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this trip?</label>
             <div className="flex flex-wrap gap-2 mb-2">
@@ -135,7 +274,6 @@ export default function Home() {
                 )
               })}
             </div>
-            {/* Add a custom member */}
             <div className="flex gap-2">
               <input
                 type="text"
@@ -196,9 +334,7 @@ export default function Home() {
                     <p className="font-medium text-gray-900">{trip.name}</p>
                     <p className="text-xs text-gray-400">
                       {new Date(trip.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
+                        month: 'short', day: 'numeric', year: 'numeric',
                       })}
                     </p>
                     {waitingOn.length > 0 && (

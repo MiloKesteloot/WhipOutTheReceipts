@@ -537,6 +537,45 @@ export default function TripDetail() {
         </div>
       )}
 
+      {/* People who owe you */}
+      {myName && items.length > 0 && claims.length > 0 && debts.some(d => d.creditor === myName) && (
+        <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4">
+          <h3 className="font-semibold text-gray-800 mb-3">People who owe you</h3>
+          <ul className="space-y-3">
+            {debts.filter(d => d.creditor === myName).map((d, i) => {
+              const settled = isSettled(d.debtor, d.creditor)
+              const theirItems = (breakdown[d.debtor] || []).filter(e => e.payer === myName)
+              return (
+                <li key={i}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-semibold ${settled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                        {d.debtor}
+                      </span>
+                      {settled
+                        ? <span className="text-xs text-green-600 font-medium">✓ Sent</span>
+                        : <span className="text-xs text-amber-500">awaiting</span>
+                      }
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
+                  </div>
+                  {theirItems.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 pl-1">
+                      {theirItems.map((e, j) => (
+                        <li key={j} className="flex justify-between text-xs text-gray-400">
+                          <span>{e.itemName} <span className="text-gray-300">· {e.storeName}</span></span>
+                          <span>${e.share.toFixed(2)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
       {/* Summary */}
       {items.length > 0 && claims.length > 0 && (
         <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 space-y-4">
@@ -577,9 +616,9 @@ export default function TripDetail() {
                             >
                               Mark sent
                             </button>
-                          ) : myName === d.creditor ? (
+                          ) : (
                             <span className="text-xs text-amber-500">awaiting</span>
-                          ) : null
+                          )
                         )}
                       </div>
                     </li>
