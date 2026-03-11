@@ -9,7 +9,6 @@ export default function Home() {
   const [trips, setTrips] = useState([])
   const [claimersByTrip, setClaimersByTrip] = useState({})
   const [owedToMe, setOwedToMe] = useState([])
-  const [allNames, setAllNames] = useState([])
   const [rawData, setRawData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -17,8 +16,7 @@ export default function Home() {
   const [showForm, setShowForm] = useState(false)
   const [members, setMembers] = useState([...DEFAULT_MEMBERS])
   const [newMemberInput, setNewMemberInput] = useState('')
-  const [myName, setMyName] = useState(() => localStorage.getItem('global-name') || '')
-  const [nameInput, setNameInput] = useState('')
+  const myName = localStorage.getItem('global-name') || ''
   const navigate = useNavigate()
 
   const today = new Date().toLocaleDateString('en-US', {
@@ -31,7 +29,7 @@ export default function Home() {
 
   useEffect(() => {
     if (rawData) computeOwedToMe(myName, rawData)
-  }, [myName, rawData])
+  }, [rawData])
 
   async function fetchTrips() {
     const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes] = await Promise.all([
@@ -65,13 +63,6 @@ export default function Home() {
     }
     setClaimersByTrip(map)
 
-    // All known names for autocomplete
-    const names = new Set([
-      ...allReceipts.map(r => r.paid_by),
-      ...allClaims.map(c => c.roommate),
-    ].filter(Boolean))
-    setAllNames([...names].sort())
-
     const data = { trips, allReceipts, allItems, allClaims, settlements }
     setRawData(data)
     computeOwedToMe(localStorage.getItem('global-name') || '', data)
@@ -101,20 +92,6 @@ export default function Home() {
       }
     }
     setOwedToMe(result)
-  }
-
-  function handleSetName(e) {
-    e.preventDefault()
-    const name = nameInput.trim()
-    if (!name) return
-    setMyName(name)
-    localStorage.setItem('global-name', name)
-    setNameInput('')
-  }
-
-  function clearName() {
-    setMyName('')
-    localStorage.removeItem('global-name')
   }
 
   function toggleMember(name) {
@@ -160,34 +137,6 @@ export default function Home() {
     <div className="max-w-xl mx-auto p-4 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-1">Whip Out the Receipts</h1>
       <p className="text-gray-500 mb-6">Fair grocery splits for roommates.</p>
-
-      {/* Name selector */}
-      {myName ? (
-        <div className="flex items-center justify-between mb-4 text-sm text-gray-500">
-          <span>Viewing as <strong className="text-gray-800">{myName}</strong></span>
-          <button onClick={clearName} className="text-xs text-indigo-500 hover:underline">Change name</button>
-        </div>
-      ) : (
-        <form onSubmit={handleSetName} className="flex gap-2 mb-4">
-          <input
-            list="all-names"
-            type="text"
-            value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            placeholder="Your name to see what you're owed…"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-          <datalist id="all-names">
-            {allNames.map(n => <option key={n} value={n} />)}
-          </datalist>
-          <button
-            type="submit"
-            className="px-3 py-2 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition"
-          >
-            Set
-          </button>
-        </form>
-      )}
 
       {/* People who owe you */}
       {myName && owedToMe.length > 0 && (

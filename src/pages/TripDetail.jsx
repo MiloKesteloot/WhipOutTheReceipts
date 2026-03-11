@@ -12,8 +12,7 @@ export default function TripDetail() {
   const [items, setItems] = useState([])
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
-  const [myName, setMyName] = useState('')
-  const [nameInput, setNameInput] = useState('')
+  const myName = localStorage.getItem('global-name') || ''
   const [myClaims, setMyClaims] = useState(new Set())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -25,11 +24,6 @@ export default function TripDetail() {
   const [expandedMeals, setExpandedMeals] = useState(new Set())
   const [settlements, setSettlements] = useState([])
   const [settling, setSettling] = useState(false)
-
-  const knownNames = [...new Set([
-    ...receipts.map(r => r.paid_by),
-    ...claims.map(c => c.roommate),
-  ])].filter(Boolean)
 
   const loadData = useCallback(async () => {
     const [tripRes, receiptsRes, settlementRes] = await Promise.all([
@@ -76,14 +70,6 @@ export default function TripDetail() {
     loadData()
   }, [loadData])
 
-  useEffect(() => {
-    const saved = localStorage.getItem(`trip-name-${id}`)
-    if (saved) {
-      setMyName(saved)
-      setNameInput(saved)
-    }
-  }, [id])
-
   // Sync my claims when name, claims, or items change
   useEffect(() => {
     if (!myName || items.length === 0) return
@@ -96,14 +82,6 @@ export default function TripDetail() {
       setMyClaims(new Set(items.map(i => i.id)))
     }
   }, [myName, claims, items])
-
-  function handleNameSubmit(e) {
-    e.preventDefault()
-    const name = nameInput.trim()
-    if (!name) return
-    setMyName(name)
-    localStorage.setItem(`trip-name-${id}`, name)
-  }
 
   function toggleClaim(itemId) {
     if (!myName || trip?.closed) return
@@ -338,41 +316,6 @@ export default function TripDetail() {
         <span className="inline-block text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full mb-4">
           Closed — read only
         </span>
-      )}
-
-      {/* Name prompt */}
-      {!myName ? (
-        <form onSubmit={handleNameSubmit} className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-6">
-          <p className="font-medium text-indigo-900 mb-2">What's your name?</p>
-          <input
-            list="known-names"
-            type="text"
-            value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            placeholder="Your name"
-            className="w-full border border-indigo-300 rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            autoFocus
-          />
-          <datalist id="known-names">
-            {knownNames.map(n => <option key={n} value={n} />)}
-          </datalist>
-          <button
-            type="submit"
-            className="w-full py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition"
-          >
-            Continue
-          </button>
-        </form>
-      ) : (
-        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 mb-6">
-          <span className="text-indigo-800 font-medium">Shopping as: <strong>{myName}</strong></span>
-          <button
-            onClick={() => { setMyName(''); setNameInput('') }}
-            className="text-xs text-indigo-500 hover:underline"
-          >
-            Change
-          </button>
-        </div>
       )}
 
       {/* Still waiting on */}
