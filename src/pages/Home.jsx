@@ -9,16 +9,17 @@ export default function Home() {
   const [trips, setTrips] = useState([])
   const [claimersByTrip, setClaimersByTrip] = useState({})
   const [tripsWithItems, setTripsWithItems] = useState(new Set())
-  const [owedToMe, setOwedToMe] = useState([])
-  const [iOwe, setIOwe] = useState([])
+  // person -> { net, theyOweMe: [...], iOweThem: [...] }
+  const [netByPerson, setNetByPerson] = useState({})
   const [rawData, setRawData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
-  const [settling, setSettling] = useState(null) // { tripId, creditor }
+  const [settling, setSettling] = useState(null)
   const [tripName, setTripName] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [members, setMembers] = useState([...DEFAULT_MEMBERS])
   const [newMemberInput, setNewMemberInput] = useState('')
+  const [expandedPeople, setExpandedPeople] = useState(new Set())
   const myName = localStorage.getItem('global-name') || ''
   const navigate = useNavigate()
 
@@ -26,13 +27,8 @@ export default function Home() {
     month: 'long', day: 'numeric', year: 'numeric',
   })
 
-  useEffect(() => {
-    fetchTrips()
-  }, [])
-
-  useEffect(() => {
-    if (rawData) computeDebts(myName, rawData)
-  }, [rawData])
+  useEffect(() => { fetchTrips() }, [])
+  useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
 
   async function fetchTrips() {
     const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes] = await Promise.all([
@@ -56,7 +52,6 @@ export default function Home() {
     for (const r of allReceipts) receiptIdToTripId[r.id] = r.trip_id
     const itemIdToReceiptId = {}
     for (const item of allItems) itemIdToReceiptId[item.id] = item.receipt_id
-
     const map = {}
     for (const claim of allClaims) {
       const tripId = receiptIdToTripId[itemIdToReceiptId[claim.item_id]]
@@ -66,7 +61,6 @@ export default function Home() {
     }
     setClaimersByTrip(map)
 
-    // Track which trips have items
     const twi = new Set()
     for (const r of allReceipts) twi.add(r.trip_id)
     setTripsWithItems(twi)
@@ -74,15 +68,13 @@ export default function Home() {
     const data = { trips, allReceipts, allItems, allClaims, settlements }
     setRawData(data)
     computeDebts(localStorage.getItem('global-name') || '', data)
-
     setLoading(false)
   }
 
   function computeDebts(name, { trips, allReceipts, allItems, allClaims, settlements }) {
-    if (!name) { setOwedToMe([]); setIOwe([]); return }
+    if (!name) { setNetByPerson({}); return }
 
-    const owedResult = []
-    const iOweResult = []
+    const byPerson = {}
 
     for (const trip of trips) {
       const tripReceipts = allReceipts.filter(r => r.trip_id === trip.id)
@@ -97,17 +89,40 @@ export default function Home() {
         const settled = settlements.some(
           s => s.trip_id === trip.id && s.debtor === debt.debtor && s.creditor === debt.creditor
         )
+
         if (debt.creditor === name) {
-          owedResult.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+          const person = debt.debtor
+          if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
+          byPerson[person].theyOweMe.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+          byPerson[person].net += debt.amount
         }
         if (debt.debtor === name) {
-          iOweResult.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+          const person = debt.creditor
+          if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
+          byPerson[person].iOweThem.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
+          byPerson[person].net -= debt.amount
         }
       }
     }
 
-    setOwedToMe(owedResult)
-    setIOwe(iOweResult)
+    setNetByPerson(byPerson)
+  }
+
+  // net > 0 → they owe me; net < 0 → I owe them
+  const owedToMeEntries = Object.entries(netByPerson).filter(([, d]) => d.net > 0.005)
+  const iOweEntries = Object.entries(netByPerson).filter(([, d]) => d.net < -0.005)
+
+  const pendingTotal = owedToMeEntries.reduce((s, [, d]) => s + d.net, 0)
+
+  // Flat list of individual trip debts I owe (only for net-negative persons)
+  const iOweFlat = iOweEntries.flatMap(([, d]) => d.iOweThem)
+
+  function toggleExpanded(person) {
+    setExpandedPeople(prev => {
+      const next = new Set(prev)
+      next.has(person) ? next.delete(person) : next.add(person)
+      return next
+    })
   }
 
   function toggleMember(name) {
@@ -145,21 +160,17 @@ export default function Home() {
     e.preventDefault()
     const name = tripName.trim() || `Grocery run – ${today}`
     setCreating(true)
-
     const { data, error } = await supabase
       .from('trips')
       .insert({ name, members })
       .select()
       .single()
-
     setCreating(false)
     if (error) { alert('Failed to create trip: ' + error.message); return }
     navigate(`/trip/${data.id}`)
   }
 
-  const pendingTotal = owedToMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
-
-  // Trips that need the user's attention
+  // Trips needing attention: unclaimed items OR unsettled debts to net-negative persons
   const actionTripIds = new Set()
   if (myName) {
     for (const trip of trips) {
@@ -169,7 +180,7 @@ export default function Home() {
       const claimers = claimersByTrip[trip.id] || new Set()
       if (!claimers.has(myName)) actionTripIds.add(trip.id)
     }
-    for (const debt of iOwe) {
+    for (const debt of iOweFlat) {
       if (!debt.settled) actionTripIds.add(debt.tripId)
     }
   }
@@ -186,7 +197,7 @@ export default function Home() {
       && !claimers.has(myName)
       && tripsWithItems.has(trip.id)
     const unsettledDebt = showReasons
-      ? iOwe.filter(d => d.tripId === trip.id && !d.settled)
+      ? iOweFlat.filter(d => d.tripId === trip.id && !d.settled)
       : []
 
     if (showReasons) {
@@ -287,7 +298,6 @@ export default function Home() {
               autoFocus
             />
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this trip?</label>
             <div className="flex flex-wrap gap-2 mb-2">
@@ -327,7 +337,6 @@ export default function Home() {
               </button>
             </div>
           </div>
-
           <div className="flex gap-2">
             <button
               type="submit"
@@ -347,45 +356,76 @@ export default function Home() {
         </form>
       )}
 
-      {/* People who owe you */}
-      {myName && owedToMe.length > 0 && (
+      {/* People who owe you — grouped by person, collapsible, net amounts */}
+      {myName && owedToMeEntries.length > 0 && (
         <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-800">People who owe you</h2>
-            {pendingTotal > 0 && (
-              <span className="text-sm font-semibold text-indigo-600">${pendingTotal.toFixed(2)} pending</span>
-            )}
+            <span className="text-sm font-semibold text-indigo-600">${pendingTotal.toFixed(2)}</span>
           </div>
-          <ul className="space-y-2">
-            {owedToMe.map((entry, i) => (
-              <li key={i} className="flex items-center justify-between text-sm gap-2">
-                <div className="min-w-0">
-                  <span className={`font-medium ${entry.settled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                    {entry.debtor}
-                  </span>
-                  <Link
-                    to={`/trip/${entry.tripId}`}
-                    className="ml-1.5 text-xs text-indigo-400 hover:text-indigo-600 hover:underline"
-                    onClick={e => e.stopPropagation()}
+          <ul className="space-y-1.5">
+            {owedToMeEntries.map(([person, data]) => {
+              const expanded = expandedPeople.has(person)
+              const hasOffset = data.iOweThem.length > 0
+              return (
+                <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleExpanded(person)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left"
                   >
-                    {entry.tripName}
-                  </Link>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={`font-semibold ${entry.settled ? 'text-gray-400' : 'text-gray-900'}`}>
-                    ${entry.amount.toFixed(2)}
-                  </span>
-                  {entry.settled
-                    ? <span className="text-xs text-green-600 font-medium">✓ Sent</span>
-                    : <span className="text-xs text-amber-500">awaiting</span>
-                  }
-                </div>
-              </li>
-            ))}
+                    <span className="font-medium text-gray-900">{person}</span>
+                    <div className="flex items-center gap-2.5">
+                      {hasOffset && (
+                        <span className="text-xs text-gray-400">net</span>
+                      )}
+                      <span className="font-semibold text-gray-900">${data.net.toFixed(2)}</span>
+                      <span className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</span>
+                    </div>
+                  </button>
+                  {expanded && (
+                    <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+                      {data.theyOweMe.map((entry, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm gap-2">
+                          <div className="min-w-0">
+                            <Link
+                              to={`/trip/${entry.tripId}`}
+                              className="text-gray-700 hover:underline"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {entry.tripName}
+                            </Link>
+                            <span className="text-gray-400 text-xs ml-1.5">owes you</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
+                            {entry.settled
+                              ? <span className="text-xs text-green-600 font-medium">✓ sent</span>
+                              : <span className="text-xs text-amber-500">awaiting</span>
+                            }
+                          </div>
+                        </div>
+                      ))}
+                      {data.iOweThem.map((entry, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm gap-2">
+                          <div className="min-w-0">
+                            <Link
+                              to={`/trip/${entry.tripId}`}
+                              className="text-gray-700 hover:underline"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {entry.tripName}
+                            </Link>
+                            <span className="text-gray-400 text-xs ml-1.5">you owe (offset)</span>
+                          </div>
+                          <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
-          {owedToMe.every(e => e.settled) && (
-            <p className="text-xs text-green-600 mt-3 font-medium">All paid up ✓</p>
-          )}
         </div>
       )}
 
