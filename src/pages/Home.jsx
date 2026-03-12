@@ -14,6 +14,7 @@ export default function Home() {
   const [rawData, setRawData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [settling, setSettling] = useState(null) // { tripId, creditor }
   const [tripName, setTripName] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [members, setMembers] = useState([...DEFAULT_MEMBERS])
@@ -130,6 +131,16 @@ export default function Home() {
     setNewMemberInput('')
   }
 
+  async function markSettled(tripId, creditor) {
+    setSettling({ tripId, creditor })
+    await supabase.from('settlements').upsert(
+      { trip_id: tripId, debtor: myName, creditor },
+      { onConflict: 'trip_id,debtor,creditor' }
+    )
+    await fetchTrips()
+    setSettling(null)
+  }
+
   async function createTrip(e) {
     e.preventDefault()
     const name = tripName.trim() || `Grocery run – ${today}`
@@ -178,6 +189,46 @@ export default function Home() {
       ? iOwe.filter(d => d.tripId === trip.id && !d.settled)
       : []
 
+    if (showReasons) {
+      return (
+        <li key={trip.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+          <Link to={`/trip/${trip.id}`} className="flex items-center justify-between hover:opacity-80 transition">
+            <div className="min-w-0">
+              <p className="font-medium text-gray-900">{trip.name}</p>
+              <p className="text-xs text-gray-400">
+                {new Date(trip.created_at).toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric', year: 'numeric',
+                })}
+              </p>
+            </div>
+            <span className="text-gray-300 ml-3">›</span>
+          </Link>
+          <div className="mt-2 space-y-1.5">
+            {needsClaiming && (
+              <p className="text-xs text-indigo-600 font-medium">Check off your items</p>
+            )}
+            {unsettledDebt.map((d, i) => {
+              const isSettling = settling?.tripId === trip.id && settling?.creditor === d.creditor
+              return (
+                <div key={i} className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-amber-600">
+                    Owe ${d.amount.toFixed(2)} to {d.creditor}
+                  </p>
+                  <button
+                    onClick={() => markSettled(trip.id, d.creditor)}
+                    disabled={!!settling}
+                    className="shrink-0 text-xs px-2 py-0.5 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 transition disabled:opacity-50"
+                  >
+                    {isSettling ? '…' : 'Mark sent'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </li>
+      )
+    }
+
     return (
       <li key={trip.id}>
         <Link
@@ -191,15 +242,7 @@ export default function Home() {
                 month: 'short', day: 'numeric', year: 'numeric',
               })}
             </p>
-            {needsClaiming && (
-              <p className="text-xs text-indigo-600 mt-0.5 font-medium">Check off your items</p>
-            )}
-            {unsettledDebt.map((d, i) => (
-              <p key={i} className="text-xs text-amber-600 mt-0.5">
-                Send ${d.amount.toFixed(2)} to {d.creditor}
-              </p>
-            ))}
-            {!showReasons && waitingOn.length > 0 && (
+            {waitingOn.length > 0 && (
               <p className="text-xs text-amber-600 mt-0.5">
                 Waiting on: {waitingOn.join(', ')}
               </p>

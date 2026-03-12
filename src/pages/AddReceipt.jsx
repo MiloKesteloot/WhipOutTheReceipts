@@ -296,11 +296,17 @@ export default function AddReceipt() {
     navigate(`/trip/${tripId}`)
   }
 
+  async function handleDelete() {
+    if (!window.confirm('Delete this receipt and all its items? This cannot be undone.')) return
+    await supabase.from('receipts').delete().eq('id', receiptId)
+    navigate(`/trip/${tripId}`)
+  }
+
   if (trip?.closed) {
     return (
       <div className="max-w-xl mx-auto p-8 text-center text-gray-500">
         This trip is closed.{' '}
-        <button onClick={handleBack} className="text-indigo-500 underline">Go back</button>
+        <button onClick={handleBack} className="text-gray-600 underline">Go back</button>
       </div>
     )
   }
@@ -373,7 +379,7 @@ export default function AddReceipt() {
 
   return (
     <div className="max-w-xl mx-auto p-4 py-8">
-      <button onClick={handleBack} className="text-sm text-indigo-500 hover:underline mb-2 inline-block">
+      <button onClick={handleBack} className="text-sm text-gray-500 hover:text-gray-700 hover:underline mb-2 inline-block">
         ← Back to trip
       </button>
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
@@ -567,6 +573,16 @@ export default function AddReceipt() {
         >
           {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Receipt'}
         </button>
+
+        {isEditing && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="w-full py-2.5 border border-red-200 text-red-400 rounded-xl hover:bg-red-50 hover:text-red-500 transition text-sm font-medium"
+          >
+            Delete receipt
+          </button>
+        )}
       </form>
     </div>
   )
