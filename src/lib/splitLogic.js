@@ -1,17 +1,13 @@
 /**
- * Distribute tip+tax for a receipt proportionally among non-payer claimers,
- * weighted by each person's split share of claimed items.
- * Returns: { person -> cents }
+ * Distribute an amount (in cents) proportionally among claimers of the given items,
+ * excluding the payer. Returns: { person -> cents }
  */
-function distributeTipTax(receipt, receiptItems, claimsByItem) {
-  const tipTaxCents = Math.round(((receipt.tip || 0) + (receipt.tax || 0)) * 100)
-  if (!tipTaxCents) return {}
-
-  const payer = receipt.paid_by
+function distributeProportionally(feeCents, relevantItems, claimsByItem, payer) {
+  if (!feeCents) return {}
 
   // Each person's effective cents = sum of their split shares of items they claimed
   const effectiveByPerson = {}
-  for (const item of receiptItems) {
+  for (const item of relevantItems) {
     const claimers = claimsByItem[item.id] || []
     if (claimers.length === 0) continue
     const priceInCents = Math.round(item.price * 100)
@@ -32,16 +28,16 @@ function distributeTipTax(receipt, receiptItems, claimsByItem) {
 
   const shares = debtors.map(([person, effective]) => ({
     person,
-    share: Math.floor(tipTaxCents * effective / totalEffective),
+    share: Math.floor(feeCents * effective / totalEffective),
     effective,
   }))
 
   // Distribute remainder cents to those with largest fractional parts
   const distributed = shares.reduce((s, e) => s + e.share, 0)
-  let remainder = tipTaxCents - distributed
+  let remainder = feeCents - distributed
   shares.sort((a, b) => {
-    const aFrac = (tipTaxCents * a.effective / totalEffective) - Math.floor(tipTaxCents * a.effective / totalEffective)
-    const bFrac = (tipTaxCents * b.effective / totalEffective) - Math.floor(tipTaxCents * b.effective / totalEffective)
+    const aFrac = (feeCents * a.effective / totalEffective) - Math.floor(feeCents * a.effective / totalEffective)
+    const bFrac = (feeCents * b.effective / totalEffective) - Math.floor(feeCents * b.effective / totalEffective)
     return bFrac - aFrac
   })
   for (const s of shares) {
@@ -57,18 +53,25 @@ function distributeTipTax(receipt, receiptItems, claimsByItem) {
   return result
 }
 
+function distributeTipTaxFees(receipt, receiptItems, claimsByItem) {
+  const cents = Math.round(((receipt.tip || 0) + (receipt.tax || 0) + (receipt.fees || 0)) * 100)
+  return distributeProportionally(cents, receiptItems, claimsByItem, receipt.paid_by)
+}
+
 /**
- * Calculate debts from items + claims + tip/tax.
+ * Calculate debts from items + claims + tip/tax + meal fees.
  *
  * Returns an array of { debtor, creditor, amount } objects.
  * Unclaimed items fall entirely on the payer.
  * Tip and tax are distributed proportionally to each person's claimed item share.
+ * Meal fees are distributed proportionally among claimers of items in that meal.
  *
  * @param {Array} receipts  - [{ id, paid_by, tip, tax }]
- * @param {Array} items     - [{ id, receipt_id, name, price }]
+ * @param {Array} items     - [{ id, receipt_id, meal_id, name, price }]
  * @param {Array} claims    - [{ item_id, roommate }]
+ * @param {Array} meals     - [{ id, receipt_id, fee }]  (optional)
  */
-export function calculateDebts(receipts, items, claims) {
+export function calculateDebts(receipts, items, claims, meals = []) {
   const payerByReceipt = {}
   for (const r of receipts) payerByReceipt[r.id] = r.paid_by
 
@@ -82,6 +85,14 @@ export function calculateDebts(receipts, items, claims) {
   for (const item of items) {
     if (!itemsByReceipt[item.receipt_id]) itemsByReceipt[item.receipt_id] = []
     itemsByReceipt[item.receipt_id].push(item)
+  }
+
+  const itemsByMeal = {}
+  for (const item of items) {
+    if (item.meal_id) {
+      if (!itemsByMeal[item.meal_id]) itemsByMeal[item.meal_id] = []
+      itemsByMeal[item.meal_id].push(item)
+    }
   }
 
   const rawDebts = {}
@@ -108,7 +119,21 @@ export function calculateDebts(receipts, items, claims) {
   // Tip + tax debts
   for (const receipt of receipts) {
     const payer = receipt.paid_by
-    const shares = distributeTipTax(receipt, itemsByReceipt[receipt.id] || [], claimsByItem)
+    const shares = distributeTipTaxFees(receipt, itemsByReceipt[receipt.id] || [], claimsByItem)
+    for (const [debtor, cents] of Object.entries(shares)) {
+      if (!rawDebts[debtor]) rawDebts[debtor] = {}
+      rawDebts[debtor][payer] = (rawDebts[debtor][payer] || 0) + cents
+    }
+  }
+
+  // Meal fee debts
+  for (const meal of meals) {
+    const feeCents = Math.round((meal.fee || 0) * 100)
+    if (!feeCents) continue
+    const payer = payerByReceipt[meal.receipt_id]
+    if (!payer) continue
+    const mealItems = itemsByMeal[meal.id] || []
+    const shares = distributeProportionally(feeCents, mealItems, claimsByItem, payer)
     for (const [debtor, cents] of Object.entries(shares)) {
       if (!rawDebts[debtor]) rawDebts[debtor] = {}
       rawDebts[debtor][payer] = (rawDebts[debtor][payer] || 0) + cents
@@ -126,11 +151,11 @@ export function calculateDebts(receipts, items, claims) {
 
 /**
  * Per-person itemized breakdown of what they owe and why.
- * Includes tip & tax as a line item where applicable.
+ * Includes tip & tax and meal fees as line items where applicable.
  *
  * @returns Map: roommate -> [{ itemName, storeName, payer, share }]
  */
-export function getItemizedBreakdown(receipts, items, claims) {
+export function getItemizedBreakdown(receipts, items, claims, meals = []) {
   const payerByReceipt = {}
   const storeByReceipt = {}
   const tipTaxByReceipt = {}
@@ -147,9 +172,14 @@ export function getItemizedBreakdown(receipts, items, claims) {
   }
 
   const itemsByReceipt = {}
+  const itemsByMeal = {}
   for (const item of items) {
     if (!itemsByReceipt[item.receipt_id]) itemsByReceipt[item.receipt_id] = []
     itemsByReceipt[item.receipt_id].push(item)
+    if (item.meal_id) {
+      if (!itemsByMeal[item.meal_id]) itemsByMeal[item.meal_id] = []
+      itemsByMeal[item.meal_id].push(item)
+    }
   }
 
   const breakdown = {}
@@ -174,10 +204,25 @@ export function getItemizedBreakdown(receipts, items, claims) {
     const label = [tip > 0 && 'Tip', tax > 0 && 'Tax'].filter(Boolean).join(' & ')
     const store = storeByReceipt[receipt.id]
     const payer = receipt.paid_by
-    const shares = distributeTipTax(receipt, itemsByReceipt[receipt.id] || [], claimsByItem)
+    const shares = distributeTipTaxFees(receipt, itemsByReceipt[receipt.id] || [], claimsByItem)
     for (const [person, cents] of Object.entries(shares)) {
       if (!breakdown[person]) breakdown[person] = []
       breakdown[person].push({ itemName: label, storeName: store, payer, share: cents / 100 })
+    }
+  }
+
+  // Meal fee lines
+  for (const meal of meals) {
+    const feeCents = Math.round((meal.fee || 0) * 100)
+    if (!feeCents) continue
+    const payer = payerByReceipt[meal.receipt_id]
+    const store = storeByReceipt[meal.receipt_id]
+    if (!payer) continue
+    const mealItems = itemsByMeal[meal.id] || []
+    const shares = distributeProportionally(feeCents, mealItems, claimsByItem, payer)
+    for (const [person, cents] of Object.entries(shares)) {
+      if (!breakdown[person]) breakdown[person] = []
+      breakdown[person].push({ itemName: `${meal.name} fee`, storeName: store, payer, share: cents / 100 })
     }
   }
 

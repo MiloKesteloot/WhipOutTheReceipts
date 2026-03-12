@@ -210,13 +210,13 @@ export default function TripDetail() {
     ...[...myClaims].map(item_id => ({ item_id, roommate: myName })),
   ] : claims
   const runningTotal = myName
-    ? calculateDebts(receipts, items, syntheticClaims)
+    ? calculateDebts(receipts, items, syntheticClaims, meals)
         .filter(d => d.debtor === myName)
         .reduce((s, d) => s + d.amount, 0)
     : 0
 
-  const debts = calculateDebts(receipts, items, claims)
-  const breakdown = getItemizedBreakdown(receipts, items, claims)
+  const debts = calculateDebts(receipts, items, claims, meals)
+  const breakdown = getItemizedBreakdown(receipts, items, claims, meals)
 
   const claimerNames = new Set(claims.map(c => c.roommate))
   const waitingOn = (trip?.members || []).filter(m => !claimerNames.has(m))

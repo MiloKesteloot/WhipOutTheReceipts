@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts } from '../lib/splitLogic.js'
+import { version as buildVersion } from '../buildVersion.json'
 
 const DEFAULT_MEMBERS = ['Alex', 'Clouey', 'Milo', 'Niko']
 
@@ -32,12 +33,13 @@ export default function Home() {
   useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
 
   async function fetchTrips() {
-    const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes] = await Promise.all([
+    const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes, mealsRes] = await Promise.all([
       supabase.from('trips').select('*').order('created_at', { ascending: false }),
-      supabase.from('receipts').select('id, trip_id, paid_by, tip, tax'),
-      supabase.from('items').select('id, receipt_id, price'),
+      supabase.from('receipts').select('id, trip_id, paid_by, tip, tax, fees'),
+      supabase.from('items').select('id, receipt_id, meal_id, price'),
       supabase.from('claims').select('item_id, roommate'),
       supabase.from('settlements').select('trip_id, debtor, creditor'),
+      supabase.from('meals').select('id, receipt_id, fee'),
     ])
 
     const trips = tripsRes.data || []
@@ -45,6 +47,7 @@ export default function Home() {
     const allItems = itemsRes.data || []
     const allClaims = claimsRes.data || []
     const settlements = settlementsRes.data || []
+    const allMeals = mealsRes.data || []
 
     setTrips(trips)
 
@@ -66,13 +69,13 @@ export default function Home() {
     for (const r of allReceipts) twi.add(r.trip_id)
     setTripsWithItems(twi)
 
-    const data = { trips, allReceipts, allItems, allClaims, settlements }
+    const data = { trips, allReceipts, allItems, allClaims, settlements, allMeals }
     setRawData(data)
     computeDebts(localStorage.getItem('global-name') || '', data)
     setLoading(false)
   }
 
-  function computeDebts(name, { trips, allReceipts, allItems, allClaims, settlements }) {
+  function computeDebts(name, { trips, allReceipts, allItems, allClaims, settlements, allMeals = [] }) {
     if (!name) { setNetByPerson({}); return }
 
     const nameLc = name.toLowerCase()
@@ -87,7 +90,9 @@ export default function Home() {
       const itemIds = new Set(tripItems.map(i => i.id))
       const tripClaims = allClaims.filter(c => itemIds.has(c.item_id))
 
-      for (const debt of calculateDebts(tripReceipts, tripItems, tripClaims)) {
+      const tripReceiptIds = new Set(tripReceipts.map(r => r.id))
+      const tripMeals = allMeals.filter(m => tripReceiptIds.has(m.receipt_id))
+      for (const debt of calculateDebts(tripReceipts, tripItems, tripClaims, tripMeals)) {
         const settled = settlements.some(
           s => s.trip_id === trip.id
             && s.debtor.toLowerCase() === debt.debtor.toLowerCase()
@@ -512,6 +517,7 @@ function toggleExpanded(person) {
             .map(trip => renderTripRow(trip))}
         </ul>
       )}
+      <p className="mt-8 text-center text-xs text-gray-300">v{buildVersion}</p>
     </div>
   )
 }

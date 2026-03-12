@@ -7,7 +7,7 @@ function newItem(dbId = null) {
 }
 
 function newMeal(dbId = null) {
-  return { local_id: crypto.randomUUID(), dbId, name: '' }
+  return { local_id: crypto.randomUUID(), dbId, name: '', fee: '' }
 }
 
 export default function AddReceipt() {
@@ -25,6 +25,7 @@ export default function AddReceipt() {
   const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
   const [tip, setTip] = useState('')
   const [tax, setTax] = useState('')
+  const [fees, setFees] = useState('')
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   const [isDirty, setIsDirty] = useState(false)
@@ -49,6 +50,7 @@ export default function AddReceipt() {
           setPaidBy(receipt.paid_by)
           setTip(receipt.tip ? String(receipt.tip) : '')
           setTax(receipt.tax ? String(receipt.tax) : '')
+          setFees(receipt.fees ? String(receipt.fees) : '')
         }
 
         const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
@@ -60,6 +62,7 @@ export default function AddReceipt() {
           local_id: crypto.randomUUID(),
           dbId: m.id,
           name: m.name,
+          fee: m.fee ? String(m.fee) : '',
         }))
         setMeals(loadedMeals)
         setOriginalMealDbIds(new Set(loadedMeals.map(m => m.dbId)))
@@ -128,10 +131,10 @@ export default function AddReceipt() {
     setMeals(prev => [...prev, newMeal()])
   }
 
-  function updateMeal(localId, name) {
+  function updateMeal(localId, field, value) {
     markDirty()
-    setMeals(prev => prev.map(m => m.local_id === localId ? { ...m, name } : m))
-    setErrors(v => ({ ...v, [`meal-${localId}`]: undefined }))
+    setMeals(prev => prev.map(m => m.local_id === localId ? { ...m, [field]: value } : m))
+    if (field === 'name') setErrors(v => ({ ...v, [`meal-${localId}`]: undefined }))
   }
 
   function removeMeal(localId) {
@@ -203,14 +206,14 @@ export default function AddReceipt() {
     // Insert new meals in bulk and get back their IDs
     if (newMeals.length > 0) {
       const { data } = await supabase.from('meals')
-        .insert(newMeals.map(m => ({ receipt_id: receiptDbId, name: m.name.trim() })))
+        .insert(newMeals.map(m => ({ receipt_id: receiptDbId, name: m.name.trim(), fee: parseFloat(m.fee) || 0 })))
         .select()
       ;(data || []).forEach((row, i) => mealLocalToDbId.set(newMeals[i].local_id, row.id))
     }
 
     // Update existing meals
     for (const meal of existingMeals) {
-      await supabase.from('meals').update({ name: meal.name.trim() }).eq('id', meal.dbId)
+      await supabase.from('meals').update({ name: meal.name.trim(), fee: parseFloat(meal.fee) || 0 }).eq('id', meal.dbId)
       mealLocalToDbId.set(meal.local_id, meal.dbId)
     }
 
@@ -227,7 +230,7 @@ export default function AddReceipt() {
     if (isEditing) {
       const { error: updateErr } = await supabase
         .from('receipts')
-        .update({ store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0 })
+        .update({ store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
         .eq('id', receiptId)
       if (updateErr) { alert('Error updating receipt: ' + updateErr.message); setSaving(false); return }
 
@@ -274,7 +277,7 @@ export default function AddReceipt() {
     } else {
       const { data: receipt, error: receiptErr } = await supabase
         .from('receipts')
-        .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0 })
+        .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
         .select()
         .single()
       if (receiptErr) { alert('Error saving receipt: ' + receiptErr.message); setSaving(false); return }
@@ -458,13 +461,25 @@ export default function AddReceipt() {
                   <input
                     type="text"
                     value={meal.name}
-                    onChange={e => updateMeal(meal.local_id, e.target.value)}
+                    onChange={e => updateMeal(meal.local_id, 'name', e.target.value)}
                     placeholder="Meal name (e.g. Dinner)"
                     className={`flex-1 bg-transparent text-sm font-semibold text-gray-700 border-none outline-none focus:outline-none ${errors[`meal-${meal.local_id}`] ? 'placeholder-red-400' : 'placeholder-gray-400'}`}
                   />
                   {errors[`meal-${meal.local_id}`] && (
                     <span className="text-xs text-red-500">{errors[`meal-${meal.local_id}`]}</span>
                   )}
+                  <div className="relative shrink-0 w-24">
+                    <span className="absolute left-2 top-1.5 text-gray-400 text-xs">fee $</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={meal.fee}
+                      onChange={e => updateMeal(meal.local_id, 'fee', e.target.value)}
+                      placeholder="0.00"
+                      className="w-full border border-gray-200 rounded-md pl-9 pr-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeMeal(meal.local_id)}
@@ -513,7 +528,7 @@ export default function AddReceipt() {
           </button>
         </div>
 
-        {/* Tip & Tax */}
+        {/* Tip, Tax & Fees */}
         <div className="flex gap-3">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tip</label>
@@ -541,6 +556,19 @@ export default function AddReceipt() {
               />
             </div>
           </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Fees</label>
+            <div className="relative">
+              <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+              <input
+                type="number" min="0" step="0.01"
+                value={fees}
+                onChange={e => { markDirty(); setFees(e.target.value) }}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Total preview */}
@@ -548,18 +576,23 @@ export default function AddReceipt() {
           const itemsTotal = filledItems().reduce((s, i) => s + (parseFloat(i.price) || 0), 0)
           const tipAmt = parseFloat(tip) || 0
           const taxAmt = parseFloat(tax) || 0
-          const grandTotal = itemsTotal + tipAmt + taxAmt
+          const feesAmt = parseFloat(fees) || 0
+          const mealFeesAmt = meals.reduce((s, m) => s + (parseFloat(m.fee) || 0), 0)
+          const grandTotal = itemsTotal + tipAmt + taxAmt + feesAmt + mealFeesAmt
+          const hasExtras = tipAmt > 0 || taxAmt > 0 || feesAmt > 0 || mealFeesAmt > 0
           return (
             <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-500">Receipt total</span>
                 <span className="font-semibold text-gray-900">${grandTotal.toFixed(2)}</span>
               </div>
-              {(tipAmt > 0 || taxAmt > 0) && (
+              {hasExtras && (
                 <p className="text-xs text-gray-400 mt-0.5 text-right">
                   ${itemsTotal.toFixed(2)} items
                   {tipAmt > 0 && ` + $${tipAmt.toFixed(2)} tip`}
                   {taxAmt > 0 && ` + $${taxAmt.toFixed(2)} tax`}
+                  {feesAmt > 0 && ` + $${feesAmt.toFixed(2)} fees`}
+                  {mealFeesAmt > 0 && ` + $${mealFeesAmt.toFixed(2)} meal fees`}
                 </p>
               )}
             </div>
