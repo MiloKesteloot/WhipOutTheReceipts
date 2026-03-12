@@ -192,17 +192,16 @@ export default function Home() {
     if (showReasons) {
       return (
         <li key={trip.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-          <Link to={`/trip/${trip.id}`} className="flex items-center justify-between hover:opacity-80 transition">
+          <div className="flex items-center justify-between">
             <div className="min-w-0">
-              <p className="font-medium text-gray-900">{trip.name}</p>
+              <Link to={`/trip/${trip.id}`} className="font-medium text-gray-900 hover:underline">{trip.name}</Link>
               <p className="text-xs text-gray-400">
                 {new Date(trip.created_at).toLocaleDateString('en-US', {
                   month: 'short', day: 'numeric', year: 'numeric',
                 })}
               </p>
             </div>
-            <span className="text-gray-300 ml-3">›</span>
-          </Link>
+          </div>
           <div className="mt-2 space-y-1.5">
             {needsClaiming && (
               <p className="text-xs text-indigo-600 font-medium">Check off your items</p>
