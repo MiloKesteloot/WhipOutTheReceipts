@@ -324,9 +324,10 @@ export default function AddReceipt() {
       <div
         key={item.id}
         className={`flex gap-2 items-start transition-opacity ${isDragging ? 'opacity-30' : ''}`}
-        draggable={canDrag}
+        draggable={canDrag || undefined}
         onDragStart={canDrag ? e => handleDragStart(e, item.id) : undefined}
         onDragEnd={handleDragEnd}
+        onDragOver={e => e.preventDefault()}
       >
         <div
           className={`mt-2.5 text-sm leading-none select-none ${canDrag ? 'text-gray-300 cursor-grab active:cursor-grabbing' : 'text-transparent'}`}
@@ -442,7 +443,7 @@ export default function AddReceipt() {
             onDrop={e => handleDrop(e, null)}
           >
             {ungroupedItems.map(item => renderItemRow(item))}
-            {dragOverTarget === null && draggingItemId && ungroupedItems.every(isBlankItem) && (
+            {dragOverTarget === null && draggingItemId && (
               <p className="text-xs text-indigo-400 text-center py-2">Drop here to ungroup</p>
             )}
           </div>
