@@ -20,6 +20,7 @@ export default function Home() {
   const [members, setMembers] = useState([...DEFAULT_MEMBERS])
   const [newMemberInput, setNewMemberInput] = useState('')
   const [expandedPeople, setExpandedPeople] = useState(new Set())
+  const [showAllTrips, setShowAllTrips] = useState(false)
   const myName = localStorage.getItem('global-name') || ''
   const navigate = useNavigate()
 
@@ -199,7 +200,7 @@ function toggleExpanded(person) {
   function renderTripRow(trip) {
     const claimers = claimersByTrip[trip.id] || new Set()
     const waitingOn = claimers.size > 0 && !trip.closed
-      ? (trip.members || []).filter(m => !claimers.has(m))
+      ? (trip.members || []).filter(m => !claimers.has(m.toLowerCase()))
       : []
 
     return (
@@ -489,14 +490,26 @@ function toggleExpanded(person) {
       )}
 
       {/* All trips */}
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">All Trips</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+          {showAllTrips ? 'All Trips' : 'Your Trips'}
+        </h2>
+        <button
+          onClick={() => setShowAllTrips(s => !s)}
+          className="text-xs text-gray-400 hover:text-gray-600 transition"
+        >
+          {showAllTrips ? 'Show only mine' : 'Show all trips'}
+        </button>
+      </div>
       {loading ? (
         <p className="text-gray-400">Loading…</p>
       ) : trips.length === 0 ? (
         <p className="text-gray-400">No trips yet. Hit "+ New Trip" above to get started.</p>
       ) : (
         <ul className="space-y-2">
-          {trips.map(trip => renderTripRow(trip))}
+          {trips
+            .filter(trip => showAllTrips || !myName || (trip.members || []).some(m => m.toLowerCase() === myName.toLowerCase()))
+            .map(trip => renderTripRow(trip))}
         </ul>
       )}
     </div>
