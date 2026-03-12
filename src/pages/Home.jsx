@@ -108,11 +108,20 @@ export default function Home() {
     setNetByPerson(byPerson)
   }
 
-  // net > 0 → they owe me; net < 0 → I owe them
-  const owedToMeEntries = Object.entries(netByPerson).filter(([, d]) => d.net > 0.005)
-  const iOweEntries = Object.entries(netByPerson).filter(([, d]) => d.net < -0.005)
+  // Unsettled net amounts — used for filtering and display
+  function unsettledOwedToMe(data) {
+    return data.theyOweMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
+         - data.iOweThem.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
+  }
+  function unsettledIOwe(data) {
+    return data.iOweThem.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
+         - data.theyOweMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
+  }
 
-  const pendingTotal = owedToMeEntries.reduce((s, [, d]) => s + d.net, 0)
+  const owedToMeEntries = Object.entries(netByPerson).filter(([, d]) => unsettledOwedToMe(d) > 0.005)
+  const iOweEntries = Object.entries(netByPerson).filter(([, d]) => unsettledIOwe(d) > 0.005)
+
+  const pendingTotal = owedToMeEntries.reduce((s, [, d]) => s + unsettledOwedToMe(d), 0)
 
 function toggleExpanded(person) {
     setExpandedPeople(prev => {
@@ -180,7 +189,7 @@ function toggleExpanded(person) {
     navigate(`/trip/${data.id}`)
   }
 
-  const iOweTotal = iOweEntries.reduce((s, [, d]) => s + (-d.net), 0)
+  const iOweTotal = iOweEntries.reduce((s, [, d]) => s + unsettledIOwe(d), 0)
 
   function renderTripRow(trip) {
     const claimers = claimersByTrip[trip.id] || new Set()
@@ -315,7 +324,8 @@ function toggleExpanded(person) {
           <ul className="space-y-1.5">
             {owedToMeEntries.map(([person, data]) => {
               const expanded = expandedPeople.has(person)
-              const hasOffset = data.iOweThem.length > 0
+              const netAmt = unsettledOwedToMe(data)
+              const hasOffset = data.iOweThem.some(e => !e.settled)
               return (
                 <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
                   <button
@@ -327,7 +337,7 @@ function toggleExpanded(person) {
                       {hasOffset && (
                         <span className="text-xs text-gray-400">net</span>
                       )}
-                      <span className="font-semibold text-gray-900">${data.net.toFixed(2)}</span>
+                      <span className="font-semibold text-gray-900">${netAmt.toFixed(2)}</span>
                       <span className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</span>
                     </div>
                   </button>
@@ -387,9 +397,9 @@ function toggleExpanded(person) {
           </div>
           <ul className="space-y-1.5">
             {iOweEntries.map(([person, data]) => {
-              const netOwed = -data.net
+              const netOwed = unsettledIOwe(data)
               const expanded = expandedPeople.has(`owe-${person}`)
-              const hasOffset = data.theyOweMe.length > 0
+              const hasOffset = data.theyOweMe.some(e => !e.settled)
               return (
                 <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
                   <button
