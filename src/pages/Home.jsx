@@ -114,10 +114,7 @@ export default function Home() {
 
   const pendingTotal = owedToMeEntries.reduce((s, [, d]) => s + d.net, 0)
 
-  // Flat list of individual trip debts I owe (only for net-negative persons)
-  const iOweFlat = iOweEntries.flatMap(([, d]) => d.iOweThem)
-
-  function toggleExpanded(person) {
+function toggleExpanded(person) {
     setExpandedPeople(prev => {
       const next = new Set(prev)
       next.has(person) ? next.delete(person) : next.add(person)
@@ -156,6 +153,19 @@ export default function Home() {
     setSettling(null)
   }
 
+  async function markAllSettledWith(person, data) {
+    setSettling({ person })
+    const upserts = [
+      // Trips where I owe them → I sent money
+      ...data.iOweThem.map(e => ({ trip_id: e.tripId, debtor: myName, creditor: person })),
+      // Trips where they owe me (offsets) → mark as settled from their side too
+      ...data.theyOweMe.map(e => ({ trip_id: e.tripId, debtor: person, creditor: myName })),
+    ]
+    await supabase.from('settlements').upsert(upserts, { onConflict: 'trip_id,debtor,creditor' })
+    await fetchTrips()
+    setSettling(null)
+  }
+
   async function createTrip(e) {
     e.preventDefault()
     const name = tripName.trim() || `Grocery run – ${today}`
@@ -170,74 +180,13 @@ export default function Home() {
     navigate(`/trip/${data.id}`)
   }
 
-  // Trips needing attention: unclaimed items OR unsettled debts to net-negative persons
-  const actionTripIds = new Set()
-  if (myName) {
-    for (const trip of trips) {
-      if (trip.closed) continue
-      if (!(trip.members || []).includes(myName)) continue
-      if (!tripsWithItems.has(trip.id)) continue
-      const claimers = claimersByTrip[trip.id] || new Set()
-      if (!claimers.has(myName)) actionTripIds.add(trip.id)
-    }
-    for (const debt of iOweFlat) {
-      if (!debt.settled) actionTripIds.add(debt.tripId)
-    }
-  }
-  const actionTrips = trips.filter(t => actionTripIds.has(t.id))
+  const iOweTotal = iOweEntries.reduce((s, [, d]) => s + (-d.net), 0)
 
-  function renderTripRow(trip, { showReasons = false } = {}) {
+  function renderTripRow(trip) {
     const claimers = claimersByTrip[trip.id] || new Set()
     const waitingOn = claimers.size > 0 && !trip.closed
       ? (trip.members || []).filter(m => !claimers.has(m))
       : []
-
-    const needsClaiming = showReasons && myName && !trip.closed
-      && (trip.members || []).includes(myName)
-      && !claimers.has(myName)
-      && tripsWithItems.has(trip.id)
-    const unsettledDebt = showReasons
-      ? iOweFlat.filter(d => d.tripId === trip.id && !d.settled)
-      : []
-
-    if (showReasons) {
-      return (
-        <li key={trip.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0">
-              <Link to={`/trip/${trip.id}`} className="font-medium text-gray-900 hover:underline">{trip.name}</Link>
-              <p className="text-xs text-gray-400">
-                {new Date(trip.created_at).toLocaleDateString('en-US', {
-                  month: 'short', day: 'numeric', year: 'numeric',
-                })}
-              </p>
-            </div>
-          </div>
-          <div className="mt-2 space-y-1.5">
-            {needsClaiming && (
-              <p className="text-xs text-indigo-600 font-medium">Check off your items</p>
-            )}
-            {unsettledDebt.map((d, i) => {
-              const isSettling = settling?.tripId === trip.id && settling?.creditor === d.creditor
-              return (
-                <div key={i} className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-amber-600">
-                    Owe ${d.amount.toFixed(2)} to {d.creditor}
-                  </p>
-                  <button
-                    onClick={() => markSettled(trip.id, d.creditor)}
-                    disabled={!!settling}
-                    className="shrink-0 text-xs px-2 py-0.5 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 transition disabled:opacity-50"
-                  >
-                    {isSettling ? '…' : 'Mark sent'}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        </li>
-      )
-    }
 
     return (
       <li key={trip.id}>
@@ -429,12 +378,97 @@ export default function Home() {
         </div>
       )}
 
-      {/* Trips needing attention */}
-      {!loading && actionTrips.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Needs your attention</h2>
-          <ul className="space-y-2">
-            {actionTrips.map(trip => renderTripRow(trip, { showReasons: true }))}
+      {/* People you owe — grouped by person, collapsible, net amounts */}
+      {myName && iOweEntries.length > 0 && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-800">People you owe</h2>
+            <span className="text-sm font-semibold text-amber-600">${iOweTotal.toFixed(2)}</span>
+          </div>
+          <ul className="space-y-1.5">
+            {iOweEntries.map(([person, data]) => {
+              const netOwed = -data.net
+              const expanded = expandedPeople.has(`owe-${person}`)
+              const hasOffset = data.theyOweMe.length > 0
+              return (
+                <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleExpanded(`owe-${person}`)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left"
+                  >
+                    <span className="font-medium text-gray-900">{person}</span>
+                    <div className="flex items-center gap-2.5">
+                      {hasOffset && (
+                        <span className="text-xs text-gray-400">net</span>
+                      )}
+                      <span className="font-semibold text-amber-600">${netOwed.toFixed(2)}</span>
+                      <span className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</span>
+                    </div>
+                  </button>
+                  {expanded && (
+                    <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+                      {data.iOweThem.every(e => e.settled) && data.theyOweMe.every(e => e.settled) ? (
+                        <p className="text-xs text-green-600 font-medium py-1">All settled ✓</p>
+                      ) : (
+                        <button
+                          onClick={() => markAllSettledWith(person, data)}
+                          disabled={!!settling}
+                          className="w-full text-sm py-1.5 px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 font-medium"
+                        >
+                          {settling?.person === person ? '…' : `Mark everything settled with ${person}`}
+                        </button>
+                      )}
+                      {data.iOweThem.map((entry, i) => {
+                        const isSettling = settling?.tripId === entry.tripId && settling?.creditor === person
+                        return (
+                          <div key={i} className="flex items-center justify-between text-sm gap-2">
+                            <div className="min-w-0">
+                              <Link
+                                to={`/trip/${entry.tripId}`}
+                                className="text-gray-700 hover:underline"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                {entry.tripName}
+                              </Link>
+                              <span className="text-gray-400 text-xs ml-1.5">you owe</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
+                              {entry.settled ? (
+                                <span className="text-xs text-green-600 font-medium">✓ sent</span>
+                              ) : (
+                                <button
+                                  onClick={() => markSettled(entry.tripId, person)}
+                                  disabled={!!settling}
+                                  className="text-xs px-2 py-0.5 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 transition disabled:opacity-50"
+                                >
+                                  {isSettling ? '…' : 'Mark sent'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {data.theyOweMe.map((entry, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm gap-2">
+                          <div className="min-w-0">
+                            <Link
+                              to={`/trip/${entry.tripId}`}
+                              className="text-gray-700 hover:underline"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {entry.tripName}
+                            </Link>
+                            <span className="text-gray-400 text-xs ml-1.5">they owe you (offset)</span>
+                          </div>
+                          <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}
