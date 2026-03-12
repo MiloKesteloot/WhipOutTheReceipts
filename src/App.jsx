@@ -9,8 +9,9 @@ export default function App() {
   const [myName, setMyName] = useState(() => localStorage.getItem('global-name') || '')
 
   function handleNameSet(name) {
-    localStorage.setItem('global-name', name)
-    setMyName(name)
+    const normalized = name.trim().replace(/\b\w/g, c => c.toUpperCase())
+    localStorage.setItem('global-name', normalized)
+    setMyName(normalized)
   }
 
   function handleSignOut() {

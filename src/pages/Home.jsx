@@ -57,7 +57,7 @@ export default function Home() {
       const tripId = receiptIdToTripId[itemIdToReceiptId[claim.item_id]]
       if (!tripId) continue
       if (!map[tripId]) map[tripId] = new Set()
-      map[tripId].add(claim.roommate)
+      map[tripId].add(claim.roommate.toLowerCase())
     }
     setClaimersByTrip(map)
 
@@ -74,7 +74,8 @@ export default function Home() {
   function computeDebts(name, { trips, allReceipts, allItems, allClaims, settlements }) {
     if (!name) { setNetByPerson({}); return }
 
-    const byPerson = {}
+    const nameLc = name.toLowerCase()
+    const byPerson = {} // keyed by lowercase name
 
     for (const trip of trips) {
       const tripReceipts = allReceipts.filter(r => r.trip_id === trip.id)
@@ -87,17 +88,19 @@ export default function Home() {
 
       for (const debt of calculateDebts(tripReceipts, tripItems, tripClaims)) {
         const settled = settlements.some(
-          s => s.trip_id === trip.id && s.debtor === debt.debtor && s.creditor === debt.creditor
+          s => s.trip_id === trip.id
+            && s.debtor.toLowerCase() === debt.debtor.toLowerCase()
+            && s.creditor.toLowerCase() === debt.creditor.toLowerCase()
         )
 
-        if (debt.creditor === name) {
-          const person = debt.debtor
+        if (debt.creditor.toLowerCase() === nameLc) {
+          const person = debt.debtor.toLowerCase()
           if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
           byPerson[person].theyOweMe.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
           byPerson[person].net += debt.amount
         }
-        if (debt.debtor === name) {
-          const person = debt.creditor
+        if (debt.debtor.toLowerCase() === nameLc) {
+          const person = debt.creditor.toLowerCase()
           if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
           byPerson[person].iOweThem.push({ ...debt, tripName: trip.name, tripId: trip.id, settled })
           byPerson[person].net -= debt.amount
@@ -107,6 +110,8 @@ export default function Home() {
 
     setNetByPerson(byPerson)
   }
+
+  const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
 
   // Unsettled net amounts — used for filtering and display
   function unsettledOwedToMe(data) {
@@ -332,7 +337,7 @@ function toggleExpanded(person) {
                     onClick={() => toggleExpanded(person)}
                     className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left"
                   >
-                    <span className="font-medium text-gray-900">{person}</span>
+                    <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
                     <div className="flex items-center gap-2.5">
                       {hasOffset && (
                         <span className="text-xs text-gray-400">net</span>
@@ -406,7 +411,7 @@ function toggleExpanded(person) {
                     onClick={() => toggleExpanded(`owe-${person}`)}
                     className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left"
                   >
-                    <span className="font-medium text-gray-900">{person}</span>
+                    <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
                     <div className="flex items-center gap-2.5">
                       {hasOffset && (
                         <span className="text-xs text-gray-400">net</span>
@@ -425,7 +430,7 @@ function toggleExpanded(person) {
                           disabled={!!settling}
                           className="w-full text-sm py-1.5 px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 font-medium"
                         >
-                          {settling?.person === person ? '…' : `Mark everything settled with ${person}`}
+                          {settling?.person === person ? '…' : `Mark everything settled with ${toTitleCase(person)}`}
                         </button>
                       )}
                       {data.iOweThem.map((entry, i) => {
