@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'  // used in trip timeline
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Legend, Cell, LineChart, Line,
+  Legend, LineChart, Line,
 } from 'recharts'
 
 const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#3b82f6', '#8b5cf6', '#ec4899']
 const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
 
-// Compute per-person total consumption (their share of everything they claimed, incl. tip/tax/fees/meal fees)
 function computeConsumption(receipts, items, claims, meals) {
   const payerByReceipt = {}
   const tipTaxFeesByReceipt = {}
@@ -35,9 +34,8 @@ function computeConsumption(receipts, items, claims, meals) {
     }
   }
 
-  const consumed = {} // person -> dollars
+  const consumed = {}
 
-  // Item shares
   for (const item of items) {
     const claimers = claimsByItem[item.id] || []
     if (!claimers.length) continue
@@ -47,7 +45,6 @@ function computeConsumption(receipts, items, claims, meals) {
     }
   }
 
-  // Tip/tax/fees shares (proportional to claimed item cost per receipt)
   for (const receipt of receipts) {
     const extra = tipTaxFeesByReceipt[receipt.id]
     if (!extra) continue
@@ -68,7 +65,6 @@ function computeConsumption(receipts, items, claims, meals) {
     }
   }
 
-  // Meal fee shares
   for (const meal of meals) {
     const fee = meal.fee || 0
     if (!fee) continue
@@ -92,9 +88,33 @@ function computeConsumption(receipts, items, claims, meals) {
   return consumed
 }
 
+// Custom tooltip for the line chart — sorted by value descending
+function SortedLineTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const sorted = [...payload]
+    .filter(e => e.value != null)
+    .sort((a, b) => b.value - a.value)
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm min-w-[160px]">
+      <p className="font-medium text-gray-600 mb-2 text-xs">{label}</p>
+      {sorted.map(entry => (
+        <div key={entry.dataKey} className="flex items-center justify-between gap-4 py-0.5">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: entry.color }} />
+            <span className="text-gray-700">{toTitleCase(entry.dataKey)}</span>
+          </div>
+          <span className="font-semibold text-gray-900">${Number(entry.value).toFixed(2)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Stats() {
+  const myName = (localStorage.getItem('global-name') || '').toLowerCase()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
+  const [selectedPeople, setSelectedPeople] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -104,7 +124,7 @@ export default function Stats() {
         supabase.from('items').select('id, receipt_id, meal_id, name, price'),
         supabase.from('claims').select('item_id, roommate'),
         supabase.from('meals').select('id, receipt_id, name, fee'),
-        supabase.from('settlements').select('trip_id, debtor, creditor, created_at'),
+        supabase.from('settlements').select('*'),
       ])
 
       const trips = tripsRes.data || []
@@ -114,7 +134,13 @@ export default function Stats() {
       const meals = mealsRes.data || []
       const settlements = settlementsRes.data || []
 
-      // --- Per-person: totalPaid, totalConsumed, net ---
+      // Core roommates = everyone listed as a member on any trip
+      const coreRoommatesLower = new Set(
+        trips.flatMap(t => t.members || []).filter(m => typeof m === 'string').map(m => m.toLowerCase())
+      )
+      coreRoommatesLower.add(myName)
+
+      // All people = anyone who has paid, claimed, or is a trip member
       const totalPaid = {}
       for (const r of receipts) {
         const receiptItems = items.filter(i => i.receipt_id === r.id)
@@ -126,7 +152,18 @@ export default function Stats() {
 
       const totalConsumed = computeConsumption(receipts, items, claims, meals)
 
-      const allPeople = [...new Set([...Object.keys(totalPaid), ...Object.keys(totalConsumed)])]
+      const allPeople = [...new Set([
+        ...Object.keys(totalPaid),
+        ...Object.keys(totalConsumed),
+        ...trips.flatMap(t => t.members || []).filter(m => typeof m === 'string'),
+      ])]
+
+      const defaultSelected = new Set(
+        allPeople
+          .filter(p => coreRoommatesLower.has(p.toLowerCase()))
+          .map(p => p.toLowerCase())
+      )
+
       const personCards = allPeople.map(p => ({
         name: p,
         paid: totalPaid[p] || 0,
@@ -134,7 +171,7 @@ export default function Stats() {
         net: (totalPaid[p] || 0) - (totalConsumed[p] || 0),
       })).sort((a, b) => b.paid - a.paid)
 
-      // --- Spending over time: per trip, stacked by payer ---
+      // Spending per trip
       const tripIdToName = {}
       for (const t of trips) tripIdToName[t.id] = t.name
       const payers = [...new Set(receipts.map(r => r.paid_by))]
@@ -152,16 +189,17 @@ export default function Stats() {
         return row
       }).filter(row => payers.some(p => row[p] > 0))
 
-      // --- Fair share ---
+      // Fair share
       const totalHousehold = Object.values(totalConsumed).reduce((s, v) => s + v, 0)
       const totalPaidAll = Object.values(totalPaid).reduce((s, v) => s + v, 0)
       const fairShare = personCards.map(p => ({
         name: toTitleCase(p.name),
+        nameLower: p.name.toLowerCase(),
         'Paid %': totalPaidAll ? Math.round(p.paid / totalPaidAll * 100) : 0,
         'Consumed %': totalHousehold ? Math.round(p.consumed / totalHousehold * 100) : 0,
       }))
 
-      // --- Most purchased items ---
+      // Most purchased items
       const itemFreq = {}
       for (const item of items) {
         const key = item.name.trim().toLowerCase()
@@ -174,7 +212,7 @@ export default function Stats() {
         .sort((a, b) => b.count - a.count || b.total - a.total)
         .slice(0, 15)
 
-      // --- Store breakdown ---
+      // Store breakdown
       const storeMap = {}
       for (const r of receipts) {
         const store = r.store_name || 'Unknown'
@@ -187,7 +225,7 @@ export default function Stats() {
       }
       const topStores = Object.values(storeMap).sort((a, b) => b.total - a.total)
 
-      // --- Settlement speed (days from trip creation to settlement) ---
+      // Settlement speed
       const tripCreatedAt = {}
       for (const t of trips) tripCreatedAt[t.id] = new Date(t.created_at)
       const settlementDays = {}
@@ -204,7 +242,7 @@ export default function Stats() {
         count: days.length,
       })).sort((a, b) => a.avgDays - b.avgDays)
 
-      // --- Trip timeline ---
+      // Trip timeline
       const tripTimeline = trips.map(trip => {
         const tripReceipts = receipts.filter(r => r.trip_id === trip.id)
         const itemsTotal = items
@@ -223,8 +261,7 @@ export default function Stats() {
         }
       }).filter(t => t.total > 0)
 
-      // --- Cumulative personal spending over time ---
-      // For each trip (sorted by date), compute each person's consumed share, then accumulate
+      // Cumulative personal spending
       const receiptsByTrip = {}
       for (const r of receipts) {
         if (!receiptsByTrip[r.trip_id]) receiptsByTrip[r.trip_id] = []
@@ -257,67 +294,133 @@ export default function Stats() {
           for (const [person, amt] of Object.entries(tripConsumed)) {
             cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
           }
-          const row = {
-            tripName: trip.name.length > 12 ? trip.name.slice(0, 11) + '…' : trip.name,
-          }
+          const row = { tripName: trip.name.length > 12 ? trip.name.slice(0, 11) + '…' : trip.name }
           for (const person of allPeople) {
-            row[person] = parseFloat(((cumulativeByPerson[person] || 0)).toFixed(2))
+            row[person] = parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
           }
           return row
         })
         .filter(Boolean)
 
-      setStats({ personCards, spendingByTrip, payers, fairShare, topItems, topStores, settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople })
+      setStats({
+        personCards, spendingByTrip, payers, fairShare, topItems, topStores,
+        settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
+        coreRoommatesLower, defaultSelected,
+      })
       setLoading(false)
     }
     load()
-  }, [])
+  }, [myName])
+
+  // Initialize selectedPeople once stats load
+  useEffect(() => {
+    if (stats && selectedPeople === null) {
+      setSelectedPeople(stats.defaultSelected)
+    }
+  }, [stats, selectedPeople])
 
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
   if (!stats) return null
 
-  const { personCards, spendingByTrip, payers, fairShare, topItems, topStores, settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople } = stats
+  const {
+    personCards, spendingByTrip, payers, fairShare, topItems, topStores,
+    settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
+    coreRoommatesLower,
+  } = stats
+
+  const selected = selectedPeople || stats.defaultSelected
+
+  // People visible in charts (preserving original casing from allPeople)
+  const visiblePeople = allPeople.filter(p => selected.has(p.toLowerCase()))
+  const visibleCards = personCards.filter(p => selected.has(p.toLowerCase()))
+  const visibleFairShare = fairShare.filter(p => selected.has(p.nameLower))
+  const visiblePayers = payers.filter(p => selected.has(p.toLowerCase()))
+
+  // For fair share, recalculate percentages based on visible subset
+  const visibleTotalPaid = visibleCards.reduce((s, p) => s + p.paid, 0)
+  const visibleTotalConsumed = visibleCards.reduce((s, p) => s + p.consumed, 0)
+  const visibleFairShareRecalc = visibleCards.map(p => ({
+    name: toTitleCase(p.name),
+    'Paid %': visibleTotalPaid ? Math.round(p.paid / visibleTotalPaid * 100) : 0,
+    'Consumed %': visibleTotalConsumed ? Math.round(p.consumed / visibleTotalConsumed * 100) : 0,
+  }))
 
   const maxStore = topStores[0]?.total || 1
   const maxItem = topItems[0]?.count || 1
+
+  // Group people for checkboxes: core roommates vs others
+  const coreInData = allPeople.filter(p => coreRoommatesLower.has(p.toLowerCase()))
+  const othersInData = allPeople.filter(p => !coreRoommatesLower.has(p.toLowerCase()))
+
+  function togglePerson(nameLower) {
+    setSelectedPeople(prev => {
+      const next = new Set(prev)
+      next.has(nameLower) ? next.delete(nameLower) : next.add(nameLower)
+      return next
+    })
+  }
 
   return (
     <div className="max-w-2xl mx-auto p-4 py-8 space-y-10">
       <h1 className="text-2xl font-bold text-gray-900">Household Stats</h1>
 
-      {/* Per-person summary cards */}
+      {/* Person filter */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">By person</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {personCards.map((p, i) => (
-            <div key={p.name} className="bg-white border border-gray-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                <span className="font-semibold text-gray-900 truncate">{toTitleCase(p.name)}</span>
-              </div>
-              <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Paid</span>
-                  <span className="font-medium text-gray-800">${p.paid.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Consumed</span>
-                  <span className="font-medium text-gray-800">${p.consumed.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between border-t border-gray-100 pt-1.5 mt-1.5">
-                  <span className="text-gray-500">Net balance</span>
-                  <span className={`font-semibold ${p.net > 0.01 ? 'text-green-600' : p.net < -0.01 ? 'text-amber-600' : 'text-gray-500'}`}>
-                    {p.net > 0.01 ? '+' : ''}{p.net.toFixed(2)}
-                  </span>
-                </div>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Show people</h2>
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+          {coreInData.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 mb-2">Roommates</p>
+              <div className="flex flex-wrap gap-2">
+                {coreInData.map(person => {
+                  const isSelected = selected.has(person.toLowerCase())
+                  return (
+                    <button
+                      key={person}
+                      onClick={() => togglePerson(person.toLowerCase())}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                          : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+                      {toTitleCase(person)}
+                    </button>
+                  )
+                })}
               </div>
             </div>
-          ))}
+          )}
+          {othersInData.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 mb-2">Others</p>
+              <div className="flex flex-wrap gap-2">
+                {othersInData.map(person => {
+                  const isSelected = selected.has(person.toLowerCase())
+                  return (
+                    <button
+                      key={person}
+                      onClick={() => togglePerson(person.toLowerCase())}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                          : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+                      {toTitleCase(person)}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Cumulative personal spending */}
-      {cumulativeLineData.length > 1 && (
+      {/* Cumulative personal spending — moved to top */}
+      {cumulativeLineData.length > 1 && visiblePeople.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Cumulative food spending</h2>
           <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of food costs over time</p>
@@ -326,14 +429,14 @@ export default function Stats() {
               <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 40 }}>
                 <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
                 <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
-                <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
+                <Tooltip content={<SortedLineTooltip />} />
                 <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                {allPeople.map((person, i) => (
+                {visiblePeople.map((person, i) => (
                   <Line
                     key={person}
                     type="monotone"
                     dataKey={person}
-                    stroke={COLORS[i % COLORS.length]}
+                    stroke={COLORS[allPeople.indexOf(person) % COLORS.length]}
                     strokeWidth={2}
                     dot={{ r: 3 }}
                     activeDot={{ r: 5 }}
@@ -345,8 +448,44 @@ export default function Stats() {
         </section>
       )}
 
-      {/* Spending over time */}
-      {spendingByTrip.length > 0 && (
+      {/* Per-person summary cards */}
+      {visibleCards.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">By person</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {visibleCards.map((p) => {
+              const colorIdx = allPeople.indexOf(p.name) % COLORS.length
+              return (
+                <div key={p.name} className="bg-white border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: COLORS[colorIdx] }} />
+                    <span className="font-semibold text-gray-900 truncate">{toTitleCase(p.name)}</span>
+                  </div>
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Paid</span>
+                      <span className="font-medium text-gray-800">${p.paid.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Consumed</span>
+                      <span className="font-medium text-gray-800">${p.consumed.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-100 pt-1.5 mt-1.5">
+                      <span className="text-gray-500">Net balance</span>
+                      <span className={`font-semibold ${p.net > 0.01 ? 'text-green-600' : p.net < -0.01 ? 'text-amber-600' : 'text-gray-500'}`}>
+                        {p.net > 0.01 ? '+' : ''}{p.net.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Spending per trip */}
+      {spendingByTrip.length > 0 && visiblePayers.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending per trip</h2>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -356,8 +495,8 @@ export default function Stats() {
                 <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
                 <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
                 <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                {payers.map((payer, i) => (
-                  <Bar key={payer} dataKey={payer} stackId="a" fill={COLORS[i % COLORS.length]} radius={i === payers.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+                {visiblePayers.map((payer, i) => (
+                  <Bar key={payer} dataKey={payer} stackId="a" fill={COLORS[allPeople.indexOf(payer) % COLORS.length]} radius={i === visiblePayers.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -366,13 +505,13 @@ export default function Stats() {
       )}
 
       {/* Fair share */}
-      {fairShare.length > 0 && totalPaidAll > 0 && (
+      {visibleFairShareRecalc.length > 0 && visibleTotalPaid > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Fair share</h2>
           <p className="text-xs text-gray-400 mb-3">% of household spending paid vs. consumed</p>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <ResponsiveContainer width="100%" height={Math.max(180, fairShare.length * 52)}>
-              <BarChart data={fairShare} layout="vertical" margin={{ top: 4, right: 40, left: 40, bottom: 4 }}>
+            <ResponsiveContainer width="100%" height={Math.max(180, visibleFairShareRecalc.length * 52)}>
+              <BarChart data={visibleFairShareRecalc} layout="vertical" margin={{ top: 4, right: 40, left: 40, bottom: 4 }}>
                 <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#374151' }} width={60} />
                 <Tooltip formatter={v => `${v}%`} />
@@ -400,10 +539,7 @@ export default function Stats() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                      <div
-                        className="bg-indigo-400 h-1.5 rounded-full"
-                        style={{ width: `${(store.total / maxStore) * 100}%` }}
-                      />
+                      <div className="bg-indigo-400 h-1.5 rounded-full" style={{ width: `${(store.total / maxStore) * 100}%` }} />
                     </div>
                     <span className="text-xs text-gray-400 shrink-0">{store.visits} {store.visits === 1 ? 'trip' : 'trips'}</span>
                   </div>
@@ -429,10 +565,7 @@ export default function Stats() {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                      <div
-                        className="bg-amber-400 h-1.5 rounded-full"
-                        style={{ width: `${(item.count / maxItem) * 100}%` }}
-                      />
+                      <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: `${(item.count / maxItem) * 100}%` }} />
                     </div>
                     <span className="text-xs text-gray-400 shrink-0">{item.count}×</span>
                   </div>
