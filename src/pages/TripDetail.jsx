@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useCallback } from 'react'
+import { Fragment, useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
@@ -26,6 +26,8 @@ export default function TripDetail() {
   const [settlements, setSettlements] = useState([])
   const [settling, setSettling] = useState(false)
   const [checkins, setCheckins] = useState([])
+  const [isDirty, setIsDirty] = useState(false)
+  const claimsLoadedRef = useRef(false)
   const { confirm, DialogUI } = useDialog()
 
   const loadData = useCallback(async () => {
@@ -87,6 +89,8 @@ export default function TripDetail() {
       // New user — default everything checked
       setMyClaims(new Set(items.map(i => i.id)))
     }
+    claimsLoadedRef.current = true
+    setIsDirty(false)
   }, [myName, claims, items, id])
 
   function toggleClaim(itemId) {
@@ -100,6 +104,7 @@ export default function TripDetail() {
       return next
     })
     setSaved(false)
+    if (claimsLoadedRef.current) setIsDirty(true)
   }
 
   function toggleMeal(mealId, mealItems) {
@@ -116,6 +121,7 @@ export default function TripDetail() {
       return next
     })
     setSaved(false)
+    if (claimsLoadedRef.current) setIsDirty(true)
   }
 
   function getMealCheckState(mealItems) {
@@ -166,6 +172,7 @@ export default function TripDetail() {
 
     setSaving(false)
     setSaved(true)
+    setIsDirty(false)
   }
 
   async function markSettled(debtor, creditor) {
@@ -194,6 +201,15 @@ export default function TripDetail() {
       s => s.debtor.toLowerCase() === debtor.toLowerCase()
         && s.creditor.toLowerCase() === creditor.toLowerCase()
     )
+  }
+
+  async function handleBack() {
+    if (isDirty && !await confirm('You have unsaved claims. Leave without saving?', {
+      title: 'Unsaved changes',
+      confirmLabel: 'Leave',
+      danger: true,
+    })) return
+    navigate('/')
   }
 
   async function closeTrip() {
@@ -316,12 +332,12 @@ export default function TripDetail() {
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
         <div>
-          <Link
-            to="/"
+          <button
+            onClick={handleBack}
             className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 hover:bg-gray-50 px-2.5 py-1 rounded-lg transition mb-2"
           >
             ← All trips
-          </Link>
+          </button>
           <h1 className="text-2xl font-bold text-gray-900">{trip.name}</h1>
         </div>
         <div className="flex gap-1.5 mt-1">

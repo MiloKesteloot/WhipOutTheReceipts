@@ -39,7 +39,7 @@ export function useDialog() {
   }
 
   const DialogUI = dialog ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
         {dialog.title && (
           <h2 className="font-semibold text-gray-900 mb-2">{dialog.title}</h2>
