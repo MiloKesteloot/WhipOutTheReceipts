@@ -419,42 +419,6 @@ export default function Stats() {
         </div>
       </section>
 
-      {/* Per-person summary cards */}
-      {visibleCards.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">By person</h2>
-          <div className="grid grid-cols-2 gap-3">
-            {visibleCards.map((p) => {
-              const colorIdx = allPeople.indexOf(p.name) % COLORS.length
-              return (
-                <div key={p.name} className="bg-white border border-gray-200 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: COLORS[colorIdx] }} />
-                    <span className="font-semibold text-gray-900 truncate">{toTitleCase(p.name)}</span>
-                  </div>
-                  <div className="space-y-1.5 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Paid</span>
-                      <span className="font-medium text-gray-800">${p.paid.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Consumed</span>
-                      <span className="font-medium text-gray-800">${p.consumed.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between border-t border-gray-100 pt-1.5 mt-1.5">
-                      <span className="text-gray-500">Net balance</span>
-                      <span className={`font-semibold ${p.net > 0.01 ? 'text-green-600' : p.net < -0.01 ? 'text-amber-600' : 'text-gray-500'}`}>
-                        {p.net > 0.01 ? '+' : ''}{p.net.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
       {/* Cumulative personal spending */}
       {cumulativeLineData.length > 1 && visiblePeople.length > 0 && (
         <section>
@@ -479,46 +443,6 @@ export default function Stats() {
                   />
                 ))}
               </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      )}
-
-      {/* Spending per trip */}
-      {spendingByTrip.length > 0 && visiblePayers.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending per trip</h2>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={spendingByTrip} margin={{ top: 4, right: 4, left: -10, bottom: 40 }}>
-                <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
-                <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
-                <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                {visiblePayers.map((payer, i) => (
-                  <Bar key={payer} dataKey={payer} stackId="a" fill={COLORS[allPeople.indexOf(payer) % COLORS.length]} radius={i === visiblePayers.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      )}
-
-      {/* Fair share */}
-      {visibleFairShareRecalc.length > 0 && visibleTotalPaid > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Fair share</h2>
-          <p className="text-xs text-gray-400 mb-3">% of household spending paid vs. consumed</p>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <ResponsiveContainer width="100%" height={Math.max(180, visibleFairShareRecalc.length * 52)}>
-              <BarChart data={visibleFairShareRecalc} layout="vertical" margin={{ top: 4, right: 40, left: 40, bottom: 4 }}>
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#374151' }} width={60} />
-                <Tooltip formatter={v => `${v}%`} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Paid %" fill="#6366f1" radius={[0, 3, 3, 0]} barSize={12} />
-                <Bar dataKey="Consumed %" fill="#f59e0b" radius={[0, 3, 3, 0]} barSize={12} />
-              </BarChart>
             </ResponsiveContainer>
           </div>
         </section>
@@ -584,6 +508,82 @@ export default function Stats() {
                 })}
               </div>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Per-person summary cards */}
+      {visibleCards.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">By person</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {visibleCards.map((p) => {
+              const colorIdx = allPeople.indexOf(p.name) % COLORS.length
+              return (
+                <div key={p.name} className="bg-white border border-gray-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: COLORS[colorIdx] }} />
+                    <span className="font-semibold text-gray-900 truncate">{toTitleCase(p.name)}</span>
+                  </div>
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Paid</span>
+                      <span className="font-medium text-gray-800">${p.paid.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Consumed</span>
+                      <span className="font-medium text-gray-800">${p.consumed.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-100 pt-1.5 mt-1.5">
+                      <span className="text-gray-500">Net balance</span>
+                      <span className={`font-semibold ${p.net > 0.01 ? 'text-green-600' : p.net < -0.01 ? 'text-amber-600' : 'text-gray-500'}`}>
+                        {p.net > 0.01 ? '+' : ''}{p.net.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Spending per trip */}
+      {spendingByTrip.length > 0 && visiblePayers.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending per trip</h2>
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={spendingByTrip} margin={{ top: 4, right: 4, left: -10, bottom: 40 }}>
+                <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
+                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
+                <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
+                <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                {visiblePayers.map((payer, i) => (
+                  <Bar key={payer} dataKey={payer} stackId="a" fill={COLORS[allPeople.indexOf(payer) % COLORS.length]} radius={i === visiblePayers.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {/* Fair share */}
+      {visibleFairShareRecalc.length > 0 && visibleTotalPaid > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Fair share</h2>
+          <p className="text-xs text-gray-400 mb-3">% of household spending paid vs. consumed</p>
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <ResponsiveContainer width="100%" height={Math.max(180, visibleFairShareRecalc.length * 52)}>
+              <BarChart data={visibleFairShareRecalc} layout="vertical" margin={{ top: 4, right: 40, left: 40, bottom: 4 }}>
+                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#374151' }} width={60} />
+                <Tooltip formatter={v => `${v}%`} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="Paid %" fill="#6366f1" radius={[0, 3, 3, 0]} barSize={12} />
+                <Bar dataKey="Consumed %" fill="#f59e0b" radius={[0, 3, 3, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </section>
       )}
