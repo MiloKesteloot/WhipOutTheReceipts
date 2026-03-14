@@ -28,6 +28,10 @@ export default function Settings() {
   const [newPersonInput, setNewPersonInput] = useState('')
   const saveTimerRef = useRef(null)
 
+  // Name input dropdown
+  const [nameOpen, setNameOpen] = useState(false)
+  const nameInputRef = useRef(null)
+
   // Merge tool
   const [allKnownNames, setAllKnownNames] = useState([])
   const [mergeFrom, setMergeFrom] = useState('')
@@ -42,6 +46,16 @@ export default function Settings() {
   )
 
   useEffect(() => { loadRoster(); loadAllKnownNames() }, [])
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (nameInputRef.current && !nameInputRef.current.contains(e.target)) {
+        setNameOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   async function loadAllKnownNames() {
     const [tripsRes, claimsRes, receiptsRes, settlementsRes] = await Promise.all([
@@ -161,13 +175,56 @@ export default function Settings() {
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Your name</h2>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={nameInput}
-              onChange={e => setNameInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && saveName()}
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
+            <div className="relative flex-1" ref={nameInputRef}>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={e => { setNameInput(e.target.value); setNameOpen(true) }}
+                onClick={() => setNameOpen(true)}
+                onKeyDown={e => e.key === 'Enter' && saveName()}
+                autoComplete="off"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              {nameOpen && (() => {
+                const coreNames = (roster || []).filter(m => m.isCore).map(m => m.name)
+                const coreSet = new Set(coreNames.map(n => n.toLowerCase()))
+                const otherNames = allKnownNames.filter(n => !coreSet.has(n.toLowerCase()))
+                const isExactMatch = [...coreNames, ...otherNames].some(n => n.toLowerCase() === nameInput.toLowerCase())
+                const matchCore = coreNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
+                const matchOther = otherNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
+                if (matchCore.length === 0 && matchOther.length === 0) return null
+                return (
+                  <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {matchCore.map(n => (
+                      <li key={n}>
+                        <button
+                          type="button"
+                          onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center justify-between"
+                        >
+                          {n}
+                          <span className="text-xs text-gray-300">pinned</span>
+                        </button>
+                      </li>
+                    ))}
+                    {matchCore.length > 0 && matchOther.length > 0 && (
+                      <li className="border-t border-gray-100" />
+                    )}
+                    {matchOther.map(n => (
+                      <li key={n}>
+                        <button
+                          type="button"
+                          onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                        >
+                          {n}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
+            </div>
             <button
               onClick={saveName}
               disabled={!nameInput.trim() || nameInput.trim().replace(/\b\w/g, c => c.toUpperCase()) === currentName}
