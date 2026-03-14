@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
+import { fetchCoreRoommates } from './Settings.jsx'
 
 function newItem(dbId = null) {
   return { id: crypto.randomUUID(), dbId, name: '', price: '', always_split: false, meal_local_id: null }
@@ -19,6 +20,9 @@ export default function AddReceipt() {
   const [storeName, setStoreName] = useState('')
   const [paidBy, setPaidBy] = useState('')
   const [knownNames, setKnownNames] = useState([])
+  const [coreRoommates, setCoreRoommates] = useState([])
+  const [paidByOpen, setPaidByOpen] = useState(false)
+  const paidByRef = useRef(null)
   const [lineItems, setLineItems] = useState([newItem()])
   const [meals, setMeals] = useState([])
   const [originalDbIds, setOriginalDbIds] = useState(new Set())
@@ -39,9 +43,13 @@ export default function AddReceipt() {
       const { data: tripData } = await supabase.from('trips').select('*').eq('id', tripId).single()
       setTrip(tripData)
 
-      const { data: receipts } = await supabase.from('receipts').select('paid_by').eq('trip_id', tripId)
+      const [{ data: receipts }, core] = await Promise.all([
+        supabase.from('receipts').select('paid_by').eq('trip_id', tripId),
+        fetchCoreRoommates(),
+      ])
       const names = new Set((receipts || []).map(r => r.paid_by))
       setKnownNames([...names].filter(Boolean))
+      setCoreRoommates(core)
 
       if (isEditing) {
         const { data: receipt } = await supabase
@@ -89,6 +97,16 @@ export default function AddReceipt() {
     }
     load()
   }, [tripId, receiptId, isEditing])
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (paidByRef.current && !paidByRef.current.contains(e.target)) {
+        setPaidByOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   function markDirty() {
     if (loadComplete.current) setIsDirty(true)
@@ -348,7 +366,7 @@ export default function AddReceipt() {
         </div>
         <div className="w-28">
           <div className="relative">
-            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
             <input
               type="number"
               min="0"
@@ -436,17 +454,42 @@ export default function AddReceipt() {
         {/* Paid by */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Paid by</label>
-          <input
-            list="payer-names"
-            type="text"
-            value={paidBy}
-            onChange={e => { markDirty(); setPaidBy(e.target.value); setErrors(v => ({ ...v, paidBy: undefined })) }}
-            placeholder="Who paid?"
-            className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'}`}
-          />
-          <datalist id="payer-names">
-            {knownNames.map(n => <option key={n} value={n} />)}
-          </datalist>
+          <div className="relative" ref={paidByRef}>
+            <input
+              type="text"
+              value={paidBy}
+              onChange={e => { markDirty(); setPaidBy(e.target.value); setErrors(v => ({ ...v, paidBy: undefined })); setPaidByOpen(true) }}
+              onFocus={() => setPaidByOpen(true)}
+              placeholder="Who paid?"
+              autoComplete="off"
+              className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'}`}
+            />
+            {paidByOpen && (() => {
+              const suggestions = [...new Set([...coreRoommates, ...knownNames])]
+                .filter(n => n.toLowerCase().includes(paidBy.toLowerCase()))
+              return suggestions.length > 0 ? (
+                <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                  {suggestions.map(name => (
+                    <li key={name}>
+                      <button
+                        type="button"
+                        onMouseDown={e => {
+                          e.preventDefault()
+                          markDirty()
+                          setPaidBy(name)
+                          setErrors(v => ({ ...v, paidBy: undefined }))
+                          setPaidByOpen(false)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                      >
+                        {name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null
+            })()}
+          </div>
           {errors.paidBy && <p className="text-xs text-red-500 mt-1">{errors.paidBy}</p>}
         </div>
 
@@ -556,7 +599,7 @@ export default function AddReceipt() {
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tip</label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
               <input
                 type="number" min="0" step="0.01"
                 value={tip}
@@ -569,7 +612,7 @@ export default function AddReceipt() {
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tax</label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
               <input
                 type="number" min="0" step="0.01"
                 value={tax}
@@ -582,7 +625,7 @@ export default function AddReceipt() {
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Fees</label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-gray-400 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
               <input
                 type="number" min="0" step="0.01"
                 value={fees}
