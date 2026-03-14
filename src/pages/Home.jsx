@@ -37,13 +37,14 @@ export default function Home() {
   useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
 
   async function fetchTrips() {
-    const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes, mealsRes] = await Promise.all([
+    const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes, mealsRes, checkinsRes] = await Promise.all([
       supabase.from('trips').select('*').order('created_at', { ascending: false }),
       supabase.from('receipts').select('id, trip_id, paid_by, tip, tax, fees'),
       supabase.from('items').select('id, receipt_id, meal_id, price'),
       supabase.from('claims').select('item_id, roommate'),
       supabase.from('settlements').select('trip_id, debtor, creditor'),
       supabase.from('meals').select('id, receipt_id, fee'),
+      supabase.from('checkins').select('trip_id, roommate'),
     ])
 
     const trips = tripsRes.data || []
@@ -52,10 +53,11 @@ export default function Home() {
     const allClaims = claimsRes.data || []
     const settlements = settlementsRes.data || []
     const allMeals = mealsRes.data || []
+    const allCheckins = checkinsRes.data || []
 
     setTrips(trips)
 
-    // Build claimersByTrip
+    // Build claimersByTrip — includes anyone who claimed items OR checked in (saved with 0 claims)
     const receiptIdToTripId = {}
     for (const r of allReceipts) receiptIdToTripId[r.id] = r.trip_id
     const itemIdToReceiptId = {}
@@ -66,6 +68,10 @@ export default function Home() {
       if (!tripId) continue
       if (!map[tripId]) map[tripId] = new Set()
       map[tripId].add(claim.roommate.toLowerCase())
+    }
+    for (const checkin of allCheckins) {
+      if (!map[checkin.trip_id]) map[checkin.trip_id] = new Set()
+      map[checkin.trip_id].add(checkin.roommate.toLowerCase())
     }
     setClaimersByTrip(map)
 
