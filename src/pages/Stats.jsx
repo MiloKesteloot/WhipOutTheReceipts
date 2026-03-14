@@ -332,7 +332,7 @@ export default function Stats() {
 
   // People visible in charts (preserving original casing from allPeople)
   const visiblePeople = allPeople.filter(p => selected.has(p.toLowerCase()))
-  const visibleCards = personCards.filter(p => selected.has(p.toLowerCase()))
+  const visibleCards = personCards.filter(p => selected.has(p.name.toLowerCase()))
   const visibleFairShare = fairShare.filter(p => selected.has(p.nameLower))
   const visiblePayers = payers.filter(p => selected.has(p.toLowerCase()))
 
