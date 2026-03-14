@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import Home from './pages/Home.jsx'
 import TripDetail from './pages/TripDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
@@ -61,11 +61,13 @@ function TopNav({ myName, onSignOut }) {
 
 export default function App() {
   const [myName, setMyName] = useState(() => localStorage.getItem('global-name') || '')
+  const navigate = useNavigate()
 
   function handleNameSet(name) {
     const normalized = name.trim().replace(/\b\w/g, c => c.toUpperCase())
     localStorage.setItem('global-name', normalized)
     setMyName(normalized)
+    navigate('/')
   }
 
   function handleSignOut() {
