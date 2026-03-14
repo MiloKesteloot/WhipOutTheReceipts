@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Legend, Cell,
+  Legend, Cell, LineChart, Line,
 } from 'recharts'
 
 const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#3b82f6', '#8b5cf6', '#ec4899']
@@ -223,7 +223,51 @@ export default function Stats() {
         }
       }).filter(t => t.total > 0)
 
-      setStats({ personCards, spendingByTrip, payers, fairShare, topItems, topStores, settlementSpeed, tripTimeline, totalPaidAll })
+      // --- Cumulative personal spending over time ---
+      // For each trip (sorted by date), compute each person's consumed share, then accumulate
+      const receiptsByTrip = {}
+      for (const r of receipts) {
+        if (!receiptsByTrip[r.trip_id]) receiptsByTrip[r.trip_id] = []
+        receiptsByTrip[r.trip_id].push(r)
+      }
+      const itemsByReceipt2 = {}
+      for (const item of items) {
+        if (!itemsByReceipt2[item.receipt_id]) itemsByReceipt2[item.receipt_id] = []
+        itemsByReceipt2[item.receipt_id].push(item)
+      }
+      const mealsByReceipt = {}
+      for (const meal of meals) {
+        if (!mealsByReceipt[meal.receipt_id]) mealsByReceipt[meal.receipt_id] = []
+        mealsByReceipt[meal.receipt_id].push(meal)
+      }
+
+      const sortedTrips = trips.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      const cumulativeByPerson = {}
+      const cumulativeLineData = sortedTrips
+        .map(trip => {
+          const tripReceipts = receiptsByTrip[trip.id] || []
+          if (!tripReceipts.length) return null
+          const tripItems = tripReceipts.flatMap(r => itemsByReceipt2[r.id] || [])
+          const tripMeals = tripReceipts.flatMap(r => mealsByReceipt[r.id] || [])
+          const tripItemIds = new Set(tripItems.map(i => i.id))
+          const tripClaims = claims.filter(c => tripItemIds.has(c.item_id))
+          const tripConsumed = computeConsumption(tripReceipts, tripItems, tripClaims, tripMeals)
+          if (!Object.keys(tripConsumed).length) return null
+
+          for (const [person, amt] of Object.entries(tripConsumed)) {
+            cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
+          }
+          const row = {
+            tripName: trip.name.length > 12 ? trip.name.slice(0, 11) + '…' : trip.name,
+          }
+          for (const person of allPeople) {
+            row[person] = parseFloat(((cumulativeByPerson[person] || 0)).toFixed(2))
+          }
+          return row
+        })
+        .filter(Boolean)
+
+      setStats({ personCards, spendingByTrip, payers, fairShare, topItems, topStores, settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople })
       setLoading(false)
     }
     load()
@@ -232,7 +276,7 @@ export default function Stats() {
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
   if (!stats) return null
 
-  const { personCards, spendingByTrip, payers, fairShare, topItems, topStores, settlementSpeed, tripTimeline, totalPaidAll } = stats
+  const { personCards, spendingByTrip, payers, fairShare, topItems, topStores, settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople } = stats
 
   const maxStore = topStores[0]?.total || 1
   const maxItem = topItems[0]?.count || 1
@@ -274,6 +318,35 @@ export default function Stats() {
           ))}
         </div>
       </section>
+
+      {/* Cumulative personal spending */}
+      {cumulativeLineData.length > 1 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Cumulative food spending</h2>
+          <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of food costs over time</p>
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 40 }}>
+                <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
+                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
+                <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
+                <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                {allPeople.map((person, i) => (
+                  <Line
+                    key={person}
+                    type="monotone"
+                    dataKey={person}
+                    stroke={COLORS[i % COLORS.length]}
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
 
       {/* Spending over time */}
       {spendingByTrip.length > 0 && (
