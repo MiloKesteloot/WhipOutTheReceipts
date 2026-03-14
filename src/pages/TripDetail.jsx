@@ -75,13 +75,14 @@ export default function TripDetail() {
     if (!myName || items.length === 0) return
     const mine = claims.filter(c => c.roommate === myName).map(c => c.item_id)
     const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
-    if (mine.length > 0) {
+    const hasEverSaved = !!localStorage.getItem(`claimed-${id}-${myName}`)
+    if (mine.length > 0 || hasEverSaved) {
       setMyClaims(new Set([...mine, ...alwaysSplitIds]))
     } else {
       // New user — default everything checked
       setMyClaims(new Set(items.map(i => i.id)))
     }
-  }, [myName, claims, items])
+  }, [myName, claims, items, id])
 
   function toggleClaim(itemId) {
     if (!myName || trip?.closed) return
@@ -143,6 +144,7 @@ export default function TripDetail() {
       await supabase.from('claims').insert(newClaims)
     }
 
+    localStorage.setItem(`claimed-${id}-${myName}`, '1')
     await loadData()
     setSaving(false)
     setSaved(true)
