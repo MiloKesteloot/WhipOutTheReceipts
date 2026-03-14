@@ -352,7 +352,7 @@ export default function TripDetail() {
       )}
 
       {/* Add Receipt */}
-      {!trip.closed && (
+      {!trip.closed && receipts.length > 0 && (
         <div className="mb-6">
           <Link
             to={`/trip/${id}/add-receipt`}
@@ -365,7 +365,21 @@ export default function TripDetail() {
 
       {/* Items */}
       {receipts.length === 0 ? (
-        <p className="text-gray-400 text-center py-8">No receipts yet. Add one above!</p>
+        <div className="py-8 flex flex-col items-center gap-4">
+          {trip.closed ? (
+            <p className="text-gray-400">No receipts on this trip.</p>
+          ) : (
+            <Link
+              to={`/trip/${id}/add-receipt`}
+              className="flex flex-col items-center gap-3 w-full max-w-xs p-8 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50 transition-all"
+            >
+              <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="text-base font-medium">Add a receipt</span>
+            </Link>
+          )}
+        </div>
       ) : (
         <div className="space-y-6 mb-6">
           {receipts.map(receipt => {
