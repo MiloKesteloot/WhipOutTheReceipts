@@ -116,6 +116,8 @@ export default function Stats() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState(null)
   const [selectedPeople, setSelectedPeople] = useState(null)
+  const [showAllStores, setShowAllStores] = useState(false)
+  const [showAllItems, setShowAllItems] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -589,56 +591,78 @@ export default function Stats() {
       )}
 
       {/* Store breakdown */}
-      {topStores.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Stores</h2>
-          <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-            {topStores.map((store, i) => (
-              <div key={store.name} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-xs text-gray-400 w-5 text-right shrink-0">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-baseline mb-1">
-                    <span className="font-medium text-gray-800 truncate">{store.name}</span>
-                    <span className="text-sm font-semibold text-gray-900 ml-2 shrink-0">${store.total.toFixed(2)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-indigo-400 h-1.5 rounded-full" style={{ width: `${(store.total / maxStore) * 100}%` }} />
+      {topStores.length > 0 && (() => {
+        const filtered = showAllStores ? topStores : topStores.filter(s => s.visits > 1)
+        const hidden = topStores.length - filtered.length
+        return (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Stores</h2>
+              {topStores.some(s => s.visits === 1) && (
+                <button onClick={() => setShowAllStores(v => !v)} className="text-xs text-gray-400 hover:text-gray-600 transition">
+                  {showAllStores ? 'Hide one-time' : `Show all (${hidden} hidden)`}
+                </button>
+              )}
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+              {filtered.map((store, i) => (
+                <div key={store.name} className="flex items-center gap-3 px-4 py-3">
+                  <span className="text-xs text-gray-400 w-5 text-right shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline mb-1">
+                      <span className="font-medium text-gray-800 truncate">{store.name}</span>
+                      <span className="text-sm font-semibold text-gray-900 ml-2 shrink-0">${store.total.toFixed(2)}</span>
                     </div>
-                    <span className="text-xs text-gray-400 shrink-0">{store.visits} {store.visits === 1 ? 'trip' : 'trips'}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                        <div className="bg-indigo-400 h-1.5 rounded-full" style={{ width: `${(store.total / maxStore) * 100}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0">{store.visits} {store.visits === 1 ? 'trip' : 'trips'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        )
+      })()}
 
       {/* Most purchased items */}
-      {topItems.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Most purchased items</h2>
-          <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-            {topItems.map((item, i) => (
-              <div key={item.name} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-xs text-gray-400 w-5 text-right shrink-0">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-baseline mb-1">
-                    <span className="font-medium text-gray-800 truncate capitalize">{item.name}</span>
-                    <span className="text-sm text-gray-500 ml-2 shrink-0">${item.total.toFixed(2)} total</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: `${(item.count / maxItem) * 100}%` }} />
+      {topItems.length > 0 && (() => {
+        const filtered = showAllItems ? topItems : topItems.filter(item => item.count > 1)
+        const hidden = topItems.length - filtered.length
+        return (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Most purchased items</h2>
+              {topItems.some(item => item.count === 1) && (
+                <button onClick={() => setShowAllItems(v => !v)} className="text-xs text-gray-400 hover:text-gray-600 transition">
+                  {showAllItems ? 'Hide one-time' : `Show all (${hidden} hidden)`}
+                </button>
+              )}
+            </div>
+            <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+              {filtered.map((item, i) => (
+                <div key={item.name} className="flex items-center gap-3 px-4 py-3">
+                  <span className="text-xs text-gray-400 w-5 text-right shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline mb-1">
+                      <span className="font-medium text-gray-800 truncate capitalize">{item.name}</span>
+                      <span className="text-sm text-gray-500 ml-2 shrink-0">${item.total.toFixed(2)} total</span>
                     </div>
-                    <span className="text-xs text-gray-400 shrink-0">{item.count}×</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                        <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: `${(item.count / maxItem) * 100}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0">{item.count}×</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        )
+      })()}
 
 
       {/* Trip timeline */}
