@@ -1,23 +1,41 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { fetchCoreRoommates } from './Settings.jsx'
 
 export default function Welcome({ onNameSet }) {
   const [name, setName] = useState('')
-  const [knownNames, setKnownNames] = useState([])
+  const [coreRoommates, setCoreRoommates] = useState([])
+  const [otherNames, setOtherNames] = useState([])
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef(null)
 
   useEffect(() => {
     async function loadNames() {
-      const [receiptsRes, claimsRes] = await Promise.all([
+      const [core, receiptsRes, claimsRes] = await Promise.all([
+        fetchCoreRoommates(),
         supabase.from('receipts').select('paid_by'),
         supabase.from('claims').select('roommate'),
       ])
-      const names = new Set([
+      setCoreRoommates(core)
+      const all = new Set([
         ...(receiptsRes.data || []).map(r => r.paid_by),
         ...(claimsRes.data || []).map(c => c.roommate),
       ].filter(Boolean))
-      setKnownNames([...names].sort())
+      // Other names = known names not in core list
+      const coreSet = new Set(core.map(n => n.toLowerCase()))
+      setOtherNames([...all].filter(n => !coreSet.has(n.toLowerCase())).sort())
     }
     loadNames()
+  }, [])
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
   function handleSubmit(e) {
@@ -26,6 +44,14 @@ export default function Welcome({ onNameSet }) {
     if (!trimmed) return
     onNameSet(trimmed)
   }
+
+  const isExactMatch = [...coreRoommates, ...otherNames]
+    .some(n => n.toLowerCase() === name.toLowerCase())
+  const suggestions = (name === '' || isExactMatch)
+    ? [...coreRoommates, ...otherNames]
+    : [...coreRoommates, ...otherNames].filter(n =>
+        n.toLowerCase().includes(name.toLowerCase())
+      )
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -41,18 +67,70 @@ export default function Welcome({ onNameSet }) {
             Your name is used to track what you've claimed and what you owe across all trips.
           </p>
           <form onSubmit={handleSubmit} className="space-y-3">
-            <input
-              list="known-names"
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Enter your name"
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-900"
-              autoFocus
-            />
-            <datalist id="known-names">
-              {knownNames.map(n => <option key={n} value={n} />)}
-            </datalist>
+            <div className="relative" ref={wrapperRef}>
+              <input
+                type="text"
+                value={name}
+                onChange={e => { setName(e.target.value); setOpen(true) }}
+                onClick={() => setOpen(true)}
+                placeholder="Enter your name"
+                autoComplete="off"
+                autoFocus
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-900"
+              />
+              {open && suggestions.length > 0 && (
+                <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                  {coreRoommates.length > 0 && otherNames.length > 0 && (
+                    <>
+                      {coreRoommates
+                        .filter(n => name === '' || isExactMatch || n.toLowerCase().includes(name.toLowerCase()))
+                        .map(n => (
+                          <li key={n}>
+                            <button
+                              type="button"
+                              onMouseDown={e => { e.preventDefault(); setName(n); setOpen(false) }}
+                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center justify-between"
+                            >
+                              {n}
+                              <span className="text-xs text-gray-300">pinned</span>
+                            </button>
+                          </li>
+                        ))}
+                      {otherNames
+                        .filter(n => name === '' || isExactMatch || n.toLowerCase().includes(name.toLowerCase()))
+                        .length > 0 && (
+                        <li className="border-t border-gray-100" />
+                      )}
+                      {otherNames
+                        .filter(n => name === '' || isExactMatch || n.toLowerCase().includes(name.toLowerCase()))
+                        .map(n => (
+                          <li key={n}>
+                            <button
+                              type="button"
+                              onMouseDown={e => { e.preventDefault(); setName(n); setOpen(false) }}
+                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                            >
+                              {n}
+                            </button>
+                          </li>
+                        ))}
+                    </>
+                  )}
+                  {/* If only one group exists, render flat */}
+                  {(coreRoommates.length === 0 || otherNames.length === 0) && suggestions.map(n => (
+                    <li key={n}>
+                      <button
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); setName(n); setOpen(false) }}
+                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                      >
+                        {n}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <button
               type="submit"
               disabled={!name.trim()}
