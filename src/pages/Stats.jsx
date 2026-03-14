@@ -225,22 +225,6 @@ export default function Stats() {
       }
       const topStores = Object.values(storeMap).sort((a, b) => b.total - a.total)
 
-      // Settlement speed
-      const tripCreatedAt = {}
-      for (const t of trips) tripCreatedAt[t.id] = new Date(t.created_at)
-      const settlementDays = {}
-      for (const s of settlements) {
-        const tripDate = tripCreatedAt[s.trip_id]
-        if (!tripDate) continue
-        const days = (new Date(s.created_at) - tripDate) / (1000 * 60 * 60 * 24)
-        if (!settlementDays[s.debtor]) settlementDays[s.debtor] = []
-        settlementDays[s.debtor].push(days)
-      }
-      const settlementSpeed = Object.entries(settlementDays).map(([person, days]) => ({
-        name: toTitleCase(person),
-        avgDays: Math.round(days.reduce((s, d) => s + d, 0) / days.length * 10) / 10,
-        count: days.length,
-      })).sort((a, b) => a.avgDays - b.avgDays)
 
       // Trip timeline
       const tripTimeline = trips.map(trip => {
@@ -304,7 +288,7 @@ export default function Stats() {
 
       setStats({
         personCards, spendingByTrip, payers, fairShare, topItems, topStores,
-        settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
+        tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
         coreRoommatesLower, defaultSelected,
       })
       setLoading(false)
@@ -324,7 +308,7 @@ export default function Stats() {
 
   const {
     personCards, spendingByTrip, payers, fairShare, topItems, topStores,
-    settlementSpeed, tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
+    tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
     coreRoommatesLower,
   } = stats
 
@@ -576,29 +560,6 @@ export default function Stats() {
         </section>
       )}
 
-      {/* Settlement speed */}
-      {settlementSpeed.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Settlement speed</h2>
-          <p className="text-xs text-gray-400 mb-3">Average days from trip creation to marking as sent</p>
-          <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-            {settlementSpeed.map((p, i) => (
-              <div key={p.name} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400 w-5 text-right">{i + 1}</span>
-                  <span className="font-medium text-gray-800">{p.name}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">{p.count} settlement{p.count !== 1 ? 's' : ''}</span>
-                  <span className={`font-semibold text-sm ${p.avgDays <= 3 ? 'text-green-600' : p.avgDays <= 10 ? 'text-amber-500' : 'text-red-400'}`}>
-                    {p.avgDays}d avg
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Trip timeline */}
       {tripTimeline.length > 0 && (
