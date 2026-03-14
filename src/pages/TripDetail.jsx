@@ -390,8 +390,18 @@ export default function TripDetail() {
             return (
               <div key={receipt.id}>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h2 className="font-semibold text-gray-700">{receipt.store_name}</h2>
+                    {receipt.category && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        receipt.category === 'Groceries'     ? 'bg-green-100 text-green-700' :
+                        receipt.category === 'Dining'        ? 'bg-orange-100 text-orange-700' :
+                        receipt.category === 'Transportation' ? 'bg-blue-100 text-blue-700' :
+                                                               'bg-gray-100 text-gray-600'
+                      }`}>
+                        {receipt.category}
+                      </span>
+                    )}
                     {!trip.closed && (
                       <Link
                         to={`/trip/${id}/receipt/${receipt.id}/edit`}

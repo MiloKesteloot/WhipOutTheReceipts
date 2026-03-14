@@ -23,6 +23,7 @@ export default function AddReceipt() {
   const [meals, setMeals] = useState([])
   const [originalDbIds, setOriginalDbIds] = useState(new Set())
   const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
+  const [category, setCategory] = useState('Groceries')
   const [tip, setTip] = useState('')
   const [tax, setTax] = useState('')
   const [fees, setFees] = useState('')
@@ -48,6 +49,7 @@ export default function AddReceipt() {
         if (receipt) {
           setStoreName(receipt.store_name)
           setPaidBy(receipt.paid_by)
+          setCategory(receipt.category || 'Groceries')
           setTip(receipt.tip ? String(receipt.tip) : '')
           setTax(receipt.tax ? String(receipt.tax) : '')
           setFees(receipt.fees ? String(receipt.fees) : '')
@@ -230,7 +232,7 @@ export default function AddReceipt() {
     if (isEditing) {
       const { error: updateErr } = await supabase
         .from('receipts')
-        .update({ store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
+        .update({ store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
         .eq('id', receiptId)
       if (updateErr) { alert('Error updating receipt: ' + updateErr.message); setSaving(false); return }
 
@@ -277,7 +279,7 @@ export default function AddReceipt() {
     } else {
       const { data: receipt, error: receiptErr } = await supabase
         .from('receipts')
-        .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim(), tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
+        .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
         .select()
         .single()
       if (receiptErr) { alert('Error saving receipt: ' + receiptErr.message); setSaving(false); return }
@@ -409,6 +411,21 @@ export default function AddReceipt() {
             autoFocus={!isEditing}
           />
           {errors.storeName && <p className="text-xs text-red-500 mt-1">{errors.storeName}</p>}
+        </div>
+
+        {/* Category */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <select
+            value={category}
+            onChange={e => { markDirty(); setCategory(e.target.value) }}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+          >
+            <option>Groceries</option>
+            <option>Dining</option>
+            <option>Transportation</option>
+            <option>Misc</option>
+          </select>
         </div>
 
         {/* Paid by */}

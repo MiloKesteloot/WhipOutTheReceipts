@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { fetchCoreRoommates } from './Settings.jsx'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Legend, LineChart, Line,
+  Legend, LineChart, Line, PieChart, Pie, Cell,
 } from 'recharts'
 
 const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#3b82f6', '#8b5cf6', '#ec4899']
@@ -286,10 +286,26 @@ export default function Stats() {
         })
         .filter(Boolean)
 
+      // Spending by category
+      const categoryTotals = {}
+      for (const r of receipts) {
+        const cat = r.category || 'Groceries'
+        const receiptItems = itemsByReceipt2[r.id] || []
+        const itemsTotal = receiptItems.reduce((s, i) => s + (i.price || 0), 0)
+        const extras = (r.tip || 0) + (r.tax || 0) + (r.fees || 0)
+        const mealFees = (mealsByReceipt[r.trip_id] || []).filter(m => receipts.find(rx => rx.id === m.receipt_id)?.trip_id === r.trip_id).length === 0
+          ? 0
+          : (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + itemsTotal + extras + mealFees
+      }
+      const spendingByCategory = Object.entries(categoryTotals)
+        .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
+        .sort((a, b) => b.value - a.value)
+
       setStats({
         personCards, spendingByTrip, payers, fairShare, topItems, topStores,
         tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
-        coreRoommatesLower, defaultSelected,
+        coreRoommatesLower, defaultSelected, spendingByCategory,
       })
       setLoading(false)
     }
@@ -309,7 +325,7 @@ export default function Stats() {
   const {
     personCards, spendingByTrip, payers, fairShare, topItems, topStores,
     tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
-    coreRoommatesLower,
+    coreRoommatesLower, spendingByCategory,
   } = stats
 
   const selected = selectedPeople || stats.defaultSelected
@@ -504,6 +520,70 @@ export default function Stats() {
                 <Bar dataKey="Consumed %" fill="#f59e0b" radius={[0, 3, 3, 0]} barSize={12} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {/* Spending by category */}
+      {spendingByCategory.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending by category</h2>
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="flex items-center gap-6">
+              <div className="shrink-0">
+                <ResponsiveContainer width={160} height={160}>
+                  <PieChart>
+                    <Pie
+                      data={spendingByCategory}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={48}
+                      outerRadius={72}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {spendingByCategory.map((entry) => (
+                        <Cell key={entry.name} fill={
+                          entry.name === 'Groceries'      ? '#10b981' :
+                          entry.name === 'Dining'         ? '#f59e0b' :
+                          entry.name === 'Transportation' ? '#3b82f6' :
+                                                           '#9ca3af'
+                        } />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => `$${v.toFixed(2)}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 space-y-3">
+                {spendingByCategory.map(({ name, value }) => {
+                  const total = spendingByCategory.reduce((s, c) => s + c.value, 0)
+                  const pct = total > 0 ? (value / total) * 100 : 0
+                  const color =
+                    name === 'Groceries'      ? '#10b981' :
+                    name === 'Dining'         ? '#f59e0b' :
+                    name === 'Transportation' ? '#3b82f6' :
+                                               '#9ca3af'
+                  return (
+                    <div key={name}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+                          <span className="text-gray-700 font-medium">{name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <span>${value.toFixed(2)}</span>
+                          <span className="text-xs text-gray-400">{pct.toFixed(0)}%</span>
+                        </div>
+                      </div>
+                      <div className="bg-gray-100 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </section>
       )}
