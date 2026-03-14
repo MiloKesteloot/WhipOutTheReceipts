@@ -280,7 +280,7 @@ export default function Stats() {
           for (const [person, amt] of Object.entries(tripConsumed)) {
             cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
           }
-          const row = { tripName: trip.name.length > 12 ? trip.name.slice(0, 11) + '…' : trip.name }
+          const row = { tripName: trip.name.length > 14 ? trip.name.slice(0, 13) + '…' : trip.name }
           for (const person of allPeople) {
             row[person] = parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
           }
@@ -295,9 +295,7 @@ export default function Stats() {
         const receiptItems = itemsByReceipt2[r.id] || []
         const itemsTotal = receiptItems.reduce((s, i) => s + (i.price || 0), 0)
         const extras = (r.tip || 0) + (r.tax || 0) + (r.fees || 0)
-        const mealFees = (mealsByReceipt[r.trip_id] || []).filter(m => receipts.find(rx => rx.id === m.receipt_id)?.trip_id === r.trip_id).length === 0
-          ? 0
-          : (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
+        const mealFees = (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
         categoryTotals[cat] = (categoryTotals[cat] || 0) + itemsTotal + extras + mealFees
       }
       const spendingByCategory = Object.entries(categoryTotals)

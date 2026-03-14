@@ -364,7 +364,7 @@ export default function AddReceipt() {
           type="button"
           tabIndex={-1}
           onClick={() => updateItem(item.id, 'always_split', !item.always_split)}
-          title={item.always_split ? 'Always split — click to allow unchecking' : 'Click to force everyone to split this item'}
+          title={item.always_split ? 'Everyone always splits this — click to remove' : 'Click to always split with everyone'}
           className={`mt-1.5 text-base transition ${item.always_split ? 'text-indigo-500' : 'text-gray-300 hover:text-gray-400'}`}
           aria-label="Toggle always split"
         >
@@ -449,7 +449,7 @@ export default function AddReceipt() {
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">Items</label>
-            <span className="text-xs text-gray-400">🔒 = everyone always splits · ⠿ drag to move</span>
+            <span className="text-xs text-gray-400">🔒 always splits with everyone · ⠿ drag to regroup</span>
           </div>
           {errors.items && <p className="text-xs text-red-500 mb-2">{errors.items}</p>}
 

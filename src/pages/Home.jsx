@@ -347,7 +347,9 @@ function toggleExpanded(person) {
                         <span className="text-xs text-gray-400">net</span>
                       )}
                       <span className="font-semibold text-gray-900">${netAmt.toFixed(2)}</span>
-                      <span className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</span>
+                      <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
                     </div>
                   </button>
                   {expanded && (
@@ -383,7 +385,7 @@ function toggleExpanded(person) {
                             >
                               {entry.tripName}
                             </Link>
-                            <span className="text-gray-400 text-xs ml-1.5">you owe (offset)</span>
+                            <span className="text-gray-400 text-xs ml-1.5">offset</span>
                           </div>
                           <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
                         </div>
@@ -421,7 +423,9 @@ function toggleExpanded(person) {
                         <span className="text-xs text-gray-400">net</span>
                       )}
                       <span className="font-semibold text-amber-600">${netOwed.toFixed(2)}</span>
-                      <span className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</span>
+                      <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
                     </div>
                   </button>
                   {expanded && (
@@ -478,7 +482,7 @@ function toggleExpanded(person) {
                             >
                               {entry.tripName}
                             </Link>
-                            <span className="text-gray-400 text-xs ml-1.5">they owe you (offset)</span>
+                            <span className="text-gray-400 text-xs ml-1.5">offset</span>
                           </div>
                           <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
                         </div>
