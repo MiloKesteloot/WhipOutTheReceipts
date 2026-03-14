@@ -463,7 +463,7 @@ function toggleExpanded(person) {
                                 <button
                                   onClick={() => markSettled(entry.tripId, person)}
                                   disabled={!!settling}
-                                  className="text-xs px-2 py-0.5 border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 transition disabled:opacity-50"
+                                  className="text-xs px-2 py-0.5 border border-indigo-200 text-indigo-600 rounded-md hover:bg-indigo-50 transition disabled:opacity-50"
                                 >
                                   {isSettling ? '…' : 'Mark sent'}
                                 </button>

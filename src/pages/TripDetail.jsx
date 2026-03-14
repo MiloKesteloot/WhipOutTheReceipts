@@ -460,7 +460,9 @@ export default function TripDetail() {
                                 onClick={e => { e.stopPropagation(); toggleExpandMeal(meal.id) }}
                                 className="text-xs text-gray-400 hover:text-gray-600 px-1 shrink-0"
                               >
-                                {expanded ? '▲' : '▼'}
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                              </svg>
                               </button>
                             </li>
 
@@ -623,10 +625,12 @@ export default function TripDetail() {
             <div>
               <button
                 onClick={() => setShowBreakdown(s => !s)}
-                className="flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
+                className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 transition"
               >
-                <span>{showBreakdown ? '▲' : '▼'}</span>
                 <span>Itemized breakdown</span>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d={showBreakdown ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                </svg>
               </button>
 
               {showBreakdown && (

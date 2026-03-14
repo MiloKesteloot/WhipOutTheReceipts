@@ -166,12 +166,12 @@ export default function Settings() {
               value={nameInput}
               onChange={e => setNameInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && saveName()}
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
             <button
               onClick={saveName}
               disabled={!nameInput.trim() || nameInput.trim().replace(/\b\w/g, c => c.toUpperCase()) === currentName}
-              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-40"
+              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
             >
               Save
             </button>
@@ -220,7 +220,7 @@ export default function Settings() {
                   value={newPersonInput}
                   onChange={e => setNewPersonInput(e.target.value)}
                   placeholder="Add a person…"
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
                 <button
                   type="submit"
@@ -242,23 +242,33 @@ export default function Settings() {
             If someone's name was entered with a typo, merge all their history under the correct name.
           </p>
           <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={mergeFrom}
-              onChange={e => { setMergeFrom(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
-              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-            >
-              <option value="">Merge this name…</option>
-              {allKnownNames.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <div className="relative flex-1 min-w-0">
+              <select
+                value={mergeFrom}
+                onChange={e => { setMergeFrom(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
+                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+              >
+                <option value="">Merge this name…</option>
+                {allKnownNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
             <span className="text-sm text-gray-400 shrink-0">into</span>
-            <select
-              value={mergeTo}
-              onChange={e => { setMergeTo(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
-              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-            >
-              <option value="">…the correct name</option>
-              {allKnownNames.filter(n => n !== mergeFrom).map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <div className="relative flex-1 min-w-0">
+              <select
+                value={mergeTo}
+                onChange={e => { setMergeTo(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
+                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+              >
+                <option value="">…the correct name</option>
+                {allKnownNames.filter(n => n !== mergeFrom).map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
 
           {mergeFrom && mergeTo && !mergeConfirm && (

@@ -56,7 +56,7 @@ export default function Welcome({ onNameSet }) {
             <button
               type="submit"
               disabled={!name.trim()}
-              className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition disabled:opacity-40"
+              className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition disabled:opacity-50"
             >
               Get started →
             </button>
