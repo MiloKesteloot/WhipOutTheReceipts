@@ -240,7 +240,7 @@ function toggleExpanded(person) {
     <div className="max-w-xl mx-auto p-4 py-8">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-1">Whip Out the Receipts</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Receipts</h1>
           <p className="text-gray-500">Fair grocery splits for roommates.</p>
         </div>
         <button

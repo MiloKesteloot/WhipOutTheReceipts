@@ -31,7 +31,7 @@ export default function Welcome({ onNameSet }) {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Whip Out the Receipts</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Receipts</h1>
           <p className="text-gray-500">Fair grocery splits for roommates.</p>
         </div>
 
