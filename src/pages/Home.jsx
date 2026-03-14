@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { calculateDebts } from '../lib/splitLogic.js'
 import { version as buildVersion } from '../buildVersion.json'
 import { fetchCoreRoommates } from './Settings.jsx'
+import { useDialog } from '../lib/useDialog.jsx'
 
 export default function Home() {
   const [trips, setTrips] = useState([])
@@ -23,6 +24,7 @@ export default function Home() {
   const [showAllTrips, setShowAllTrips] = useState(localStorage.getItem('default-show-all-trips') === '1')
   const myName = localStorage.getItem('global-name') || ''
   const navigate = useNavigate()
+  const { showAlert, DialogUI } = useDialog()
 
   const today = new Date().toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
@@ -194,7 +196,7 @@ function toggleExpanded(person) {
       .select()
       .single()
     setCreating(false)
-    if (error) { alert('Failed to create trip: ' + error.message); return }
+    if (error) { await showAlert(error.message, { title: 'Failed to create trip' }); return }
     navigate(`/trip/${data.id}`)
   }
 
@@ -237,6 +239,8 @@ function toggleExpanded(person) {
   }
 
   return (
+    <>
+    {DialogUI}
     <div className="max-w-xl mx-auto p-4 py-8">
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -521,5 +525,6 @@ function toggleExpanded(person) {
       )}
       <p className="mt-8 text-center text-xs text-gray-300">v{buildVersion}</p>
     </div>
+    </>
   )
 }

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
+import { useDialog } from '../lib/useDialog.jsx'
 
 export default function TripDetail() {
   const { id } = useParams()
@@ -25,6 +26,7 @@ export default function TripDetail() {
   const [settlements, setSettlements] = useState([])
   const [settling, setSettling] = useState(false)
   const [checkins, setCheckins] = useState([])
+  const { confirm, DialogUI } = useDialog()
 
   const loadData = useCallback(async () => {
     const [tripRes, receiptsRes, settlementRes, checkinRes] = await Promise.all([
@@ -195,7 +197,10 @@ export default function TripDetail() {
   }
 
   async function closeTrip() {
-    if (!confirm('Mark this trip as closed? It will become read-only.')) return
+    if (!await confirm('This trip will become read-only. You can reopen it later.', {
+      title: 'Close trip?',
+      confirmLabel: 'Close trip',
+    })) return
     setClosing(true)
     await supabase.from('trips').update({ closed: true }).eq('id', id)
     setTrip(t => ({ ...t, closed: true }))
@@ -210,13 +215,21 @@ export default function TripDetail() {
   }
 
   async function deleteTrip() {
-    if (!confirm(`Delete "${trip.name}"? This will remove all receipts, items, and claims. This cannot be undone.`)) return
+    if (!await confirm(`All receipts, items, and claims will be permanently removed.`, {
+      title: `Delete "${trip.name}"?`,
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return
     await supabase.from('trips').delete().eq('id', id)
     navigate('/')
   }
 
   async function deleteReceipt(receiptId, storeName) {
-    if (!confirm(`Delete the ${storeName} receipt? All its items and claims will be removed.`)) return
+    if (!await confirm(`All items and claims on the ${storeName} receipt will be removed.`, {
+      title: 'Delete receipt?',
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return
     await supabase.from('receipts').delete().eq('id', receiptId)
     await loadData()
   }
@@ -297,6 +310,8 @@ export default function TripDetail() {
   }
 
   return (
+    <>
+    {DialogUI}
     <div className="max-w-xl mx-auto p-4 py-8">
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
@@ -668,5 +683,6 @@ export default function TripDetail() {
         ) : null}
       </div>
     </div>
+    </>
   )
 }

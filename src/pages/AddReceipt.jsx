@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { fetchCoreRoommates } from './Settings.jsx'
+import { useDialog } from '../lib/useDialog.jsx'
 
 function newItem(dbId = null) {
   return { id: crypto.randomUUID(), dbId, name: '', price: '', always_split: false, meal_local_id: null }
@@ -37,6 +38,7 @@ export default function AddReceipt() {
   const [draggingItemId, setDraggingItemId] = useState(null)
   const [dragOverTarget, setDragOverTarget] = useState(null) // null = ungrouped, meal.local_id = that meal
   const loadComplete = useRef(false)
+  const { confirm, showAlert, DialogUI } = useDialog()
 
   useEffect(() => {
     async function load() {
@@ -112,8 +114,12 @@ export default function AddReceipt() {
     if (loadComplete.current) setIsDirty(true)
   }
 
-  function handleBack() {
-    if (isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) return
+  async function handleBack() {
+    if (isDirty && !await confirm('You have unsaved changes. Leave without saving?', {
+      title: 'Unsaved changes',
+      confirmLabel: 'Leave',
+      danger: true,
+    })) return
     navigate(`/trip/${tripId}`)
   }
 
@@ -252,7 +258,7 @@ export default function AddReceipt() {
         .from('receipts')
         .update({ store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
         .eq('id', receiptId)
-      if (updateErr) { alert('Error updating receipt: ' + updateErr.message); setSaving(false); return }
+      if (updateErr) { await showAlert(updateErr.message, { title: 'Error updating receipt' }); setSaving(false); return }
 
       const mealLocalToDbId = await saveMeals(receiptId)
 
@@ -300,7 +306,7 @@ export default function AddReceipt() {
         .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
         .select()
         .single()
-      if (receiptErr) { alert('Error saving receipt: ' + receiptErr.message); setSaving(false); return }
+      if (receiptErr) { await showAlert(receiptErr.message, { title: 'Error saving receipt' }); setSaving(false); return }
 
       const mealLocalToDbId = await saveMeals(receipt.id)
 
@@ -313,14 +319,18 @@ export default function AddReceipt() {
           meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
         }))
       )
-      if (itemsErr) { alert('Error saving items: ' + itemsErr.message); setSaving(false); return }
+      if (itemsErr) { await showAlert(itemsErr.message, { title: 'Error saving items' }); setSaving(false); return }
     }
 
     navigate(`/trip/${tripId}`)
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this receipt and all its items? This cannot be undone.')) return
+    if (!await confirm('All items and claims on this receipt will be removed. This cannot be undone.', {
+      title: 'Delete receipt?',
+      confirmLabel: 'Delete',
+      danger: true,
+    })) return
     await supabase.from('receipts').delete().eq('id', receiptId)
     navigate(`/trip/${tripId}`)
   }
@@ -402,6 +412,8 @@ export default function AddReceipt() {
   }
 
   return (
+    <>
+    {DialogUI}
     <div className="max-w-xl mx-auto p-4 py-8">
       <button onClick={handleBack} className="text-sm text-gray-500 hover:text-gray-700 hover:underline mb-2 inline-block">
         ← Back to trip
@@ -691,5 +703,6 @@ export default function AddReceipt() {
         )}
       </form>
     </div>
+    </>
   )
 }
