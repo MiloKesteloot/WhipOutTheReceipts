@@ -419,35 +419,6 @@ export default function Stats() {
         </div>
       </section>
 
-      {/* Cumulative personal spending — moved to top */}
-      {cumulativeLineData.length > 1 && visiblePeople.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Cumulative food spending</h2>
-          <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of food costs over time</p>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 40 }}>
-                <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
-                <Tooltip content={<SortedLineTooltip />} />
-                <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                {visiblePeople.map((person, i) => (
-                  <Line
-                    key={person}
-                    type="monotone"
-                    dataKey={person}
-                    stroke={COLORS[allPeople.indexOf(person) % COLORS.length]}
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      )}
-
       {/* Per-person summary cards */}
       {visibleCards.length > 0 && (
         <section>
@@ -480,6 +451,35 @@ export default function Stats() {
                 </div>
               )
             })}
+          </div>
+        </section>
+      )}
+
+      {/* Cumulative personal spending */}
+      {cumulativeLineData.length > 1 && visiblePeople.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Cumulative food spending</h2>
+          <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of food costs over time</p>
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 40 }}>
+                <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
+                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
+                <Tooltip content={<SortedLineTooltip />} />
+                <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                {visiblePeople.map((person) => (
+                  <Line
+                    key={person}
+                    type="monotone"
+                    dataKey={person}
+                    stroke={COLORS[allPeople.indexOf(person) % COLORS.length]}
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </section>
       )}
