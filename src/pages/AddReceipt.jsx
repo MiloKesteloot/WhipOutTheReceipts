@@ -366,7 +366,7 @@ export default function AddReceipt() {
         </div>
         <div className="w-28">
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
             <input
               type="number"
               min="0"
@@ -599,7 +599,7 @@ export default function AddReceipt() {
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tip</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
                 type="number" min="0" step="0.01"
                 value={tip}
@@ -612,7 +612,7 @@ export default function AddReceipt() {
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Tax</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
                 type="number" min="0" step="0.01"
                 value={tax}
@@ -625,7 +625,7 @@ export default function AddReceipt() {
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Fees</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
                 type="number" min="0" step="0.01"
                 value={fees}
