@@ -3,8 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts } from '../lib/splitLogic.js'
 import { version as buildVersion } from '../buildVersion.json'
-
-const DEFAULT_MEMBERS = ['Alex', 'Clouey', 'Milo', 'Niko']
+import { getCoreRoommates } from './Settings.jsx'
 
 export default function Home() {
   const [trips, setTrips] = useState([])
@@ -17,10 +16,11 @@ export default function Home() {
   const [settling, setSettling] = useState(null)
   const [tripName, setTripName] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const [members, setMembers] = useState([...DEFAULT_MEMBERS])
+  const coreRoommates = getCoreRoommates()
+  const [members, setMembers] = useState(coreRoommates)
   const [newMemberInput, setNewMemberInput] = useState('')
   const [expandedPeople, setExpandedPeople] = useState(new Set())
-  const [showAllTrips, setShowAllTrips] = useState(false)
+  const [showAllTrips, setShowAllTrips] = useState(localStorage.getItem('default-show-all-trips') === '1')
   const myName = localStorage.getItem('global-name') || ''
   const navigate = useNavigate()
 
@@ -154,7 +154,7 @@ function toggleExpanded(person) {
   function resetForm() {
     setShowForm(false)
     setTripName('')
-    setMembers([...DEFAULT_MEMBERS])
+    setMembers(getCoreRoommates())
     setNewMemberInput('')
   }
 
@@ -265,7 +265,7 @@ function toggleExpanded(person) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this trip?</label>
             <div className="flex flex-wrap gap-2 mb-2">
-              {[...new Set([...DEFAULT_MEMBERS, ...members])].map(name => {
+              {[...new Set([...getCoreRoommates(), ...members])].map(name => {
                 const selected = members.includes(name)
                 return (
                   <button
