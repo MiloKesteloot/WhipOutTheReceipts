@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'  // used in trip timeline
 import { supabase } from '../lib/supabase.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -283,10 +283,7 @@ export default function Stats() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 py-8 space-y-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Household Stats</h1>
-        <Link to="/" className="text-sm text-gray-500 hover:text-gray-700">← Home</Link>
-      </div>
+      <h1 className="text-2xl font-bold text-gray-900">Household Stats</h1>
 
       {/* Per-person summary cards */}
       <section>

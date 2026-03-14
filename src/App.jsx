@@ -1,10 +1,51 @@
 import { useState } from 'react'
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import Home from './pages/Home.jsx'
 import TripDetail from './pages/TripDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
 import Welcome from './pages/Welcome.jsx'
 import Stats from './pages/Stats.jsx'
+
+function TopNav({ myName, onSignOut }) {
+  const { pathname } = useLocation()
+  const active = path => pathname === path
+
+  return (
+    <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
+      <div className="max-w-xl mx-auto flex items-center px-4 h-14">
+        <Link
+          to="/"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/') ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/') ? 2.5 : 2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7m-9 2v8m-2 0h4m4-8v8m-2 0h4" />
+          </svg>
+          Home
+        </Link>
+
+        <Link
+          to="/stats"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/stats') ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/stats') ? 2.5 : 2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          Stats
+        </Link>
+
+        <button
+          onClick={onSignOut}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors ml-auto"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
+          </svg>
+          {myName}
+        </button>
+      </div>
+    </nav>
+  )
+}
 
 export default function App() {
   const [myName, setMyName] = useState(() => localStorage.getItem('global-name') || '')
@@ -25,16 +66,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-xl mx-auto px-4 pt-3 pb-1 flex items-center justify-between text-sm text-gray-500">
-        <span>Signed in as <strong className="text-gray-800">{myName}</strong></span>
-        <div className="flex items-center gap-3">
-          <Link to="/stats" className="text-xs text-gray-400 hover:text-gray-600 transition">Stats</Link>
-          <button onClick={handleSignOut} className="text-xs text-indigo-500 hover:underline">
-            Sign out
-          </button>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-50 pt-14">
+      <TopNav myName={myName} onSignOut={handleSignOut} />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/trip/:id" element={<TripDetail />} />
