@@ -651,15 +651,7 @@ export default function TripDetail() {
           >
             Reopen trip
           </button>
-        ) : (
-          <button
-            onClick={closeTrip}
-            disabled={closing}
-            className="text-xs text-gray-400 hover:text-gray-600 transition disabled:opacity-50"
-          >
-            Close trip
-          </button>
-        )}
+        ) : null}
       </div>
     </div>
   )
