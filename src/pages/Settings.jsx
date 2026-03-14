@@ -1,63 +1,86 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 const FALLBACK_CORE = ['Alex', 'Clouey', 'Milo', 'Niko']
+const SETTINGS_KEY = 'apartment_members'
 
-export function getCoreRoommates() {
+// Async — used by Stats and Home on mount to get the current core list
+export async function fetchCoreRoommates() {
   try {
-    const stored = localStorage.getItem('core-roommates')
-    return stored ? JSON.parse(stored) : FALLBACK_CORE
-  } catch { return FALLBACK_CORE }
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', SETTINGS_KEY)
+      .single()
+    if (data?.value) {
+      return data.value.filter(m => m.isCore).map(m => m.name)
+    }
+  } catch {}
+  return FALLBACK_CORE
 }
 
 export default function Settings() {
   const currentName = localStorage.getItem('global-name') || ''
   const [nameInput, setNameInput] = useState(currentName)
 
-  const [allPeople, setAllPeople] = useState([])
-  const [coreSet, setCoreSet] = useState(() =>
-    new Set(getCoreRoommates().map(n => n.toLowerCase()))
-  )
-  const [loadingPeople, setLoadingPeople] = useState(true)
+  // Apartment settings — loaded from DB, null = still loading
+  const [roster, setRoster] = useState(null)
   const [newPersonInput, setNewPersonInput] = useState('')
+  const saveTimerRef = useRef(null)
 
+  // Personal settings — localStorage only
   const [defaultShowAll, setDefaultShowAll] = useState(
     localStorage.getItem('default-show-all-trips') === '1'
   )
 
-  useEffect(() => {
-    async function loadPeople() {
-      const [tripsRes, claimsRes, receiptsRes] = await Promise.all([
-        supabase.from('trips').select('members'),
-        supabase.from('claims').select('roommate'),
-        supabase.from('receipts').select('paid_by'),
-      ])
+  useEffect(() => { loadRoster() }, [])
 
-      const fromMembers = (tripsRes.data || []).flatMap(t => t.members || []).filter(m => typeof m === 'string')
-      const fromClaims = (claimsRes.data || []).map(c => c.roommate).filter(Boolean)
-      const fromPayers = (receiptsRes.data || []).map(r => r.paid_by).filter(Boolean)
-
-      const allNames = [...new Set([...getCoreRoommates(), ...fromMembers, ...fromClaims, ...fromPayers])]
-        .filter(p => typeof p === 'string' && p.trim())
-        .sort((a, b) => a.localeCompare(b))
-
-      setAllPeople(allNames)
-      setLoadingPeople(false)
+  async function loadRoster() {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', SETTINGS_KEY)
+      .single()
+    if (data?.value) {
+      setRoster(data.value)
+    } else {
+      const initial = FALLBACK_CORE.map(name => ({ name, isCore: true }))
+      setRoster(initial)
+      await persistRoster(initial)
     }
-    loadPeople()
-  }, [])
+  }
 
-  // Persist core roommates whenever coreSet or allPeople changes
-  useEffect(() => {
-    const coreNames = allPeople.filter(p => coreSet.has(p.toLowerCase()))
-    if (coreNames.length > 0) {
-      localStorage.setItem('core-roommates', JSON.stringify(coreNames))
+  async function persistRoster(r) {
+    await supabase.from('app_settings').upsert(
+      { key: SETTINGS_KEY, value: r },
+      { onConflict: 'key' }
+    )
+  }
+
+  function updateRoster(newRoster) {
+    setRoster(newRoster)
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => persistRoster(newRoster), 400)
+  }
+
+  function toggleCore(name) {
+    updateRoster(roster.map(m => m.name === name ? { ...m, isCore: !m.isCore } : m))
+  }
+
+  function deletePerson(name) {
+    updateRoster(roster.filter(m => m.name !== name))
+  }
+
+  function addNewPerson(e) {
+    e.preventDefault()
+    const name = newPersonInput.trim().replace(/\b\w/g, c => c.toUpperCase())
+    if (!name || roster.some(m => m.name.toLowerCase() === name.toLowerCase())) {
+      setNewPersonInput('')
+      return
     }
-  }, [coreSet, allPeople])
-
-  useEffect(() => {
-    localStorage.setItem('default-show-all-trips', defaultShowAll ? '1' : '0')
-  }, [defaultShowAll])
+    updateRoster([...roster, { name, isCore: true }])
+    setNewPersonInput('')
+  }
 
   function saveName() {
     const normalized = nameInput.trim().replace(/\b\w/g, c => c.toUpperCase())
@@ -66,33 +89,15 @@ export default function Settings() {
     window.location.reload()
   }
 
-  function toggleCore(person) {
-    if (person.toLowerCase() === currentName.toLowerCase()) return
-    const key = person.toLowerCase()
-    setCoreSet(prev => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
-  }
-
-  function addNewPerson(e) {
-    e.preventDefault()
-    const name = newPersonInput.trim().replace(/\b\w/g, c => c.toUpperCase())
-    if (!name) return
-    setAllPeople(prev => {
-      if (prev.some(p => p.toLowerCase() === name.toLowerCase())) return prev
-      return [...prev, name].sort((a, b) => a.localeCompare(b))
-    })
-    setCoreSet(prev => new Set([...prev, name.toLowerCase()]))
-    setNewPersonInput('')
-  }
+  useEffect(() => {
+    localStorage.setItem('default-show-all-trips', defaultShowAll ? '1' : '0')
+  }, [defaultShowAll])
 
   return (
     <div className="max-w-xl mx-auto p-4 py-8 space-y-8">
       <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
 
-      {/* Your name */}
+      {/* Your Name */}
       <section>
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Your name</h2>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -116,37 +121,40 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Core roommates */}
+      {/* Apartment Settings */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Core roommates</h2>
-        <p className="text-xs text-gray-400 mb-3">
-          Checked people appear by default in Stats and as quick-add options when creating a trip. Friends who join occasionally can be left unchecked.
-        </p>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Apartment settings</h2>
+        <p className="text-xs text-gray-400 mb-3">Changes here apply to everyone in the apartment.</p>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          {loadingPeople ? (
+          <p className="text-sm font-medium text-gray-700 mb-1">Roommate roster</p>
+          <p className="text-xs text-gray-400 mb-4">Checked roommates appear by default in Stats and as quick-add options when creating a trip.</p>
+          {roster === null ? (
             <p className="text-sm text-gray-400">Loading…</p>
           ) : (
             <div className="space-y-2">
-              {allPeople.map(person => {
-                const isCore = coreSet.has(person.toLowerCase())
-                const isYou = person.toLowerCase() === currentName.toLowerCase()
-                return (
-                  <label
-                    key={person}
-                    className={`flex items-center gap-3 py-0.5 ${isYou ? '' : 'cursor-pointer'}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isCore}
-                      disabled={isYou}
-                      onChange={() => toggleCore(person)}
-                      className="h-4 w-4 rounded accent-indigo-600"
-                    />
-                    <span className="text-sm text-gray-800">{person}</span>
-                    {isYou && <span className="text-xs text-gray-400">(you)</span>}
+              {roster.map(({ name, isCore }) => (
+                <div key={name} className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id={`core-${name}`}
+                    checked={isCore}
+                    onChange={() => toggleCore(name)}
+                    className="h-4 w-4 rounded accent-indigo-600 cursor-pointer"
+                  />
+                  <label htmlFor={`core-${name}`} className="flex-1 text-sm text-gray-800 cursor-pointer">
+                    {name}
                   </label>
-                )
-              })}
+                  <button
+                    onClick={() => deletePerson(name)}
+                    className="text-gray-300 hover:text-red-400 transition p-1 rounded"
+                    title={`Remove ${name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
               <form onSubmit={addNewPerson} className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
                 <input
                   type="text"
@@ -167,9 +175,10 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Default trip view */}
+      {/* Personal Settings */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Trips</h2>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Personal settings</h2>
+        <p className="text-xs text-gray-400 mb-3">Saved on this device only.</p>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <label className="flex items-center justify-between cursor-pointer">
             <div>

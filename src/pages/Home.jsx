@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts } from '../lib/splitLogic.js'
 import { version as buildVersion } from '../buildVersion.json'
-import { getCoreRoommates } from './Settings.jsx'
+import { fetchCoreRoommates } from './Settings.jsx'
 
 export default function Home() {
   const [trips, setTrips] = useState([])
@@ -16,8 +16,8 @@ export default function Home() {
   const [settling, setSettling] = useState(null)
   const [tripName, setTripName] = useState('')
   const [showForm, setShowForm] = useState(false)
-  const coreRoommates = getCoreRoommates()
-  const [members, setMembers] = useState(coreRoommates)
+  const [coreRoommates, setCoreRoommates] = useState([])
+  const [members, setMembers] = useState([])
   const [newMemberInput, setNewMemberInput] = useState('')
   const [expandedPeople, setExpandedPeople] = useState(new Set())
   const [showAllTrips, setShowAllTrips] = useState(localStorage.getItem('default-show-all-trips') === '1')
@@ -28,7 +28,10 @@ export default function Home() {
     month: 'long', day: 'numeric', year: 'numeric',
   })
 
-  useEffect(() => { fetchTrips() }, [])
+  useEffect(() => {
+    fetchTrips()
+    fetchCoreRoommates().then(core => { setCoreRoommates(core); setMembers(core) })
+  }, [])
   useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
 
   async function fetchTrips() {
@@ -154,7 +157,7 @@ function toggleExpanded(person) {
   function resetForm() {
     setShowForm(false)
     setTripName('')
-    setMembers(getCoreRoommates())
+    setMembers(coreRoommates)
     setNewMemberInput('')
   }
 
@@ -265,7 +268,7 @@ function toggleExpanded(person) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this trip?</label>
             <div className="flex flex-wrap gap-2 mb-2">
-              {[...new Set([...getCoreRoommates(), ...members])].map(name => {
+              {[...new Set([...coreRoommates, ...members])].map(name => {
                 const selected = members.includes(name)
                 return (
                   <button

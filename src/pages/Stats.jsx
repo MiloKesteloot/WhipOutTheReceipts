@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
-import { getCoreRoommates } from './Settings.jsx'
+import { fetchCoreRoommates } from './Settings.jsx'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Legend, LineChart, Line,
@@ -135,9 +135,9 @@ export default function Stats() {
       const meals = mealsRes.data || []
       const settlements = settlementsRes.data || []
 
-      // Core roommates = from Settings (falls back to trip members if never set)
-      const storedCore = getCoreRoommates()
-      const coreRoommatesLower = new Set(storedCore.map(m => m.toLowerCase()))
+      // Core roommates = from Apartment Settings in DB
+      const coreList = await fetchCoreRoommates()
+      const coreRoommatesLower = new Set(coreList.map(m => m.toLowerCase()))
       coreRoommatesLower.add(myName)
 
       // All people = anyone who has paid, claimed, or is a trip member
