@@ -24,17 +24,20 @@ export default function TripDetail() {
   const [expandedMeals, setExpandedMeals] = useState(new Set())
   const [settlements, setSettlements] = useState([])
   const [settling, setSettling] = useState(false)
+  const [checkins, setCheckins] = useState([])
 
   const loadData = useCallback(async () => {
-    const [tripRes, receiptsRes, settlementRes] = await Promise.all([
+    const [tripRes, receiptsRes, settlementRes, checkinRes] = await Promise.all([
       supabase.from('trips').select('*').eq('id', id).single(),
       supabase.from('receipts').select('*').eq('trip_id', id).order('created_at'),
       supabase.from('settlements').select('*').eq('trip_id', id),
+      supabase.from('checkins').select('*').eq('trip_id', id),
     ])
 
     if (tripRes.error) { setError('Trip not found.'); setLoading(false); return }
     setTrip(tripRes.data)
     setSettlements(settlementRes.data || [])
+    setCheckins(checkinRes.data || [])
 
     const receiptData = receiptsRes.data || []
     setReceipts(receiptData)
@@ -144,8 +147,21 @@ export default function TripDetail() {
       await supabase.from('claims').insert(newClaims)
     }
 
+    await supabase.from('checkins')
+      .upsert({ trip_id: id, roommate: myName }, { onConflict: 'trip_id,roommate' })
+
     localStorage.setItem(`claimed-${id}-${myName}`, '1')
-    await loadData()
+
+    // Update local state directly to avoid flicker from full reload
+    setClaims(prev => [
+      ...prev.filter(c => !(c.roommate === myName && itemIds.includes(c.item_id))),
+      ...newClaims,
+    ])
+    setCheckins(prev => [
+      ...prev.filter(c => c.roommate !== myName),
+      { trip_id: id, roommate: myName },
+    ])
+
     setSaving(false)
     setSaved(true)
   }
@@ -156,7 +172,10 @@ export default function TripDetail() {
       { trip_id: id, debtor, creditor },
       { onConflict: 'trip_id,debtor,creditor' }
     )
-    await loadData()
+    setSettlements(prev => [
+      ...prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)),
+      { trip_id: id, debtor, creditor },
+    ])
     setSettling(false)
   }
 
@@ -164,7 +183,7 @@ export default function TripDetail() {
     setSettling(true)
     await supabase.from('settlements').delete()
       .eq('trip_id', id).eq('debtor', debtor).eq('creditor', creditor)
-    await loadData()
+    setSettlements(prev => prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)))
     setSettling(false)
   }
 
@@ -223,8 +242,9 @@ export default function TripDetail() {
   const debts = calculateDebts(receipts, items, claims, meals)
   const breakdown = getItemizedBreakdown(receipts, items, claims, meals)
 
-  const claimerNames = new Set(claims.map(c => c.roommate))
-  const waitingOn = (trip?.members || []).filter(m => !claimerNames.has(m))
+  const checkinNames = new Set(checkins.map(c => c.roommate.toLowerCase()))
+  const claimerNames = new Set(claims.map(c => c.roommate.toLowerCase()))
+  const waitingOn = (trip?.members || []).filter(m => !checkinNames.has(m.toLowerCase()) && !claimerNames.has(m.toLowerCase()))
 
   const itemsByReceipt = {}
   for (const item of items) {
