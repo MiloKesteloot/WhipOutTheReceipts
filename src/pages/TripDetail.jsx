@@ -167,7 +167,10 @@ export default function TripDetail() {
   }
 
   function isSettled(debtor, creditor) {
-    return settlements.some(s => s.debtor === debtor && s.creditor === creditor)
+    return settlements.some(
+      s => s.debtor.toLowerCase() === debtor.toLowerCase()
+        && s.creditor.toLowerCase() === creditor.toLowerCase()
+    )
   }
 
   async function closeTrip() {

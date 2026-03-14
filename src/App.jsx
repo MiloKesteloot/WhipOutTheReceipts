@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Link } from 'react-router-dom'
 import Home from './pages/Home.jsx'
 import TripDetail from './pages/TripDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
 import Welcome from './pages/Welcome.jsx'
+import Stats from './pages/Stats.jsx'
 
 export default function App() {
   const [myName, setMyName] = useState(() => localStorage.getItem('global-name') || '')
@@ -27,15 +28,19 @@ export default function App() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-xl mx-auto px-4 pt-3 pb-1 flex items-center justify-between text-sm text-gray-500">
         <span>Signed in as <strong className="text-gray-800">{myName}</strong></span>
-        <button onClick={handleSignOut} className="text-xs text-indigo-500 hover:underline">
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          <Link to="/stats" className="text-xs text-gray-400 hover:text-gray-600 transition">Stats</Link>
+          <button onClick={handleSignOut} className="text-xs text-indigo-500 hover:underline">
+            Sign out
+          </button>
+        </div>
       </div>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/trip/:id" element={<TripDetail />} />
         <Route path="/trip/:id/add-receipt" element={<AddReceipt />} />
         <Route path="/trip/:id/receipt/:receiptId/edit" element={<AddReceipt />} />
+        <Route path="/stats" element={<Stats />} />
       </Routes>
     </div>
   )

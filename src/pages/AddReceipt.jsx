@@ -80,7 +80,7 @@ export default function AddReceipt() {
         setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
         setLineItems([...loaded, newItem()])
       } else {
-        const savedName = localStorage.getItem(`trip-name-${tripId}`)
+        const savedName = localStorage.getItem('global-name')
         if (savedName) setPaidBy(savedName)
       }
       loadComplete.current = true

@@ -162,7 +162,7 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
   for (const r of receipts) {
     payerByReceipt[r.id] = r.paid_by
     storeByReceipt[r.id] = r.store_name
-    tipTaxByReceipt[r.id] = { tip: r.tip || 0, tax: r.tax || 0 }
+    tipTaxByReceipt[r.id] = { tip: r.tip || 0, tax: r.tax || 0, fees: r.fees || 0 }
   }
 
   const claimsByItem = {}
@@ -197,11 +197,11 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
     }
   }
 
-  // Tip + tax lines per receipt per person
+  // Tip + tax + fees lines per receipt per person
   for (const receipt of receipts) {
-    const { tip, tax } = tipTaxByReceipt[receipt.id]
-    if (!tip && !tax) continue
-    const label = [tip > 0 && 'Tip', tax > 0 && 'Tax'].filter(Boolean).join(' & ')
+    const { tip, tax, fees } = tipTaxByReceipt[receipt.id]
+    if (!tip && !tax && !fees) continue
+    const label = [tip > 0 && 'Tip', tax > 0 && 'Tax', fees > 0 && 'Fees'].filter(Boolean).join(' & ')
     const store = storeByReceipt[receipt.id]
     const payer = receipt.paid_by
     const shares = distributeTipTaxFees(receipt, itemsByReceipt[receipt.id] || [], claimsByItem)

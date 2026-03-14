@@ -9,7 +9,6 @@ const DEFAULT_MEMBERS = ['Alex', 'Clouey', 'Milo', 'Niko']
 export default function Home() {
   const [trips, setTrips] = useState([])
   const [claimersByTrip, setClaimersByTrip] = useState({})
-  const [tripsWithItems, setTripsWithItems] = useState(new Set())
   // person -> { net, theyOweMe: [...], iOweThem: [...] }
   const [netByPerson, setNetByPerson] = useState({})
   const [rawData, setRawData] = useState(null)
@@ -64,10 +63,6 @@ export default function Home() {
       map[tripId].add(claim.roommate.toLowerCase())
     }
     setClaimersByTrip(map)
-
-    const twi = new Set()
-    for (const r of allReceipts) twi.add(r.trip_id)
-    setTripsWithItems(twi)
 
     const data = { trips, allReceipts, allItems, allClaims, settlements, allMeals }
     setRawData(data)
