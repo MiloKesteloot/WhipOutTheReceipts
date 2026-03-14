@@ -28,12 +28,71 @@ export default function Settings() {
   const [newPersonInput, setNewPersonInput] = useState('')
   const saveTimerRef = useRef(null)
 
+  // Merge tool
+  const [allKnownNames, setAllKnownNames] = useState([])
+  const [mergeFrom, setMergeFrom] = useState('')
+  const [mergeTo, setMergeTo] = useState('')
+  const [merging, setMerging] = useState(false)
+  const [mergeConfirm, setMergeConfirm] = useState(false)
+  const [mergeDone, setMergeDone] = useState(null)
+
   // Personal settings — localStorage only
   const [defaultShowAll, setDefaultShowAll] = useState(
     localStorage.getItem('default-show-all-trips') === '1'
   )
 
-  useEffect(() => { loadRoster() }, [])
+  useEffect(() => { loadRoster(); loadAllKnownNames() }, [])
+
+  async function loadAllKnownNames() {
+    const [tripsRes, claimsRes, receiptsRes, settlementsRes] = await Promise.all([
+      supabase.from('trips').select('members'),
+      supabase.from('claims').select('roommate'),
+      supabase.from('receipts').select('paid_by'),
+      supabase.from('settlements').select('debtor, creditor'),
+    ])
+    const names = new Set()
+    for (const t of tripsRes.data || []) (t.members || []).forEach(m => m && names.add(m))
+    for (const c of claimsRes.data || []) c.roommate && names.add(c.roommate)
+    for (const r of receiptsRes.data || []) r.paid_by && names.add(r.paid_by)
+    for (const s of settlementsRes.data || []) {
+      s.debtor && names.add(s.debtor)
+      s.creditor && names.add(s.creditor)
+    }
+    setAllKnownNames([...names].sort((a, b) => a.localeCompare(b)))
+  }
+
+  async function mergeNames() {
+    if (!mergeFrom || !mergeTo || mergeFrom === mergeTo) return
+    setMerging(true)
+
+    await Promise.all([
+      supabase.from('claims').update({ roommate: mergeTo }).eq('roommate', mergeFrom),
+      supabase.from('receipts').update({ paid_by: mergeTo }).eq('paid_by', mergeFrom),
+      supabase.from('settlements').update({ debtor: mergeTo }).eq('debtor', mergeFrom),
+      supabase.from('settlements').update({ creditor: mergeTo }).eq('creditor', mergeFrom),
+    ])
+
+    // trips.members is an array — fetch and patch each affected trip
+    const { data: trips } = await supabase.from('trips').select('id, members')
+    const toUpdate = (trips || []).filter(t => (t.members || []).includes(mergeFrom))
+    await Promise.all(
+      toUpdate.map(t =>
+        supabase.from('trips').update({
+          members: t.members.map(m => m === mergeFrom ? mergeTo : m),
+        }).eq('id', t.id)
+      )
+    )
+
+    // If mergeFrom was in the roster, remove it
+    if (roster) updateRoster(roster.filter(m => m.name !== mergeFrom))
+
+    setMergeDone(`Merged "${mergeFrom}" into "${mergeTo}"`)
+    setMergeFrom('')
+    setMergeTo('')
+    setMergeConfirm(false)
+    setMerging(false)
+    loadAllKnownNames()
+  }
 
   async function loadRoster() {
     const { data } = await supabase
@@ -171,6 +230,71 @@ export default function Settings() {
                 </button>
               </form>
             </div>
+          )}
+        </div>
+      </section>
+
+      {/* Merge people */}
+      <section>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-700 mb-1">Merge duplicate names</p>
+          <p className="text-xs text-gray-400 mb-4">
+            If someone's name was entered with a typo, merge all their history under the correct name.
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={mergeFrom}
+              onChange={e => { setMergeFrom(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
+              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+            >
+              <option value="">Merge this name…</option>
+              {allKnownNames.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span className="text-sm text-gray-400 shrink-0">into</span>
+            <select
+              value={mergeTo}
+              onChange={e => { setMergeTo(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
+              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+            >
+              <option value="">…the correct name</option>
+              {allKnownNames.filter(n => n !== mergeFrom).map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+
+          {mergeFrom && mergeTo && !mergeConfirm && (
+            <button
+              onClick={() => setMergeConfirm(true)}
+              className="mt-3 w-full py-2 text-sm font-medium border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition"
+            >
+              Merge "{mergeFrom}" → "{mergeTo}"
+            </button>
+          )}
+
+          {mergeConfirm && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-sm text-amber-800 mb-3">
+                This will update all claims, receipts, settlements, and trip memberships. This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={mergeNames}
+                  disabled={merging}
+                  className="flex-1 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50"
+                >
+                  {merging ? 'Merging…' : 'Yes, merge'}
+                </button>
+                <button
+                  onClick={() => setMergeConfirm(false)}
+                  className="px-4 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mergeDone && (
+            <p className="mt-3 text-sm text-green-600 font-medium">{mergeDone} ✓</p>
           )}
         </div>
       </section>
