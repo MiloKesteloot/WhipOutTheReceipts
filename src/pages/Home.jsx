@@ -22,6 +22,10 @@ export default function Home() {
   const [newMemberInput, setNewMemberInput] = useState('')
   const [expandedPeople, setExpandedPeople] = useState(new Set())
   const [showAllTrips, setShowAllTrips] = useState(localStorage.getItem('default-show-all-trips') === '1')
+  const [calMonth, setCalMonth] = useState(() => {
+    const now = new Date()
+    return { year: now.getFullYear(), month: now.getMonth() }
+  })
   const myName = localStorage.getItem('global-name') || ''
   const navigate = useNavigate()
   const { showAlert, DialogUI } = useDialog()
@@ -506,29 +510,138 @@ function toggleExpanded(person) {
         </div>
       )}
 
-      {/* All trips */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-          {showAllTrips ? 'All Trips' : 'Your Trips'}
-        </h2>
-        <button
-          onClick={() => setShowAllTrips(s => !s)}
-          className="text-xs text-gray-400 hover:text-gray-600 transition"
-        >
-          {showAllTrips ? 'Show only mine' : 'Show all trips'}
-        </button>
-      </div>
-      {loading ? (
-        <p className="text-gray-400">Loading…</p>
-      ) : trips.length === 0 ? (
-        <p className="text-gray-400">No trips yet. Hit "+ New Trip" above to get started.</p>
-      ) : (
-        <ul className="space-y-2">
-          {trips
-            .filter(trip => showAllTrips || !myName || (trip.members || []).some(m => m.toLowerCase() === myName.toLowerCase()))
-            .map(trip => renderTripRow(trip))}
-        </ul>
-      )}
+      {/* Calendar */}
+      {(() => {
+        const now = new Date()
+        const isCurrentMonth = calMonth.year === now.getFullYear() && calMonth.month === now.getMonth()
+
+        // Group trips by local date key
+        const tripsByDate = {}
+        for (const trip of trips) {
+          const d = new Date(trip.created_at)
+          const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+          if (!tripsByDate[key]) tripsByDate[key] = []
+          tripsByDate[key].push(trip)
+        }
+
+        // Build calendar day array (nulls for padding before month start)
+        const firstDay = new Date(calMonth.year, calMonth.month, 1)
+        const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate()
+        const calDays = [
+          ...Array(firstDay.getDay()).fill(null),
+          ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+        ]
+
+        return (
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <button
+                onClick={() => setCalMonth(prev => {
+                  const d = new Date(prev.year, prev.month - 1, 1)
+                  return { year: d.getFullYear(), month: d.getMonth() }
+                })}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition text-gray-500"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className="flex items-center gap-3">
+                <h2 className="font-semibold text-gray-800">
+                  {firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </h2>
+                {!isCurrentMonth && (
+                  <button
+                    onClick={() => setCalMonth({ year: now.getFullYear(), month: now.getMonth() })}
+                    className="text-xs text-indigo-500 hover:text-indigo-700 transition"
+                  >
+                    Today
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowAllTrips(s => !s)}
+                  className="text-xs text-gray-400 hover:text-gray-600 transition mr-1"
+                  title={showAllTrips ? 'Showing all trips' : 'Showing only your trips'}
+                >
+                  {showAllTrips ? 'All' : 'Mine'}
+                </button>
+                <button
+                  onClick={() => setCalMonth(prev => {
+                    const d = new Date(prev.year, prev.month + 1, 1)
+                    return { year: d.getFullYear(), month: d.getMonth() }
+                  })}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg transition text-gray-500"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Day-of-week headers */}
+            <div className="grid grid-cols-7 border-b border-gray-100">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                <div key={d} className="text-center text-xs font-medium text-gray-400 py-2">{d}</div>
+              ))}
+            </div>
+
+            {/* Grid */}
+            {loading ? (
+              <p className="text-gray-400 text-sm p-4">Loading…</p>
+            ) : (
+              <div className="grid grid-cols-7 divide-x divide-y divide-gray-100">
+                {calDays.map((day, i) => {
+                  if (!day) return <div key={`pad-${i}`} className="min-h-16 bg-gray-50/60" />
+
+                  const key = `${calMonth.year}-${calMonth.month}-${day}`
+                  const dayDate = new Date(calMonth.year, calMonth.month, day)
+                  const isToday = dayDate.toDateString() === now.toDateString()
+                  const dayTrips = (tripsByDate[key] || []).filter(trip =>
+                    showAllTrips || !myName || (trip.members || []).some(m => m.toLowerCase() === myName.toLowerCase())
+                  )
+
+                  return (
+                    <div key={key} className={`min-h-16 p-1 ${isToday ? 'bg-indigo-50/60' : ''}`}>
+                      <div className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 mx-auto ${
+                        isToday ? 'bg-indigo-600 text-white' : 'text-gray-400'
+                      }`}>
+                        {day}
+                      </div>
+                      <div className="space-y-0.5">
+                        {dayTrips.map(trip => {
+                          const claimers = claimersByTrip[trip.id] || new Set()
+                          const waitingOn = claimers.size > 0 && !trip.closed
+                            ? (trip.members || []).filter(m => !claimers.has(m.toLowerCase()))
+                            : []
+                          return (
+                            <Link
+                              key={trip.id}
+                              to={`/trip/${trip.id}`}
+                              className={`block text-xs px-1.5 py-0.5 rounded truncate leading-5 ${
+                                trip.closed
+                                  ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                  : waitingOn.length > 0
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                                    : 'bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100'
+                              }`}
+                            >
+                              {trip.name}
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })()}
       <p className="mt-8 text-center text-xs text-gray-300">v{buildVersion}</p>
     </div>
     </>
