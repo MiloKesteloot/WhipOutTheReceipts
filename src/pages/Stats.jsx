@@ -380,11 +380,11 @@ export default function Stats() {
                       onClick={() => togglePerson(person.toLowerCase())}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                         isSelected
-                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                          ? 'bg-green-50 border-green-300 text-green-700'
                           : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-green-500' : 'bg-gray-300'}`} />
                       {toTitleCase(person)}
                     </button>
                   )
@@ -404,11 +404,11 @@ export default function Stats() {
                       onClick={() => togglePerson(person.toLowerCase())}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
                         isSelected
-                          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                          ? 'bg-green-50 border-green-300 text-green-700'
                           : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-green-500' : 'bg-gray-300'}`} />
                       {toTitleCase(person)}
                     </button>
                   )
@@ -613,7 +613,7 @@ export default function Stats() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                        <div className="bg-indigo-400 h-1.5 rounded-full" style={{ width: `${(store.total / maxStore) * 100}%` }} />
+                        <div className="bg-green-400 h-1.5 rounded-full" style={{ width: `${(store.total / maxStore) * 100}%` }} />
                       </div>
                       <span className="text-xs text-gray-400 shrink-0">{store.visits} {store.visits === 1 ? 'trip' : 'trips'}</span>
                     </div>
@@ -681,7 +681,7 @@ export default function Stats() {
                     style={{ background: trip.closed ? '#9ca3af' : '#6366f1' }} />
                   <Link
                     to={`/trip/${trip.id}`}
-                    className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg px-3 py-2 hover:border-indigo-300 transition"
+                    className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg px-3 py-2 hover:border-green-300 transition"
                   >
                     <div className="flex justify-between items-baseline gap-2">
                       <span className="font-medium text-gray-800 truncate text-sm">{trip.name}</span>

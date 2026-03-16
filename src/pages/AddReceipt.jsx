@@ -518,7 +518,7 @@ Rules:
             value={item.name}
             onChange={e => { updateItem(item.id, 'name', e.target.value); setErrors(v => ({ ...v, [`name-${item.id}`]: undefined })) }}
             placeholder="Item name"
-            className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors[`name-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
+            className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 ${errors[`name-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
           />
         </div>
         <div className="w-28">
@@ -531,7 +531,7 @@ Rules:
               value={item.price}
               onChange={e => { updateItem(item.id, 'price', e.target.value); setErrors(v => ({ ...v, [`price-${item.id}`]: undefined })) }}
               placeholder="0.00"
-              className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors[`price-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
+              className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 ${errors[`price-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
             />
           </div>
         </div>
@@ -540,7 +540,7 @@ Rules:
           tabIndex={-1}
           onClick={() => updateItem(item.id, 'always_split', !item.always_split)}
           title={item.always_split ? 'Everyone always splits this — click to remove' : 'Click to always split with everyone'}
-          className={`mt-1.5 text-base transition ${item.always_split ? 'text-indigo-500' : 'text-gray-300 hover:text-gray-400'}`}
+          className={`mt-1.5 text-base transition ${item.always_split ? 'text-green-500' : 'text-gray-300 hover:text-gray-400'}`}
           aria-label="Toggle always split"
         >
           {item.always_split ? '🔒' : '🔓'}
@@ -573,7 +573,7 @@ Rules:
           type="button"
           onClick={() => scanInputRef.current?.click()}
           disabled={scanning}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-indigo-200 text-indigo-600 text-sm font-medium rounded-lg hover:bg-indigo-50 transition disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-green-200 text-green-600 text-sm font-medium rounded-lg hover:bg-green-50 transition disabled:opacity-50"
         >
           {scanning ? (
             <>
@@ -618,7 +618,7 @@ Rules:
             value={storeName}
             onChange={e => { markDirty(); setStoreName(e.target.value); setErrors(v => ({ ...v, storeName: undefined })) }}
             placeholder="e.g. Costco"
-            className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors.storeName ? 'border-red-400' : 'border-gray-300'}`}
+            className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 ${errors.storeName ? 'border-red-400' : 'border-gray-300'}`}
             autoFocus={!isEditing}
           />
           {errors.storeName && <p className="text-xs text-red-500 mt-1">{errors.storeName}</p>}
@@ -659,7 +659,7 @@ Rules:
               onFocus={() => setPaidByOpen(true)}
               placeholder="Who paid?"
               autoComplete="off"
-              className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'}`}
+              className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'}`}
             />
             {paidByOpen && (() => {
               const allSuggestions = [...new Set([...coreRoommates, ...knownNames])]
@@ -680,7 +680,7 @@ Rules:
                           setErrors(v => ({ ...v, paidBy: undefined }))
                           setPaidByOpen(false)
                         }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 hover:text-green-700 transition-colors"
                       >
                         {name}
                       </button>
@@ -703,13 +703,13 @@ Rules:
 
           {/* Ungrouped items drop zone */}
           <div
-            className={`space-y-2 min-h-[2.5rem] rounded-lg p-1 transition-colors ${dragOverTarget === null && draggingItemId ? 'bg-indigo-50 ring-2 ring-indigo-200' : ''}`}
+            className={`space-y-2 min-h-[2.5rem] rounded-lg p-1 transition-colors ${dragOverTarget === null && draggingItemId ? 'bg-green-50 ring-2 ring-green-200' : ''}`}
             onDragOver={e => handleDragOver(e, null)}
             onDrop={e => handleDrop(e, null)}
           >
             {ungroupedItems.map(item => renderItemRow(item))}
             {dragOverTarget === null && draggingItemId && (
-              <p className="text-xs text-indigo-400 text-center py-2">Drop here to ungroup</p>
+              <p className="text-xs text-green-400 text-center py-2">Drop here to ungroup</p>
             )}
           </div>
 
@@ -720,7 +720,7 @@ Rules:
             return (
               <div
                 key={meal.local_id}
-                className={`mt-3 border rounded-xl overflow-hidden transition-colors ${isDragTarget ? 'ring-2 ring-indigo-300 border-indigo-300' : 'border-gray-200'}`}
+                className={`mt-3 border rounded-xl overflow-hidden transition-colors ${isDragTarget ? 'ring-2 ring-green-300 border-green-300' : 'border-gray-200'}`}
               >
                 {/* Meal header */}
                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">
@@ -743,7 +743,7 @@ Rules:
                       value={meal.fee}
                       onChange={e => updateMeal(meal.local_id, 'fee', e.target.value)}
                       placeholder="0.00"
-                      className="w-full border border-gray-200 rounded-md pl-9 pr-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      className="w-full border border-gray-200 rounded-md pl-9 pr-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-400"
                     />
                   </div>
                   <button
@@ -757,13 +757,13 @@ Rules:
 
                 {/* Meal items drop zone */}
                 <div
-                  className={`p-2 space-y-2 min-h-[3rem] transition-colors ${isDragTarget ? 'bg-indigo-50' : 'bg-white'}`}
+                  className={`p-2 space-y-2 min-h-[3rem] transition-colors ${isDragTarget ? 'bg-green-50' : 'bg-white'}`}
                   onDragOver={e => handleDragOver(e, meal.local_id)}
                   onDrop={e => handleDrop(e, meal.local_id)}
                 >
                   {mealItems.map(item => renderItemRow(item))}
                   {isDragTarget && mealItems.length === 0 && (
-                    <p className="text-xs text-indigo-400 text-center py-2">Drop here</p>
+                    <p className="text-xs text-green-400 text-center py-2">Drop here</p>
                   )}
                   {!isDragTarget && mealItems.length === 0 && (
                     <p className="text-xs text-gray-300 text-center py-2">Drag items here or add below</p>
@@ -775,7 +775,7 @@ Rules:
                   <button
                     type="button"
                     onClick={() => addItemToMeal(meal.local_id)}
-                    className="text-xs text-indigo-500 hover:text-indigo-700 transition"
+                    className="text-xs text-green-500 hover:text-green-700 transition"
                   >
                     + Add item
                   </button>
@@ -788,7 +788,7 @@ Rules:
           <button
             type="button"
             onClick={addMeal}
-            className="mt-3 w-full py-2 border border-dashed border-gray-300 text-sm text-gray-500 rounded-xl hover:border-indigo-300 hover:text-indigo-500 transition"
+            className="mt-3 w-full py-2 border border-dashed border-gray-300 text-sm text-gray-500 rounded-xl hover:border-green-300 hover:text-green-500 transition"
           >
             + Add Meal Group
           </button>
@@ -805,7 +805,7 @@ Rules:
                 value={tip}
                 onChange={e => { markDirty(); setTip(e.target.value) }}
                 placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
           </div>
@@ -818,7 +818,7 @@ Rules:
                 value={tax}
                 onChange={e => { markDirty(); setTax(e.target.value) }}
                 placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
           </div>
@@ -831,7 +831,7 @@ Rules:
                 value={fees}
                 onChange={e => { markDirty(); setFees(e.target.value) }}
                 placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
           </div>
@@ -868,7 +868,7 @@ Rules:
         <button
           type="submit"
           disabled={saving}
-          className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition disabled:opacity-50"
+          className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition disabled:opacity-50"
         >
           {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Receipt'}
         </button>

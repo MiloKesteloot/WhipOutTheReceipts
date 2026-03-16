@@ -11,7 +11,7 @@ import { useState, useCallback } from 'react'
  *   title        — bold heading above the message
  *   confirmLabel — label for the confirm button (default 'Confirm')
  *   cancelLabel  — label for the cancel button (default 'Cancel')
- *   danger       — use red confirm button instead of indigo
+ *   danger       — use red confirm button instead of green
  */
 export function useDialog() {
   const [dialog, setDialog] = useState(null)
@@ -59,7 +59,7 @@ export function useDialog() {
             className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
               dialog.danger
                 ? 'bg-red-500 text-white hover:bg-red-600'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-green-600 text-white hover:bg-green-700'
             }`}
           >
             {dialog.type === 'alert' ? (dialog.confirmLabel || 'OK') : (dialog.confirmLabel || 'Confirm')}

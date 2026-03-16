@@ -185,7 +185,7 @@ export default function Settings() {
                 onClick={() => setNameOpen(true)}
                 onKeyDown={e => e.key === 'Enter' && saveName()}
                 autoComplete="off"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
               {nameOpen && (() => {
                 const coreNames = (roster || []).filter(m => m.isCore).map(m => m.name)
@@ -202,7 +202,7 @@ export default function Settings() {
                         <button
                           type="button"
                           onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors flex items-center justify-between"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 hover:text-green-700 transition-colors flex items-center justify-between"
                         >
                           {n}
                           <span className="text-xs text-gray-300">pinned</span>
@@ -217,7 +217,7 @@ export default function Settings() {
                         <button
                           type="button"
                           onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 hover:text-green-700 transition-colors"
                         >
                           {n}
                         </button>
@@ -230,7 +230,7 @@ export default function Settings() {
             <button
               onClick={saveName}
               disabled={!nameInput.trim() || nameInput.trim().replace(/\b\w/g, c => c.toUpperCase()) === currentName}
-              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition disabled:opacity-50"
             >
               Save
             </button>
@@ -257,7 +257,7 @@ export default function Settings() {
                     id={`core-${name}`}
                     checked={isCore}
                     onChange={() => toggleCore(name)}
-                    className="h-4 w-4 rounded accent-indigo-600 cursor-pointer"
+                    className="h-4 w-4 rounded accent-green-600 cursor-pointer"
                   />
                   <label htmlFor={`core-${name}`} className="flex-1 text-sm text-gray-800 cursor-pointer">
                     {name}
@@ -279,7 +279,7 @@ export default function Settings() {
                   value={newPersonInput}
                   onChange={e => setNewPersonInput(e.target.value)}
                   placeholder="Add a person…"
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                 />
                 <button
                   type="submit"
@@ -305,7 +305,7 @@ export default function Settings() {
               <select
                 value={mergeFrom}
                 onChange={e => { setMergeFrom(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
-                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
               >
                 <option value="">Merge this name…</option>
                 {allKnownNames.map(n => <option key={n} value={n}>{n}</option>)}
@@ -319,7 +319,7 @@ export default function Settings() {
               <select
                 value={mergeTo}
                 onChange={e => { setMergeTo(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
-                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
               >
                 <option value="">…the correct name</option>
                 {allKnownNames.filter(n => n !== mergeFrom).map(n => <option key={n} value={n}>{n}</option>)}
@@ -381,7 +381,7 @@ export default function Settings() {
               </div>
               <button
                 onClick={() => setDefaultShowAll(v => !v)}
-                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${defaultShowAll ? 'bg-indigo-500' : 'bg-gray-200'}`}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${defaultShowAll ? 'bg-green-500' : 'bg-gray-200'}`}
               >
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${defaultShowAll ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
@@ -391,7 +391,7 @@ export default function Settings() {
             <p className="text-sm font-medium text-gray-800 mb-0.5">Gemini API key</p>
             <p className="text-xs text-gray-400 mb-2">
               Used to scan receipt photos and auto-fill items. Get a free key at{' '}
-              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">aistudio.google.com</a>.
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-green-500 hover:underline">aistudio.google.com</a>.
             </p>
             <div className="flex gap-2">
               <input
@@ -400,12 +400,12 @@ export default function Settings() {
                 onChange={e => { setGeminiKey(e.target.value); setGeminiKeySaved(false) }}
                 placeholder="AIza..."
                 autoComplete="off"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
               <button
                 type="button"
                 onClick={() => { localStorage.setItem('gemini-api-key', geminiKey.trim()); setGeminiKeySaved(true) }}
-                className="px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+                className="px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition"
               >
                 {geminiKeySaved ? 'Saved ✓' : 'Save'}
               </button>

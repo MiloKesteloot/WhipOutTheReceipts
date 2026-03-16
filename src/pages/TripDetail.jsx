@@ -348,7 +348,7 @@ export default function TripDetail() {
           checked={isMine}
           readOnly
           disabled={!myName || trip.closed || locked}
-          className="h-4 w-4 rounded accent-indigo-600 cursor-pointer"
+          className="h-4 w-4 rounded accent-green-600 cursor-pointer"
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 truncate">
@@ -446,7 +446,7 @@ export default function TripDetail() {
           ) : (
             <Link
               to={`/trip/${id}/add-receipt`}
-              className="flex flex-col items-center gap-3 w-full max-w-xs p-8 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50 transition-all"
+              className="flex flex-col items-center gap-3 w-full max-w-xs p-8 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-green-300 hover:text-green-500 hover:bg-green-50 transition-all"
             >
               <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -528,7 +528,7 @@ export default function TripDetail() {
                                 ref={el => { if (el) el.indeterminate = checkState === 'some' }}
                                 readOnly
                                 disabled={!canInteract}
-                                className="h-4 w-4 rounded accent-indigo-600"
+                                className="h-4 w-4 rounded accent-green-600"
                               />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-gray-700">{meal.name}</p>
@@ -564,7 +564,7 @@ export default function TripDetail() {
                                     checked={isMine}
                                     readOnly
                                     disabled={!myName || trip.closed || locked}
-                                    className="h-3.5 w-3.5 rounded accent-indigo-600"
+                                    className="h-3.5 w-3.5 rounded accent-green-600"
                                   />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-gray-700 truncate">
@@ -600,13 +600,13 @@ export default function TripDetail() {
           <div className="bg-white border border-gray-200 shadow-lg rounded-2xl px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-400">Your running total</p>
-              <p className="text-xl font-bold text-indigo-600">${runningTotal.toFixed(2)}</p>
+              <p className="text-xl font-bold text-green-600">${runningTotal.toFixed(2)}</p>
             </div>
             {!trip.closed && (
               <button
                 onClick={saveClaims}
                 disabled={saving}
-                className="px-5 py-2 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition disabled:opacity-50"
+                className="px-5 py-2 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition disabled:opacity-50"
               >
                 {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save my claims'}
               </button>
@@ -690,7 +690,7 @@ export default function TripDetail() {
                             <button
                               onClick={() => markSettled(d.debtor, d.creditor)}
                               disabled={settling}
-                              className="text-xs px-2 py-0.5 border border-indigo-200 text-indigo-600 rounded-md hover:bg-indigo-50 transition disabled:opacity-50"
+                              className="text-xs px-2 py-0.5 border border-green-200 text-green-600 rounded-md hover:bg-green-50 transition disabled:opacity-50"
                             >
                               Mark sent
                             </button>
@@ -722,7 +722,7 @@ export default function TripDetail() {
                 <div className="mt-2 space-y-3">
                   {Object.entries(breakdown).map(([person, entries]) => (
                     <div key={person}>
-                      <p className="text-sm font-medium text-indigo-700 mb-1">{person}</p>
+                      <p className="text-sm font-medium text-green-700 mb-1">{person}</p>
                       <ul className="space-y-0.5">
                         {entries.map((e, i) => (
                           <li key={i} className="flex justify-between text-xs text-gray-500">
