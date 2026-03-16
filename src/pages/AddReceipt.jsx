@@ -227,8 +227,30 @@ Rules:
         }
       }
 
-      if (merged.length > 0) {
-        setLineItems([...merged, newItem()])
+      // Remove pairs that cancel out (e.g. "Bag $0.25" + "Bag Exempt -$0.25")
+      const cancelledIds = new Set()
+      for (const neg of merged.filter(i => Number(i.price) < 0)) {
+        const absVal = Math.abs(Number(neg.price))
+        const candidates = merged.filter(
+          pos => !cancelledIds.has(pos.id) && pos.id !== neg.id && Math.abs(Number(pos.price) - absVal) < 0.001
+        )
+        if (!candidates.length) continue
+        // Prefer the candidate whose name shares the most words with the negative item's name
+        const negWords = neg.name.toLowerCase().split(/\s+/)
+        const match = candidates.reduce((best, pos) => {
+          const posWords = pos.name.toLowerCase().split(/\s+/)
+          const overlap = negWords.filter(w => posWords.includes(w)).length
+          const bestWords = best.name.toLowerCase().split(/\s+/)
+          const bestOverlap = negWords.filter(w => bestWords.includes(w)).length
+          return overlap > bestOverlap ? pos : best
+        })
+        cancelledIds.add(neg.id)
+        cancelledIds.add(match.id)
+      }
+      const finalItems = merged.filter(i => !cancelledIds.has(i.id))
+
+      if (finalItems.length > 0) {
+        setLineItems([...finalItems, newItem()])
         setErrors(v => ({ ...v, items: undefined }))
       }
       markDirty()
