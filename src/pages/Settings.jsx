@@ -44,6 +44,8 @@ export default function Settings() {
   const [defaultShowAll, setDefaultShowAll] = useState(
     localStorage.getItem('default-show-all-trips') === '1'
   )
+  const [geminiKey, setGeminiKey] = useState(localStorage.getItem('gemini-api-key') || '')
+  const [geminiKeySaved, setGeminiKeySaved] = useState(false)
 
   useEffect(() => { loadRoster(); loadAllKnownNames() }, [])
 
@@ -370,19 +372,45 @@ export default function Settings() {
       <section>
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Personal settings</h2>
         <p className="text-xs text-gray-400 mb-3">Saved on this device only.</p>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <label className="flex items-center justify-between cursor-pointer">
-            <div>
-              <p className="text-sm font-medium text-gray-800">Show all trips by default</p>
-              <p className="text-xs text-gray-400 mt-0.5">When off, only trips you're a member of are shown on the home page</p>
+        <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+          <div className="p-4">
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <p className="text-sm font-medium text-gray-800">Show all trips by default</p>
+                <p className="text-xs text-gray-400 mt-0.5">When off, only trips you're a member of are shown on the home page</p>
+              </div>
+              <button
+                onClick={() => setDefaultShowAll(v => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${defaultShowAll ? 'bg-indigo-500' : 'bg-gray-200'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${defaultShowAll ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </label>
+          </div>
+          <div className="p-4">
+            <p className="text-sm font-medium text-gray-800 mb-0.5">Gemini API key</p>
+            <p className="text-xs text-gray-400 mb-2">
+              Used to scan receipt photos and auto-fill items. Get a free key at{' '}
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline">aistudio.google.com</a>.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={geminiKey}
+                onChange={e => { setGeminiKey(e.target.value); setGeminiKeySaved(false) }}
+                placeholder="AIza..."
+                autoComplete="off"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              />
+              <button
+                type="button"
+                onClick={() => { localStorage.setItem('gemini-api-key', geminiKey.trim()); setGeminiKeySaved(true) }}
+                className="px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
+              >
+                {geminiKeySaved ? 'Saved ✓' : 'Save'}
+              </button>
             </div>
-            <button
-              onClick={() => setDefaultShowAll(v => !v)}
-              className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${defaultShowAll ? 'bg-indigo-500' : 'bg-gray-200'}`}
-            >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${defaultShowAll ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-          </label>
+          </div>
         </div>
       </section>
     </div>

@@ -33,8 +33,10 @@ export default function AddReceipt() {
   const [tax, setTax] = useState('')
   const [fees, setFees] = useState('')
   const [saving, setSaving] = useState(false)
+  const [scanning, setScanning] = useState(false)
   const [errors, setErrors] = useState({})
   const [isDirty, setIsDirty] = useState(false)
+  const scanInputRef = useRef(null)
   const [draggingItemId, setDraggingItemId] = useState(null)
   const [dragOverTarget, setDragOverTarget] = useState(null) // null = ungrouped, meal.local_id = that meal
   const loadComplete = useRef(false)
@@ -112,6 +114,129 @@ export default function AddReceipt() {
 
   function markDirty() {
     if (loadComplete.current) setIsDirty(true)
+  }
+
+  function toTitleCase(str) {
+    // Only convert if the string is mostly uppercase (e.g. "SOURDOUGH BREAD")
+    const letters = (str.match(/[a-zA-Z]/g) || [])
+    const upperCount = letters.filter(c => c === c.toUpperCase()).length
+    if (letters.length < 3 || upperCount / letters.length < 0.7) return str
+    return str.replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+  }
+
+  async function scanOneFile(file, apiKey) {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result.split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: file.type, data: base64 } },
+              { text: `Extract receipt data from this image and return ONLY valid JSON with this exact structure:
+{
+  "store_name": "string",
+  "category": "Groceries" | "Dining" | "Transportation" | "Misc",
+  "items": [{"name": "string", "price": number}],
+  "tip": number,
+  "tax": number,
+  "fees": number
+}
+Rules:
+- category: "Groceries" for supermarkets/grocery stores, "Dining" for restaurants/cafes/food delivery, "Transportation" for gas/rideshare/parking, "Misc" for everything else
+- items: individual line items only — no subtotals, totals, or tax lines
+- tip/tax/fees: 0 if not present, positive numbers if present
+- PRICE COLUMN: if the receipt has multiple price columns (e.g. "Price" and "You Pay", or "Regular" and "Member", or "Original" and "Sale", or "List" and "Final"), always use the FINAL/DISCOUNTED price the customer actually paid — i.e. "You Pay", "Member Price", "Sale Price", "Final", "Net" — NOT the original/regular/list price
+- item names: use normal title case (e.g. "Sourdough Bread"), not ALL CAPS even if the receipt shows all caps
+- Return ONLY the JSON object, no markdown, no extra text` },
+            ],
+          }],
+          generationConfig: { responseMimeType: 'application/json' },
+        }),
+      }
+    )
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error?.message || `API error ${res.status}`)
+    }
+
+    const data = await res.json()
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!text) throw new Error('No response from Gemini')
+    return JSON.parse(text)
+  }
+
+  async function scanReceipts(files) {
+    const apiKey = localStorage.getItem('gemini-api-key')
+    if (!apiKey) {
+      await showAlert('Add your free Gemini API key in Settings to use receipt scanning.', { title: 'No API key set' })
+      return
+    }
+    setScanning(true)
+    try {
+      const results = await Promise.all(Array.from(files).map(f => scanOneFile(f, apiKey)))
+
+      // Use store name + category from the first result that has them
+      const firstStore = results.find(r => r.store_name)
+      const firstCat = results.find(r => r.category)
+      if (firstStore?.store_name) { setStoreName(firstStore.store_name); setErrors(v => ({ ...v, storeName: undefined })) }
+      if (firstCat?.category && ['Groceries', 'Dining', 'Transportation', 'Misc'].includes(firstCat.category)) {
+        setCategory(firstCat.category)
+      }
+
+      // Sum tip/tax/fees across all results (handles multi-page receipts)
+      const totalTip = results.reduce((s, r) => s + (r.tip || 0), 0)
+      const totalTax = results.reduce((s, r) => s + (r.tax || 0), 0)
+      const totalFees = results.reduce((s, r) => s + (r.fees || 0), 0)
+      if (totalTip > 0) setTip(String(totalTip.toFixed(2)))
+      if (totalTax > 0) setTax(String(totalTax.toFixed(2)))
+      if (totalFees > 0) setFees(String(totalFees.toFixed(2)))
+
+      // Group results by store name — photos of the same receipt share the same store name.
+      // Deduplicate within each group (same receipt, multiple photos) but not across groups.
+      const groups = new Map()
+      for (const result of results) {
+        const storeKey = String(result.store_name || '').toLowerCase().trim() || '__unknown__'
+        if (!groups.has(storeKey)) groups.set(storeKey, [])
+        groups.get(storeKey).push(result)
+      }
+
+      const merged = []
+      for (const groupResults of groups.values()) {
+        const seen = new Set()
+        for (const result of groupResults) {
+          for (const item of (result.items || [])) {
+            const key = String(item.name || '').toLowerCase().replace(/\s+/g, ' ').trim()
+            if (!key || seen.has(key)) continue
+            seen.add(key)
+            merged.push({
+              ...newItem(),
+              name: toTitleCase(String(item.name || '')),
+              price: String(Number(item.price || 0).toFixed(2)),
+            })
+          }
+        }
+      }
+
+      if (merged.length > 0) {
+        setLineItems([...merged, newItem()])
+        setErrors(v => ({ ...v, items: undefined }))
+      }
+      markDirty()
+    } catch (err) {
+      await showAlert(err.message, { title: 'Scan failed' })
+    } finally {
+      setScanning(false)
+    }
   }
 
   async function handleBack() {
@@ -418,9 +543,43 @@ export default function AddReceipt() {
       <button onClick={handleBack} className="text-sm text-gray-500 hover:text-gray-700 hover:underline mb-2 inline-block">
         ← Back to trip
       </button>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">
-        {isEditing ? 'Edit Receipt' : 'Add Receipt'}
-      </h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {isEditing ? 'Edit Receipt' : 'Add Receipt'}
+        </h1>
+        <button
+          type="button"
+          onClick={() => scanInputRef.current?.click()}
+          disabled={scanning}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-indigo-200 text-indigo-600 text-sm font-medium rounded-lg hover:bg-indigo-50 transition disabled:opacity-50"
+        >
+          {scanning ? (
+            <>
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              Scanning…
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              Scan receipt
+            </>
+          )}
+        </button>
+        <input
+          ref={scanInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={e => { if (e.target.files?.length) scanReceipts(e.target.files); e.target.value = '' }}
+        />
+      </div>
 
       {isEditing && (
         <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
