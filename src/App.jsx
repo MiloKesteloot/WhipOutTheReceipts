@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import Home from './pages/Home.jsx'
 import TripDetail from './pages/TripDetail.jsx'
+import ReceiptDetail from './pages/ReceiptDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
 import Welcome from './pages/Welcome.jsx'
 import Stats from './pages/Stats.jsx'
@@ -84,6 +85,9 @@ export default function App() {
       <TopNav myName={myName} onSignOut={handleSignOut} />
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/receipt/new" element={<AddReceipt />} />
+        <Route path="/receipt/:receiptId" element={<ReceiptDetail />} />
+        <Route path="/receipt/:receiptId/edit" element={<AddReceipt />} />
         <Route path="/trip/:id" element={<TripDetail />} />
         <Route path="/trip/:id/add-receipt" element={<AddReceipt />} />
         <Route path="/trip/:id/receipt/:receiptId/edit" element={<AddReceipt />} />

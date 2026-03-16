@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { fetchCoreRoommates } from './Settings.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
@@ -16,7 +16,9 @@ function newMeal(dbId = null) {
 export default function AddReceipt() {
   const { id: tripId, receiptId } = useParams()
   const isEditing = !!receiptId
+  const isStandalone = !tripId
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [trip, setTrip] = useState(null)
   const [storeName, setStoreName] = useState('')
@@ -30,6 +32,12 @@ export default function AddReceipt() {
   const [originalDbIds, setOriginalDbIds] = useState(new Set())
   const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
   const [category, setCategory] = useState('Groceries')
+  const [receiptDate, setReceiptDate] = useState(() => {
+    if (!tripId && !receiptId) return searchParams.get('date') || new Date().toISOString().slice(0, 10)
+    return ''
+  })
+  const [receiptMembers, setReceiptMembers] = useState([])
+  const [memberInput, setMemberInput] = useState('')
   const [tip, setTip] = useState('')
   const [tax, setTax] = useState('')
   const [fees, setFees] = useState('')
@@ -45,16 +53,46 @@ export default function AddReceipt() {
 
   useEffect(() => {
     async function load() {
+      const core = await fetchCoreRoommates()
+      setCoreRoommates(core)
+
+      if (isStandalone) {
+        // Standalone mode: no trip, load known paid_by names from all standalone receipts
+        const [{ data: standaloneReceipts }] = await Promise.all([
+          supabase.from('receipts').select('paid_by').not('receipt_date', 'is', null),
+        ])
+        const names = new Set((standaloneReceipts || []).map(r => r.paid_by))
+        setKnownNames([...names].filter(Boolean))
+
+        if (isEditing) {
+          const { data: receipt } = await supabase
+            .from('receipts').select('*').eq('id', receiptId).single()
+          if (receipt) {
+            setStoreName(receipt.store_name)
+            setPaidBy(receipt.paid_by)
+            setCategory(receipt.category || 'Groceries')
+            setTip(receipt.tip ? String(receipt.tip) : '')
+            setTax(receipt.tax ? String(receipt.tax) : '')
+            setFees(receipt.fees ? String(receipt.fees) : '')
+            if (receipt.receipt_date) setReceiptDate(receipt.receipt_date)
+            setReceiptMembers(receipt.members || core)
+          }
+        } else {
+          const savedName = localStorage.getItem('global-name')
+          if (savedName) setPaidBy(savedName)
+          setReceiptMembers(core)
+        }
+        loadComplete.current = true
+        return
+      }
+
+      // Trip-linked mode (legacy)
       const { data: tripData } = await supabase.from('trips').select('*').eq('id', tripId).single()
       setTrip(tripData)
 
-      const [{ data: receipts }, core] = await Promise.all([
-        supabase.from('receipts').select('paid_by').eq('trip_id', tripId),
-        fetchCoreRoommates(),
-      ])
+      const { data: receipts } = await supabase.from('receipts').select('paid_by').eq('trip_id', tripId)
       const names = new Set((receipts || []).map(r => r.paid_by))
       setKnownNames([...names].filter(Boolean))
-      setCoreRoommates(core)
 
       if (isEditing) {
         const { data: receipt } = await supabase
@@ -101,7 +139,7 @@ export default function AddReceipt() {
       loadComplete.current = true
     }
     load()
-  }, [tripId, receiptId, isEditing])
+  }, [tripId, receiptId, isEditing, isStandalone])
 
   useEffect(() => {
     function handleClick(e) {
@@ -268,7 +306,12 @@ Rules:
       confirmLabel: 'Leave',
       danger: true,
     })) return
-    navigate(`/trip/${tripId}`)
+    if (isStandalone) {
+      if (isEditing) navigate(`/receipt/${receiptId}`)
+      else navigate('/')
+    } else {
+      navigate(`/trip/${tripId}`)
+    }
   }
 
   function updateItem(itemId, field, value) {
@@ -402,9 +445,14 @@ Rules:
     setSaving(true)
 
     if (isEditing) {
+      const updatePayload = { store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 }
+      if (isStandalone) {
+        updatePayload.receipt_date = receiptDate || null
+        updatePayload.members = receiptMembers
+      }
       const { error: updateErr } = await supabase
         .from('receipts')
-        .update({ store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
+        .update(updatePayload)
         .eq('id', receiptId)
       if (updateErr) { await showAlert(updateErr.message, { title: 'Error updating receipt' }); setSaving(false); return }
 
@@ -449,9 +497,23 @@ Rules:
         await supabase.from('items').delete().in('id', toDelete)
       }
     } else {
+      const insertPayload = {
+        store_name: storeName.trim(),
+        paid_by: paidBy.trim(),
+        category,
+        tip: parseFloat(tip) || 0,
+        tax: parseFloat(tax) || 0,
+        fees: parseFloat(fees) || 0,
+      }
+      if (isStandalone) {
+        insertPayload.receipt_date = receiptDate || null
+        insertPayload.members = receiptMembers
+      } else {
+        insertPayload.trip_id = tripId
+      }
       const { data: receipt, error: receiptErr } = await supabase
         .from('receipts')
-        .insert({ trip_id: tripId, store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 })
+        .insert(insertPayload)
         .select()
         .single()
       if (receiptErr) { await showAlert(receiptErr.message, { title: 'Error saving receipt' }); setSaving(false); return }
@@ -468,9 +530,15 @@ Rules:
         }))
       )
       if (itemsErr) { await showAlert(itemsErr.message, { title: 'Error saving items' }); setSaving(false); return }
+
+      if (isStandalone) { navigate(`/receipt/${receipt.id}`); return }
     }
 
-    navigate(`/trip/${tripId}`)
+    if (isStandalone) {
+      navigate(`/receipt/${receiptId}`)
+    } else {
+      navigate(`/trip/${tripId}`)
+    }
   }
 
   async function handleDelete() {
@@ -480,10 +548,11 @@ Rules:
       danger: true,
     })) return
     await supabase.from('receipts').delete().eq('id', receiptId)
-    navigate(`/trip/${tripId}`)
+    if (isStandalone) navigate('/')
+    else navigate(`/trip/${tripId}`)
   }
 
-  if (trip?.closed) {
+  if (!isStandalone && trip?.closed) {
     return (
       <div className="max-w-xl mx-auto p-8 text-center text-gray-500">
         This trip is closed.{' '}
@@ -564,7 +633,7 @@ Rules:
     {DialogUI}
     <div className="max-w-xl mx-auto p-4 py-8">
       <button onClick={handleBack} className="text-sm text-gray-500 hover:text-gray-700 hover:underline mb-2 inline-block">
-        ← Back to trip
+        {isStandalone ? '← Back' : '← Back to trip'}
       </button>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
@@ -611,6 +680,76 @@ Rules:
       )}
 
       <form onSubmit={handleSave} className="space-y-5">
+        {/* Date (standalone only) */}
+        {isStandalone && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+            <input
+              type="date"
+              value={receiptDate}
+              onChange={e => { markDirty(); setReceiptDate(e.target.value) }}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400"
+            />
+          </div>
+        )}
+
+        {/* Members (standalone only) */}
+        {isStandalone && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this receipt?</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {[...new Set([...coreRoommates, ...receiptMembers])].map(name => {
+                const selected = receiptMembers.includes(name)
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => {
+                      markDirty()
+                      setReceiptMembers(prev =>
+                        prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]
+                      )
+                    }}
+                    className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
+                      selected ? 'bg-accent-600 text-white border-accent-600' : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={memberInput}
+                onChange={e => setMemberInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const name = memberInput.trim()
+                    if (name && !receiptMembers.includes(name)) { markDirty(); setReceiptMembers(prev => [...prev, name]) }
+                    setMemberInput('')
+                  }
+                }}
+                placeholder="Add someone…"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const name = memberInput.trim()
+                  if (name && !receiptMembers.includes(name)) { markDirty(); setReceiptMembers(prev => [...prev, name]) }
+                  setMemberInput('')
+                }}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Store name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Store name</label>
