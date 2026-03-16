@@ -16,12 +16,15 @@ export default function Home() {
   const [creating, setCreating] = useState(false)
   const [settling, setSettling] = useState(null)
   const [tripName, setTripName] = useState('')
-  const [showForm, setShowForm] = useState(false)
+  const [selectedDay, setSelectedDay] = useState(null)
+  const [tripTotals, setTripTotals] = useState({})
   const [coreRoommates, setCoreRoommates] = useState([])
   const [members, setMembers] = useState([])
   const [newMemberInput, setNewMemberInput] = useState('')
   const [expandedPeople, setExpandedPeople] = useState(new Set())
   const [showAllTrips, setShowAllTrips] = useState(localStorage.getItem('default-show-all-trips') === '1')
+  const [draggingTripId, setDraggingTripId] = useState(null)
+  const [dragOverKey, setDragOverKey] = useState(null)
   const [calMonth, setCalMonth] = useState(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -78,6 +81,18 @@ export default function Home() {
       map[checkin.trip_id].add(checkin.roommate.toLowerCase())
     }
     setClaimersByTrip(map)
+
+    // Compute total spend per trip for calendar display
+    const totals = {}
+    for (const trip of trips) {
+      const tReceipts = allReceipts.filter(r => r.trip_id === trip.id)
+      const rIds = new Set(tReceipts.map(r => r.id))
+      const tItems = allItems.filter(i => rIds.has(i.receipt_id))
+      totals[trip.id] =
+        tItems.reduce((s, i) => s + Number(i.price || 0), 0) +
+        tReceipts.reduce((s, r) => s + Number(r.tip || 0) + Number(r.tax || 0) + Number(r.fees || 0), 0)
+    }
+    setTripTotals(totals)
 
     const data = { trips, allReceipts, allItems, allClaims, settlements, allMeals }
     setRawData(data)
@@ -167,7 +182,7 @@ function toggleExpanded(person) {
   }
 
   function resetForm() {
-    setShowForm(false)
+    setSelectedDay(null)
     setTripName('')
     setMembers(coreRoommates)
     setNewMemberInput('')
@@ -194,6 +209,16 @@ function toggleExpanded(person) {
     await supabase.from('settlements').upsert(upserts, { onConflict: 'trip_id,debtor,creditor' })
     await fetchTrips()
     setSettling(null)
+  }
+
+  async function moveTrip(tripId, date) {
+    const dateStr = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-')
+    setTrips(prev => prev.map(t => t.id === tripId ? { ...t, trip_date: dateStr } : t))
+    await supabase.from('trips').update({ trip_date: dateStr }).eq('id', tripId)
   }
 
   async function createTrip(e) {
@@ -251,91 +276,96 @@ function toggleExpanded(person) {
   return (
     <>
     {DialogUI}
-    <div className="max-w-xl mx-auto p-4 py-8">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-1">Receipts</h1>
-          <p className="text-gray-500">Fair grocery splits for roommates.</p>
-        </div>
-        <button
-          onClick={() => setShowForm(s => !s)}
-          className="mt-1 shrink-0 text-sm px-3 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition"
-        >
-          + New Trip
-        </button>
-      </div>
 
-      {/* New trip form */}
-      {showForm && (
-        <form onSubmit={createTrip} className="mb-6 bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Trip name</label>
-            <input
-              type="text"
-              value={tripName}
-              onChange={e => setTripName(e.target.value)}
-              placeholder={`Grocery run – ${today}`}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this trip?</label>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {[...new Set([...coreRoommates, ...members])].map(name => {
-                const selected = members.includes(name)
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => toggleMember(name)}
-                    className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
-                      selected
-                        ? 'bg-accent-600 text-white border-accent-600'
-                        : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
-                    }`}
-                  >
-                    {name}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="flex gap-2">
+    {/* New trip modal — opens when a calendar day is clicked */}
+    {selectedDay && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+          <h2 className="font-semibold text-gray-900 text-lg mb-0.5">New Trip</h2>
+          <p className="text-sm text-gray-400 mb-4">
+            {selectedDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+          <form onSubmit={createTrip} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Trip name</label>
               <input
                 type="text"
-                value={newMemberInput}
-                onChange={e => setNewMemberInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addCustomMember(e)}
-                placeholder="Add someone…"
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+                value={tripName}
+                onChange={e => setTripName(e.target.value)}
+                placeholder={`Grocery run – ${today}`}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400"
+                autoFocus
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this trip?</label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {[...new Set([...coreRoommates, ...members])].map(name => {
+                  const selected = members.includes(name)
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => toggleMember(name)}
+                      className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
+                        selected
+                          ? 'bg-accent-600 text-white border-accent-600'
+                          : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMemberInput}
+                  onChange={e => setNewMemberInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addCustomMember(e)}
+                  placeholder="Add someone…"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+                />
+                <button
+                  type="button"
+                  onClick={addCustomMember}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={creating}
+                className="flex-1 py-2 bg-accent-600 text-white font-semibold rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
+              >
+                {creating ? 'Creating…' : 'Create Trip'}
+              </button>
               <button
                 type="button"
-                onClick={addCustomMember}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600"
+                onClick={resetForm}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
               >
-                Add
+                Cancel
               </button>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={creating}
-              className="flex-1 py-2 bg-accent-600 text-white font-semibold rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
-            >
-              {creating ? 'Creating…' : 'Create Trip'}
-            </button>
-            <button
-              type="button"
-              onClick={resetForm}
-              className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
+          </form>
+        </div>
+      </div>
+    )}
+
+    <div className="max-w-5xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 mb-1">Receipts</h1>
+        <p className="text-gray-500">Fair grocery splits for roommates.</p>
+      </div>
+
+      {/* Debt summaries — narrower for readability */}
+      <div className="max-w-2xl space-y-4 mb-8">
 
       {/* People who owe you — grouped by person, collapsible, net amounts */}
       {myName && owedToMeEntries.length > 0 && (
@@ -510,70 +540,71 @@ function toggleExpanded(person) {
         </div>
       )}
 
+      </div>{/* end debt summaries */}
+
       {/* Calendar */}
       {(() => {
         const now = new Date()
         const isCurrentMonth = calMonth.year === now.getFullYear() && calMonth.month === now.getMonth()
+        const firstDay = new Date(calMonth.year, calMonth.month, 1)
+        const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate()
+        const startPad = firstDay.getDay()
+        const totalCells = Math.ceil((startPad + daysInMonth) / 7) * 7
 
-        // Group trips by local date key
+        // Build grid including overflow days from adjacent months
+        const calDays = Array.from({ length: totalCells }, (_, i) => {
+          const dayNum = i - startPad + 1
+          const date = new Date(calMonth.year, calMonth.month, dayNum)
+          return { date, isCurrent: dayNum >= 1 && dayNum <= daysInMonth }
+        })
+
+        // Group trips by local date key — use trip_date if set, else created_at
         const tripsByDate = {}
         for (const trip of trips) {
-          const d = new Date(trip.created_at)
+          const d = trip.trip_date
+            ? new Date(trip.trip_date + 'T12:00:00')
+            : new Date(trip.created_at)
           const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
           if (!tripsByDate[key]) tripsByDate[key] = []
           tripsByDate[key].push(trip)
         }
 
-        // Build calendar day array (nulls for padding before month start)
-        const firstDay = new Date(calMonth.year, calMonth.month, 1)
-        const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate()
-        const calDays = [
-          ...Array(firstDay.getDay()).fill(null),
-          ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-        ]
-
         return (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <button
-                onClick={() => setCalMonth(prev => {
-                  const d = new Date(prev.year, prev.month - 1, 1)
-                  return { year: d.getFullYear(), month: d.getMonth() }
-                })}
-                className="p-1.5 hover:bg-gray-100 rounded-lg transition text-gray-500"
+                onClick={() => setCalMonth(prev => { const d = new Date(prev.year, prev.month - 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
+                className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
               <div className="flex items-center gap-3">
-                <h2 className="font-semibold text-gray-800">
+                <h2 className="text-lg font-semibold text-gray-800">
                   {firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </h2>
                 {!isCurrentMonth && (
                   <button
                     onClick={() => setCalMonth({ year: now.getFullYear(), month: now.getMonth() })}
-                    className="text-xs text-accent-500 hover:text-accent-700 transition"
+                    className="text-xs text-accent-600 hover:text-accent-700 font-medium transition"
                   >
                     Today
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowAllTrips(s => !s)}
-                  className="text-xs text-gray-400 hover:text-gray-600 transition mr-1"
+                  className="text-xs text-gray-400 hover:text-gray-600 transition px-2 py-1 rounded hover:bg-gray-100"
                   title={showAllTrips ? 'Showing all trips' : 'Showing only your trips'}
                 >
-                  {showAllTrips ? 'All' : 'Mine'}
+                  {showAllTrips ? 'All trips' : 'My trips'}
                 </button>
                 <button
-                  onClick={() => setCalMonth(prev => {
-                    const d = new Date(prev.year, prev.month + 1, 1)
-                    return { year: d.getFullYear(), month: d.getMonth() }
-                  })}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg transition text-gray-500"
+                  onClick={() => setCalMonth(prev => { const d = new Date(prev.year, prev.month + 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -583,54 +614,84 @@ function toggleExpanded(person) {
             </div>
 
             {/* Day-of-week headers */}
-            <div className="grid grid-cols-7 border-b border-gray-100">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                <div key={d} className="text-center text-xs font-medium text-gray-400 py-2">{d}</div>
+            <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/50">
+              {['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d => (
+                <div key={d} className="text-center text-xs font-semibold text-gray-400 tracking-widest py-3">{d}</div>
               ))}
             </div>
 
             {/* Grid */}
             {loading ? (
-              <p className="text-gray-400 text-sm p-4">Loading…</p>
+              <p className="text-gray-400 text-sm p-6">Loading…</p>
             ) : (
               <div className="grid grid-cols-7 divide-x divide-y divide-gray-100">
-                {calDays.map((day, i) => {
-                  if (!day) return <div key={`pad-${i}`} className="min-h-16 bg-gray-50/60" />
-
-                  const key = `${calMonth.year}-${calMonth.month}-${day}`
-                  const dayDate = new Date(calMonth.year, calMonth.month, day)
-                  const isToday = dayDate.toDateString() === now.toDateString()
+                {calDays.map(({ date, isCurrent }, i) => {
+                  const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+                  const isToday = date.toDateString() === now.toDateString()
                   const dayTrips = (tripsByDate[key] || []).filter(trip =>
                     showAllTrips || !myName || (trip.members || []).some(m => m.toLowerCase() === myName.toLowerCase())
                   )
+                  const dayTotal = dayTrips.reduce((s, t) => s + (tripTotals[t.id] || 0), 0)
+
+                  const isDragTarget = dragOverKey === key && draggingTripId
 
                   return (
-                    <div key={key} className={`min-h-16 p-1 ${isToday ? 'bg-accent-50/60' : ''}`}>
-                      <div className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 mx-auto ${
-                        isToday ? 'bg-accent-600 text-white' : 'text-gray-400'
-                      }`}>
-                        {day}
+                    <div
+                      key={`${key}-${i}`}
+                      onClick={() => { if (!draggingTripId) { setSelectedDay(date); setTripName(''); setMembers(coreRoommates); setNewMemberInput('') } }}
+                      onDragOver={e => { e.preventDefault(); setDragOverKey(key) }}
+                      onDragLeave={() => setDragOverKey(null)}
+                      onDrop={e => {
+                        e.preventDefault()
+                        if (draggingTripId) moveTrip(draggingTripId, date)
+                        setDraggingTripId(null)
+                        setDragOverKey(null)
+                      }}
+                      className={`min-h-28 p-2.5 transition-colors ${
+                        isDragTarget
+                          ? 'bg-accent-50 ring-2 ring-inset ring-accent-400'
+                          : !isCurrent ? 'bg-gray-50/60' : 'hover:bg-gray-50/80 cursor-pointer'
+                      } ${isToday && !isDragTarget ? 'ring-2 ring-inset ring-accent-500' : ''}`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full leading-none ${
+                          isToday
+                            ? 'bg-accent-600 text-white'
+                            : isCurrent ? 'text-gray-700' : 'text-gray-300'
+                        }`}>
+                          {date.getDate()}
+                        </div>
+                        {dayTotal > 0 && isCurrent && (
+                          <span className="text-sm font-semibold text-accent-600 leading-7">${dayTotal.toFixed(2)}</span>
+                        )}
                       </div>
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         {dayTrips.map(trip => {
                           const claimers = claimersByTrip[trip.id] || new Set()
                           const waitingOn = claimers.size > 0 && !trip.closed
                             ? (trip.members || []).filter(m => !claimers.has(m.toLowerCase()))
                             : []
                           return (
-                            <Link
+                            <div
                               key={trip.id}
-                              to={`/trip/${trip.id}`}
-                              className={`block text-xs px-1.5 py-0.5 rounded truncate leading-5 ${
-                                trip.closed
-                                  ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                  : waitingOn.length > 0
-                                    ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                                    : 'bg-accent-50 text-accent-700 border border-accent-100 hover:bg-accent-100'
+                              draggable
+                              onDragStart={e => { e.stopPropagation(); setDraggingTripId(trip.id) }}
+                              onDragEnd={() => { setDraggingTripId(null); setDragOverKey(null) }}
+                              className={`flex items-center gap-1.5 text-xs text-gray-600 group cursor-grab active:cursor-grabbing ${
+                                draggingTripId === trip.id ? 'opacity-40' : ''
                               }`}
                             >
-                              {trip.name}
-                            </Link>
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                trip.closed ? 'bg-gray-300' : waitingOn.length > 0 ? 'bg-amber-400' : 'bg-accent-500'
+                              }`} />
+                              <Link
+                                to={`/trip/${trip.id}`}
+                                onClick={e => e.stopPropagation()}
+                                className="truncate hover:text-accent-700 hover:underline"
+                              >
+                                {trip.name}
+                              </Link>
+                            </div>
                           )
                         })}
                       </div>
@@ -642,6 +703,7 @@ function toggleExpanded(person) {
           </div>
         )
       })()}
+
       <p className="mt-8 text-center text-xs text-gray-300">v{buildVersion}</p>
     </div>
     </>

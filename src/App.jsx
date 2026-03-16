@@ -13,7 +13,7 @@ function TopNav({ myName, onSignOut }) {
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
-      <div className="max-w-xl mx-auto flex items-center px-4 h-14">
+      <div className="max-w-5xl mx-auto flex items-center px-4 h-14">
         <Link
           to="/"
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
