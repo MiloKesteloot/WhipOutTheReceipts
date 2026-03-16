@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
+import { getItemEmoji } from '../lib/itemEmoji.js'
 import { useDialog } from '../lib/useDialog.jsx'
 
 const STORE_DOMAINS = [
@@ -352,6 +353,9 @@ export default function TripDetail() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 truncate">
             {item.name}
+            {getItemEmoji(item.name) && (
+              <span className="ml-1.5">{getItemEmoji(item.name)}</span>
+            )}
             {locked && <span className="ml-1.5 text-xs text-gray-400" title="Everyone splits this item">🔒</span>}
           </p>
           {claimerList.length > 0 && (
@@ -565,6 +569,9 @@ export default function TripDetail() {
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-gray-700 truncate">
                                       {item.name}
+                                      {getItemEmoji(item.name) && (
+                                        <span className="ml-1">{getItemEmoji(item.name)}</span>
+                                      )}
                                       {locked && <span className="ml-1 text-gray-400">🔒</span>}
                                     </p>
                                     {claimerList.length > 0 && (
