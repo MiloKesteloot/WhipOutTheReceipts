@@ -222,7 +222,7 @@ function toggleExpanded(person) {
       <li key={trip.id}>
         <Link
           to={`/trip/${trip.id}`}
-          className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-green-300 hover:shadow-sm transition"
+          className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm transition"
         >
           <div className="min-w-0">
             <p className="font-medium text-gray-900">{trip.name}</p>
@@ -275,7 +275,7 @@ function toggleExpanded(person) {
               value={tripName}
               onChange={e => setTripName(e.target.value)}
               placeholder={`Grocery run – ${today}`}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400"
               autoFocus
             />
           </div>
@@ -291,8 +291,8 @@ function toggleExpanded(person) {
                     onClick={() => toggleMember(name)}
                     className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
                       selected
-                        ? 'bg-green-600 text-white border-green-600'
-                        : 'bg-white text-gray-500 border-gray-300 hover:border-green-400'
+                        ? 'bg-accent-600 text-white border-accent-600'
+                        : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
                     }`}
                   >
                     {name}
@@ -307,7 +307,7 @@ function toggleExpanded(person) {
                 onChange={e => setNewMemberInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addCustomMember(e)}
                 placeholder="Add someone…"
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
               />
               <button
                 type="button"
@@ -322,7 +322,7 @@ function toggleExpanded(person) {
             <button
               type="submit"
               disabled={creating}
-              className="flex-1 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+              className="flex-1 py-2 bg-accent-600 text-white font-semibold rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
             >
               {creating ? 'Creating…' : 'Create Trip'}
             </button>
@@ -342,7 +342,7 @@ function toggleExpanded(person) {
         <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-800">People who owe you</h2>
-            <span className="text-sm font-semibold text-green-600">${pendingTotal.toFixed(2)}</span>
+            <span className="text-sm font-semibold text-accent-600">${pendingTotal.toFixed(2)}</span>
           </div>
           <ul className="space-y-1.5">
             {owedToMeEntries.map(([person, data]) => {
@@ -383,7 +383,7 @@ function toggleExpanded(person) {
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
                             {entry.settled
-                              ? <span className="text-xs text-green-600 font-medium">✓ sent</span>
+                              ? <span className="text-xs text-accent-600 font-medium">✓ sent</span>
                               : <span className="text-xs text-amber-500">awaiting</span>
                             }
                           </div>
@@ -445,12 +445,12 @@ function toggleExpanded(person) {
                   {expanded && (
                     <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
                       {data.iOweThem.every(e => e.settled) && data.theyOweMe.every(e => e.settled) ? (
-                        <p className="text-xs text-green-600 font-medium py-1">All settled ✓</p>
+                        <p className="text-xs text-accent-600 font-medium py-1">All settled ✓</p>
                       ) : (
                         <button
                           onClick={() => markAllSettledWith(person, data)}
                           disabled={!!settling}
-                          className="w-full text-sm py-1.5 px-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 font-medium"
+                          className="w-full text-sm py-1.5 px-3 bg-accent-600 text-white rounded-lg hover:bg-accent-700 transition disabled:opacity-50 font-medium"
                         >
                           {settling?.person === person ? '…' : `Mark everything settled with ${toTitleCase(person)}`}
                         </button>
@@ -472,12 +472,12 @@ function toggleExpanded(person) {
                             <div className="flex items-center gap-2 shrink-0">
                               <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
                               {entry.settled ? (
-                                <span className="text-xs text-green-600 font-medium">✓ sent</span>
+                                <span className="text-xs text-accent-600 font-medium">✓ sent</span>
                               ) : (
                                 <button
                                   onClick={() => markSettled(entry.tripId, person)}
                                   disabled={!!settling}
-                                  className="text-xs px-2 py-0.5 border border-green-200 text-green-600 rounded-md hover:bg-green-50 transition disabled:opacity-50"
+                                  className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50"
                                 >
                                   {isSettling ? '…' : 'Mark sent'}
                                 </button>
@@ -554,7 +554,7 @@ function toggleExpanded(person) {
                 {!isCurrentMonth && (
                   <button
                     onClick={() => setCalMonth({ year: now.getFullYear(), month: now.getMonth() })}
-                    className="text-xs text-green-500 hover:text-green-700 transition"
+                    className="text-xs text-accent-500 hover:text-accent-700 transition"
                   >
                     Today
                   </button>
@@ -605,9 +605,9 @@ function toggleExpanded(person) {
                   )
 
                   return (
-                    <div key={key} className={`min-h-16 p-1 ${isToday ? 'bg-green-50/60' : ''}`}>
+                    <div key={key} className={`min-h-16 p-1 ${isToday ? 'bg-accent-50/60' : ''}`}>
                       <div className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-1 mx-auto ${
-                        isToday ? 'bg-green-600 text-white' : 'text-gray-400'
+                        isToday ? 'bg-accent-600 text-white' : 'text-gray-400'
                       }`}>
                         {day}
                       </div>
@@ -626,7 +626,7 @@ function toggleExpanded(person) {
                                   ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                                   : waitingOn.length > 0
                                     ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                                    : 'bg-green-50 text-green-700 border border-green-100 hover:bg-green-100'
+                                    : 'bg-accent-50 text-accent-700 border border-accent-100 hover:bg-accent-100'
                               }`}
                             >
                               {trip.name}

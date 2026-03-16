@@ -1,3 +1,32 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Accent color ────────────────────────────────────────────────────────────
+   Change these 7 values to switch the accent color across the entire app.
+   Values are space-separated RGB (no commas), which lets Tailwind's
+   opacity modifiers (e.g. bg-accent-600/50) work correctly.
+
+   Current presets — copy the block you want:
+
+   Green (default):
+     240 253 244 / 220 252 231 / 187 247 208 / 134 239 172 / 74 222 128 / 22 163 74 / 21 128 61
+
+   Blue:
+     239 246 255 / 219 234 254 / 191 219 254 / 147 197 253 / 96 165 250 / 37 99 235 / 29 78 216
+
+   Purple:
+     245 243 255 / 237 233 254 / 221 214 254 / 196 181 253 / 167 139 250 / 124 58 237 / 109 40 217
+
+   Pink:
+     253 242 248 / 252 231 243 / 251 207 232 / 249 168 212 / 236 72 153 / 219 39 119 / 190 24 93
+──────────────────────────────────────────────────────────────────────────── */
+:root {
+  --accent-50:  240 253 244;
+  --accent-100: 220 252 231;
+  --accent-200: 187 247 208;
+  --accent-300: 134 239 172;
+  --accent-400:  74 222 128;
+  --accent-600:  22 163  74;
+  --accent-700:  21 128  61;
+}

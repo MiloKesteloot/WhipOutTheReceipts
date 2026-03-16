@@ -4,38 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { useDialog } from '../lib/useDialog.jsx'
-
-const STORE_DOMAINS = [
-  { keywords: ['trader joe', "trader joe's"], domain: 'traderjoes.com' },
-  { keywords: ['whole foods', 'wholefoods'], domain: 'wholefoodsmarket.com' },
-  { keywords: ['walmart', 'wal-mart', 'wal mart'], domain: 'walmart.com' },
-  { keywords: ['target'], domain: 'target.com' },
-  { keywords: ['costco'], domain: 'costco.com' },
-  { keywords: ['kroger'], domain: 'kroger.com' },
-  { keywords: ['safeway'], domain: 'safeway.com' },
-  { keywords: ['aldi'], domain: 'aldi.us' },
-  { keywords: ['publix'], domain: 'publix.com' },
-  { keywords: ['sprouts'], domain: 'sprouts.com' },
-  { keywords: ['wegmans'], domain: 'wegmans.com' },
-  { keywords: ['heb', 'h-e-b', 'h.e.b'], domain: 'heb.com' },
-  { keywords: ['meijer'], domain: 'meijer.com' },
-  { keywords: ['food lion'], domain: 'foodlion.com' },
-  { keywords: ['shoprite'], domain: 'shoprite.com' },
-  { keywords: ['starbucks'], domain: 'starbucks.com' },
-  { keywords: ['chipotle'], domain: 'chipotle.com' },
-  { keywords: ["mcdonald's", 'mcdonalds'], domain: 'mcdonalds.com' },
-  { keywords: ['doordash'], domain: 'doordash.com' },
-  { keywords: ['uber eats', 'ubereats'], domain: 'ubereats.com' },
-  { keywords: ['amazon'], domain: 'amazon.com' },
-  { keywords: ['cvs'], domain: 'cvs.com' },
-  { keywords: ['walgreens'], domain: 'walgreens.com' },
-  { keywords: ['instacart'], domain: 'instacart.com' },
-  { keywords: ['stop & shop', 'stop and shop'], domain: 'stopandshop.com' },
-  { keywords: ['giant'], domain: 'giantfood.com' },
-  { keywords: ['hannaford'], domain: 'hannaford.com' },
-  { keywords: ['ralphs', "ralph's"], domain: 'ralphs.com' },
-  { keywords: ["jewel", 'jewel osco', 'jewel-osco'], domain: 'jewelosco.com' },
-]
+import { CATEGORIES, STORE_DOMAINS } from '../config.js'
 
 function getStoreLogo(storeName) {
   if (!storeName) return null
@@ -348,7 +317,7 @@ export default function TripDetail() {
           checked={isMine}
           readOnly
           disabled={!myName || trip.closed || locked}
-          className="h-4 w-4 rounded accent-green-600 cursor-pointer"
+          className="h-4 w-4 rounded accent-accent-600 cursor-pointer"
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 truncate">
@@ -391,7 +360,7 @@ export default function TripDetail() {
             title={copied ? 'Copied!' : 'Copy share link'}
           >
             {copied ? (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-accent-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             ) : (
@@ -446,7 +415,7 @@ export default function TripDetail() {
           ) : (
             <Link
               to={`/trip/${id}/add-receipt`}
-              className="flex flex-col items-center gap-3 w-full max-w-xs p-8 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-green-300 hover:text-green-500 hover:bg-green-50 transition-all"
+              className="flex flex-col items-center gap-3 w-full max-w-xs p-8 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-accent-300 hover:text-accent-500 hover:bg-accent-50 transition-all"
             >
               <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -476,10 +445,7 @@ export default function TripDetail() {
                     <h2 className="font-semibold text-gray-700">{receipt.store_name}</h2>
                     {receipt.category && (
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        receipt.category === 'Groceries'     ? 'bg-green-100 text-green-700' :
-                        receipt.category === 'Dining'        ? 'bg-orange-100 text-orange-700' :
-                        receipt.category === 'Transportation' ? 'bg-blue-100 text-blue-700' :
-                                                               'bg-gray-100 text-gray-600'
+                        (CATEGORIES.find(c => c.label === receipt.category)?.color) || 'bg-gray-100 text-gray-600'
                       }`}>
                         {receipt.category}
                       </span>
@@ -528,7 +494,7 @@ export default function TripDetail() {
                                 ref={el => { if (el) el.indeterminate = checkState === 'some' }}
                                 readOnly
                                 disabled={!canInteract}
-                                className="h-4 w-4 rounded accent-green-600"
+                                className="h-4 w-4 rounded accent-accent-600"
                               />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-gray-700">{meal.name}</p>
@@ -564,7 +530,7 @@ export default function TripDetail() {
                                     checked={isMine}
                                     readOnly
                                     disabled={!myName || trip.closed || locked}
-                                    className="h-3.5 w-3.5 rounded accent-green-600"
+                                    className="h-3.5 w-3.5 rounded accent-accent-600"
                                   />
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-medium text-gray-700 truncate">
@@ -600,13 +566,13 @@ export default function TripDetail() {
           <div className="bg-white border border-gray-200 shadow-lg rounded-2xl px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-400">Your running total</p>
-              <p className="text-xl font-bold text-green-600">${runningTotal.toFixed(2)}</p>
+              <p className="text-xl font-bold text-accent-600">${runningTotal.toFixed(2)}</p>
             </div>
             {!trip.closed && (
               <button
                 onClick={saveClaims}
                 disabled={saving}
-                className="px-5 py-2 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition disabled:opacity-50"
+                className="px-5 py-2 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50"
               >
                 {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save my claims'}
               </button>
@@ -631,7 +597,7 @@ export default function TripDetail() {
                         {d.debtor}
                       </span>
                       {settled
-                        ? <span className="text-xs text-green-600 font-medium">✓ Sent</span>
+                        ? <span className="text-xs text-accent-600 font-medium">✓ Sent</span>
                         : <span className="text-xs text-amber-500">awaiting</span>
                       }
                     </div>
@@ -677,20 +643,20 @@ export default function TripDetail() {
                             <button
                               onClick={() => unmarkSettled(d.debtor, d.creditor)}
                               disabled={settling}
-                              className="text-xs text-green-600 font-medium hover:text-gray-400 transition disabled:opacity-50"
+                              className="text-xs text-accent-600 font-medium hover:text-gray-400 transition disabled:opacity-50"
                               title="Click to undo"
                             >
                               ✓ Sent
                             </button>
                           ) : (
-                            <span className="text-xs text-green-600 font-medium">✓ Sent</span>
+                            <span className="text-xs text-accent-600 font-medium">✓ Sent</span>
                           )
                         ) : (
                           myName === d.debtor ? (
                             <button
                               onClick={() => markSettled(d.debtor, d.creditor)}
                               disabled={settling}
-                              className="text-xs px-2 py-0.5 border border-green-200 text-green-600 rounded-md hover:bg-green-50 transition disabled:opacity-50"
+                              className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50"
                             >
                               Mark sent
                             </button>
@@ -722,7 +688,7 @@ export default function TripDetail() {
                 <div className="mt-2 space-y-3">
                   {Object.entries(breakdown).map(([person, entries]) => (
                     <div key={person}>
-                      <p className="text-sm font-medium text-green-700 mb-1">{person}</p>
+                      <p className="text-sm font-medium text-accent-700 mb-1">{person}</p>
                       <ul className="space-y-0.5">
                         {entries.map((e, i) => (
                           <li key={i} className="flex justify-between text-xs text-gray-500">

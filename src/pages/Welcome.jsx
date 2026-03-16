@@ -76,7 +76,7 @@ export default function Welcome({ onNameSet }) {
                 placeholder="Enter your name"
                 autoComplete="nickname"
                 autoFocus
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-400 text-gray-900"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-accent-400 text-gray-900"
               />
               {open && suggestions.length > 0 && (
                 <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
@@ -89,7 +89,7 @@ export default function Welcome({ onNameSet }) {
                             <button
                               type="button"
                               onMouseDown={e => { e.preventDefault(); setName(n); setOpen(false) }}
-                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 hover:text-green-700 transition-colors flex items-center justify-between"
+                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors flex items-center justify-between"
                             >
                               {n}
                               <span className="text-xs text-gray-300">pinned</span>
@@ -108,7 +108,7 @@ export default function Welcome({ onNameSet }) {
                             <button
                               type="button"
                               onMouseDown={e => { e.preventDefault(); setName(n); setOpen(false) }}
-                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 hover:text-green-700 transition-colors"
+                              className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors"
                             >
                               {n}
                             </button>
@@ -122,7 +122,7 @@ export default function Welcome({ onNameSet }) {
                       <button
                         type="button"
                         onMouseDown={e => { e.preventDefault(); setName(n); setOpen(false) }}
-                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 hover:text-green-700 transition-colors"
+                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors"
                       >
                         {n}
                       </button>
@@ -134,7 +134,7 @@ export default function Welcome({ onNameSet }) {
             <button
               type="submit"
               disabled={!name.trim()}
-              className="w-full py-3 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition disabled:opacity-50"
+              className="w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50"
             >
               Get started →
             </button>
