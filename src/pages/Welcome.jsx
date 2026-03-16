@@ -74,7 +74,7 @@ export default function Welcome({ onNameSet }) {
                 onChange={e => { setName(e.target.value); setOpen(true) }}
                 onClick={() => setOpen(true)}
                 placeholder="Enter your name"
-                autoComplete="off"
+                autoComplete="nickname"
                 autoFocus
                 className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-900"
               />
