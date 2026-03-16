@@ -188,7 +188,7 @@ Rules:
       // Use store name + category from the first result that has them
       const firstStore = results.find(r => r.store_name)
       const firstCat = results.find(r => r.category)
-      if (firstStore?.store_name) { setStoreName(firstStore.store_name); setErrors(v => ({ ...v, storeName: undefined })) }
+      if (firstStore?.store_name) { setStoreName(toTitleCase(firstStore.store_name)); setErrors(v => ({ ...v, storeName: undefined })) }
       if (firstCat?.category && ['Groceries', 'Dining', 'Transportation', 'Misc'].includes(firstCat.category)) {
         setCategory(firstCat.category)
       }
@@ -216,7 +216,7 @@ Rules:
         for (const result of groupResults) {
           for (const item of (result.items || [])) {
             const key = String(item.name || '').toLowerCase().replace(/\s+/g, ' ').trim()
-            if (!key || seen.has(key)) continue
+            if (!key || seen.has(key) || !Number(item.price)) continue
             seen.add(key)
             merged.push({
               ...newItem(),
