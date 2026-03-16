@@ -4,6 +4,46 @@ import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
 import { useDialog } from '../lib/useDialog.jsx'
 
+const STORE_DOMAINS = [
+  { keywords: ['trader joe', "trader joe's"], domain: 'traderjoes.com' },
+  { keywords: ['whole foods', 'wholefoods'], domain: 'wholefoodsmarket.com' },
+  { keywords: ['walmart', 'wal-mart', 'wal mart'], domain: 'walmart.com' },
+  { keywords: ['target'], domain: 'target.com' },
+  { keywords: ['costco'], domain: 'costco.com' },
+  { keywords: ['kroger'], domain: 'kroger.com' },
+  { keywords: ['safeway'], domain: 'safeway.com' },
+  { keywords: ['aldi'], domain: 'aldi.us' },
+  { keywords: ['publix'], domain: 'publix.com' },
+  { keywords: ['sprouts'], domain: 'sprouts.com' },
+  { keywords: ['wegmans'], domain: 'wegmans.com' },
+  { keywords: ['heb', 'h-e-b', 'h.e.b'], domain: 'heb.com' },
+  { keywords: ['meijer'], domain: 'meijer.com' },
+  { keywords: ['food lion'], domain: 'foodlion.com' },
+  { keywords: ['shoprite'], domain: 'shoprite.com' },
+  { keywords: ['starbucks'], domain: 'starbucks.com' },
+  { keywords: ['chipotle'], domain: 'chipotle.com' },
+  { keywords: ["mcdonald's", 'mcdonalds'], domain: 'mcdonalds.com' },
+  { keywords: ['doordash'], domain: 'doordash.com' },
+  { keywords: ['uber eats', 'ubereats'], domain: 'ubereats.com' },
+  { keywords: ['amazon'], domain: 'amazon.com' },
+  { keywords: ['cvs'], domain: 'cvs.com' },
+  { keywords: ['walgreens'], domain: 'walgreens.com' },
+  { keywords: ['instacart'], domain: 'instacart.com' },
+  { keywords: ['stop & shop', 'stop and shop'], domain: 'stopandshop.com' },
+  { keywords: ['giant'], domain: 'giantfood.com' },
+  { keywords: ['hannaford'], domain: 'hannaford.com' },
+  { keywords: ['ralphs', "ralph's"], domain: 'ralphs.com' },
+  { keywords: ["jewel", 'jewel osco', 'jewel-osco'], domain: 'jewelosco.com' },
+]
+
+function getStoreLogo(storeName) {
+  if (!storeName) return null
+  const lower = storeName.toLowerCase()
+  const match = STORE_DOMAINS.find(({ keywords }) => keywords.some(k => lower.includes(k)))
+  if (!match) return null
+  return `https://www.google.com/s2/favicons?domain=${match.domain}&sz=32`
+}
+
 export default function TripDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -422,6 +462,13 @@ export default function TripDetail() {
               <div key={receipt.id}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
+                    {getStoreLogo(receipt.store_name) && (
+                      <img
+                        src={getStoreLogo(receipt.store_name)}
+                        alt=""
+                        className="w-5 h-5 rounded object-contain"
+                      />
+                    )}
                     <h2 className="font-semibold text-gray-700">{receipt.store_name}</h2>
                     {receipt.category && (
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
