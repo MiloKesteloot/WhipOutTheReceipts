@@ -629,7 +629,7 @@ function toggleExpanded(person) {
                   const isDragTarget = dragOverKey === key && draggingTripId
 
                   function handleCellClick() {
-                    if (draggingTripId) return
+                    if (draggingTripId || !isCurrent) return
                     if (dayReceipts.length === 0) {
                       navigate(`/receipt/new?date=${fmtDate(date)}`)
                     } else if (dayReceipts.length === 1) {
@@ -654,7 +654,7 @@ function toggleExpanded(person) {
                       className={`relative min-h-28 p-2.5 transition-colors group ${
                         isDragTarget
                           ? 'bg-accent-50 ring-2 ring-inset ring-accent-400'
-                          : !isCurrent ? 'bg-gray-50/60' : 'hover:bg-gray-50/80 cursor-pointer'
+                          : !isCurrent ? 'bg-gray-50/60 cursor-default' : 'hover:bg-gray-50/80 cursor-pointer'
                       } ${isToday && !isDragTarget ? 'ring-2 ring-inset ring-accent-500' : ''}`}
                     >
                       <div className="flex items-start justify-between mb-2">
@@ -667,8 +667,8 @@ function toggleExpanded(person) {
                           {dayTotal > 0 && isCurrent && (
                             <span className="text-xs font-semibold text-accent-600">${dayTotal.toFixed(2)}</span>
                           )}
-                          {/* Hover "+" button when day has receipts */}
-                          {isCurrent && dayReceipts.length > 0 && (
+                          {/* Hover "+" button when day has one or more receipts */}
+                          {isCurrent && dayReceipts.length >= 1 && (
                             <button
                               onClick={e => { e.stopPropagation(); navigate(`/receipt/new?date=${fmtDate(date)}`) }}
                               className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full bg-accent-100 text-accent-600 hover:bg-accent-200 text-xs font-bold"
@@ -703,7 +703,7 @@ function toggleExpanded(person) {
                             </div>
                           )
                         })}
-                        {/* Standalone receipts */}
+                        {/* Standalone receipts — not individually clickable; whole cell handles navigation */}
                         {dayReceipts.map(receipt => {
                           const claimers = claimersByReceipt[receipt.id] || new Set()
                           const waitingOn = claimers.size > 0
@@ -714,9 +714,7 @@ function toggleExpanded(person) {
                               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                 waitingOn.length > 0 ? 'bg-amber-400' : 'bg-accent-500'
                               }`} />
-                              <Link to={`/receipt/${receipt.id}`} onClick={e => e.stopPropagation()} className="truncate hover:text-accent-700 hover:underline">
-                                {receipt.store_name}
-                              </Link>
+                              <span className="truncate">{receipt.store_name}</span>
                             </div>
                           )
                         })}
