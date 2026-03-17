@@ -17,6 +17,7 @@ export default function Home() {
   const [receiptTotals, setReceiptTotals] = useState({})
   const [expandedPeople, setExpandedPeople] = useState(new Set())
   const [showAllReceipts, setShowAllReceipts] = useState(localStorage.getItem('default-show-all-trips') === '1')
+  const [view, setView] = useState(() => localStorage.getItem('home-view') || 'calendar')
   const [calMonth, setCalMonth] = useState(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -389,8 +390,31 @@ function toggleExpanded(person) {
 
       </div>{/* end debt summaries */}
 
-      {/* Calendar */}
-      {(() => {
+      {/* View toolbar */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+          {[['calendar', 'Calendar'], ['days', 'Days'], ['receipts', 'Receipts']].map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => { setView(v); localStorage.setItem('home-view', v) }}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowAllReceipts(s => !s)}
+          className="text-xs text-gray-400 hover:text-gray-600 transition px-2 py-1 rounded hover:bg-gray-100"
+        >
+          {showAllReceipts ? 'All' : 'Mine'}
+        </button>
+      </div>
+
+      {/* Calendar view */}
+      {view === 'calendar' && (() => {
         const now = new Date()
         const isCurrentMonth = calMonth.year === now.getFullYear() && calMonth.month === now.getMonth()
         const firstDay = new Date(calMonth.year, calMonth.month, 1)
@@ -439,23 +463,14 @@ function toggleExpanded(person) {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowAllReceipts(s => !s)}
-                  className="text-xs text-gray-400 hover:text-gray-600 transition px-2 py-1 rounded hover:bg-gray-100"
-                  title={showAllReceipts ? 'Showing all receipts' : 'Showing only your receipts'}
-                >
-                  {showAllReceipts ? 'All' : 'Mine'}
-                </button>
-                <button
-                  onClick={() => setCalMonth(prev => { const d = new Date(prev.year, prev.month + 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
+              <button
+                onClick={() => setCalMonth(prev => { const d = new Date(prev.year, prev.month + 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
+                className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
             </div>
 
             {/* Day-of-week headers */}
@@ -539,6 +554,117 @@ function toggleExpanded(person) {
                 })}
               </div>
             )}
+          </div>
+        )
+      })()}
+
+      {/* Days view */}
+      {view === 'days' && (() => {
+        const filtered = standaloneReceipts.filter(r =>
+          showAllReceipts || !myName || !(r.members?.length) || r.members.some(m => m.toLowerCase() === myName.toLowerCase())
+        )
+        const byDate = {}
+        for (const r of filtered) {
+          const key = r.receipt_date
+          if (!byDate[key]) byDate[key] = []
+          byDate[key].push(r)
+        }
+        const sortedDays = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
+        if (sortedDays.length === 0) return (
+          <div className="text-center py-16 text-gray-400 text-sm">No receipts yet.</div>
+        )
+        return (
+          <div className="space-y-6">
+            {sortedDays.map(dateKey => {
+              const date = new Date(dateKey + 'T12:00:00')
+              const dayLabel = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+              const receipts = byDate[dateKey]
+              const dayTotal = receipts.reduce((s, r) => s + (receiptTotals[r.id] || 0), 0)
+              return (
+                <div key={dateKey}>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{dayLabel}</h3>
+                    {dayTotal > 0 && <span className="text-sm font-semibold text-accent-600">${dayTotal.toFixed(2)}</span>}
+                  </div>
+                  <div className="space-y-2">
+                    {receipts.map(r => {
+                      const claimers = claimersByReceipt[r.id] || new Set()
+                      const waitingOn = claimers.size > 0 && r.members?.length
+                        ? r.members.filter(m => !claimers.has(m.toLowerCase()))
+                        : []
+                      const total = receiptTotals[r.id] || 0
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => navigate(`/receipt/${r.id}`)}
+                          className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm transition text-left"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${waitingOn.length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
+                            <div className="min-w-0">
+                              <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
+                              {waitingOn.length > 0 && (
+                                <p className="text-xs text-amber-600">Waiting on {waitingOn.join(', ')}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-3">
+                            {total > 0 && <span className="text-sm font-semibold text-gray-700">${total.toFixed(2)}</span>}
+                            <span className="text-gray-300">›</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
+
+      {/* Receipts view */}
+      {view === 'receipts' && (() => {
+        const filtered = [...standaloneReceipts]
+          .filter(r =>
+            showAllReceipts || !myName || !(r.members?.length) || r.members.some(m => m.toLowerCase() === myName.toLowerCase())
+          )
+          .sort((a, b) => b.receipt_date.localeCompare(a.receipt_date))
+        if (filtered.length === 0) return (
+          <div className="text-center py-16 text-gray-400 text-sm">No receipts yet.</div>
+        )
+        return (
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
+            {filtered.map(r => {
+              const claimers = claimersByReceipt[r.id] || new Set()
+              const waitingOn = claimers.size > 0 && r.members?.length
+                ? r.members.filter(m => !claimers.has(m.toLowerCase()))
+                : []
+              const total = receiptTotals[r.id] || 0
+              const date = new Date(r.receipt_date + 'T12:00:00')
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => navigate(`/receipt/${r.id}`)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${waitingOn.length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
+                      <p className="text-xs text-gray-400">
+                        {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {waitingOn.length > 0 && <span className="text-amber-600 ml-2">· Waiting on {waitingOn.join(', ')}</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-3">
+                    {total > 0 && <span className="text-sm font-semibold text-gray-700">${total.toFixed(2)}</span>}
+                    <span className="text-gray-300">›</span>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )
       })()}
