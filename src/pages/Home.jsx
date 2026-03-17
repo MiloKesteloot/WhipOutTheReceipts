@@ -208,7 +208,7 @@ function toggleExpanded(person) {
       </div>
     )}
 
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="max-w-5xl mx-auto px-4 pt-0 pb-8">
       {/* Debt summaries — narrower for readability */}
       <div className="max-w-2xl space-y-4 mb-8">
 
@@ -457,9 +457,9 @@ function toggleExpanded(person) {
                 {!isCurrentMonth && (
                   <button
                     onClick={() => setCalMonth({ year: now.getFullYear(), month: now.getMonth() })}
-                    className="text-xs text-accent-600 hover:text-accent-700 font-medium transition"
+                    className="text-xs text-accent-600 hover:text-accent-700 font-medium underline transition"
                   >
-                    Today
+                    Jump to today
                   </button>
                 )}
               </div>
