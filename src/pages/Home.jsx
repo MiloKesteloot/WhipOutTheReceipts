@@ -482,7 +482,7 @@ function toggleExpanded(person) {
 
             {/* Grid */}
             {loading ? (
-              <p className="text-gray-400 text-sm p-6">Loading…</p>
+              <div className="min-h-[560px] flex items-center justify-center text-gray-300 text-sm">Loading…</div>
             ) : (
               <div className="grid grid-cols-7 divide-x divide-y divide-gray-100">
                 {calDays.map(({ date, isCurrent }, i) => {
