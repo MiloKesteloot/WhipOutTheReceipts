@@ -457,9 +457,9 @@ function toggleExpanded(person) {
                 {!isCurrentMonth && (
                   <button
                     onClick={() => setCalMonth({ year: now.getFullYear(), month: now.getMonth() })}
-                    className="text-xs text-accent-600 hover:text-accent-700 font-medium underline transition"
+                    className="text-xs text-accent-600 hover:text-accent-700 font-medium border border-accent-300 hover:border-accent-400 px-2 py-0.5 rounded-md transition"
                   >
-                    Jump to today
+                    ↩ Jump to today
                   </button>
                 )}
               </div>
