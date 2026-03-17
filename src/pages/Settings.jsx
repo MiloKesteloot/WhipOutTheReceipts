@@ -360,18 +360,18 @@ export default function Settings() {
           {geminiDbKey === null ? (
             <p className="text-sm text-gray-400">Loading…</p>
           ) : geminiDbKey && !replacingKey ? (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-gray-500 tracking-widest select-none">••••••••••••••••</span>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm text-gray-400 tracking-widest select-none">••••••••••••••••</div>
               <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => { setReplacingKey(true); setNewKeyInput('') }}
-                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                  className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
                 >
                   Replace
                 </button>
                 <button
                   onClick={deleteGeminiKey}
-                  className="text-xs px-3 py-1.5 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
+                  className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
                 >
                   Delete
                 </button>
