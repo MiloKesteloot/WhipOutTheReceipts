@@ -369,56 +369,32 @@ export default function Stats() {
 
       {/* Person filter */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Show people</h2>
-        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-          {coreInData.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-400 mb-2">Roommates</p>
-              <div className="flex flex-wrap gap-2">
-                {coreInData.map(person => {
-                  const isSelected = selected.has(person.toLowerCase())
-                  return (
-                    <button
-                      key={person}
-                      onClick={() => togglePerson(person.toLowerCase())}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                        isSelected
-                          ? 'bg-accent-50 border-accent-300 text-accent-700'
-                          : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-accent-500' : 'bg-gray-300'}`} />
-                      {toTitleCase(person)}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Show people</h2>
+          {selected.size !== allPeople.length && (
+            <button
+              onClick={() => setSelectedPeople(new Set(allPeople.map(p => p.toLowerCase())))}
+              className="text-xs text-accent-600 hover:text-accent-700 transition"
+            >
+              Select all
+            </button>
           )}
-          {othersInData.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-400 mb-2">Others</p>
-              <div className="flex flex-wrap gap-2">
-                {othersInData.map(person => {
-                  const isSelected = selected.has(person.toLowerCase())
-                  return (
-                    <button
-                      key={person}
-                      onClick={() => togglePerson(person.toLowerCase())}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                        isSelected
-                          ? 'bg-accent-50 border-accent-300 text-accent-700'
-                          : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-accent-500' : 'bg-gray-300'}`} />
-                      {toTitleCase(person)}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[...coreInData, ...othersInData].map(person => {
+            const isSelected = selected.has(person.toLowerCase())
+            return (
+              <button
+                key={person}
+                onClick={() => togglePerson(person.toLowerCase())}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                  isSelected ? 'bg-accent-50 border-accent-300 text-accent-700' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                }`}
+              >
+                {toTitleCase(person)}
+              </button>
+            )
+          })}
         </div>
       </section>
 
@@ -439,20 +415,14 @@ export default function Stats() {
           <div className="flex flex-wrap gap-2">
             {availableCategories.map(label => {
               const isSelected = selCats.has(label)
-              const cat = CATEGORIES.find(c => c.label === label)
               return (
                 <button
                   key={label}
                   onClick={() => toggleCategory(label)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                    isSelected
-                      ? 'bg-accent-50 border-accent-300 text-accent-700'
-                      : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                    isSelected ? 'bg-accent-50 border-accent-300 text-accent-700' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
                   }`}
                 >
-                  {cat && (
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: isSelected ? cat.chartColor : '#d1d5db' }} />
-                  )}
                   {label}
                 </button>
               )
