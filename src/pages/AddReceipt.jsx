@@ -77,6 +77,33 @@ export default function AddReceipt() {
             if (receipt.receipt_date) setReceiptDate(receipt.receipt_date)
             setReceiptMembers(receipt.members || core)
           }
+
+          const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
+            supabase.from('items').select('*').eq('receipt_id', receiptId).order('created_at'),
+            supabase.from('meals').select('*').eq('receipt_id', receiptId).order('created_at'),
+          ])
+
+          const loadedMeals = (existingMeals || []).map(m => ({
+            local_id: crypto.randomUUID(),
+            dbId: m.id,
+            name: m.name,
+            fee: m.fee ? String(m.fee) : '',
+          }))
+          setMeals(loadedMeals)
+          setOriginalMealDbIds(new Set(loadedMeals.map(m => m.dbId)))
+
+          const dbIdToLocalId = new Map(loadedMeals.map(m => [m.dbId, m.local_id]))
+
+          const loaded = (existingItems || []).map(item => ({
+            id: crypto.randomUUID(),
+            dbId: item.id,
+            name: item.name,
+            price: String(item.price),
+            always_split: item.always_split || false,
+            meal_local_id: item.meal_id ? (dbIdToLocalId.get(item.meal_id) || null) : null,
+          }))
+          setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
+          setLineItems([...loaded, newItem()])
         } else {
           const savedName = localStorage.getItem('global-name')
           if (savedName) setPaidBy(savedName)
