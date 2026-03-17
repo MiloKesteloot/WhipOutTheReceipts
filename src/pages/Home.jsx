@@ -209,12 +209,6 @@ function toggleExpanded(person) {
     )}
 
     <div className="max-w-5xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-1">Receipts</h1>
-        <p className="text-gray-500">Fair grocery splits for roommates.</p>
-      </div>
-
       {/* Debt summaries — narrower for readability */}
       <div className="max-w-2xl space-y-4 mb-8">
 
