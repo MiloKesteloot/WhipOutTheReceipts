@@ -4,6 +4,7 @@ import { FALLBACK_MEMBERS } from '../config.js'
 
 const FALLBACK_CORE = FALLBACK_MEMBERS
 const SETTINGS_KEY = 'apartment_members'
+const GEMINI_KEY_SETTING = 'gemini_api_key'
 
 // Async — used by Stats and Home on mount to get the current core list
 export async function fetchCoreRoommates() {
@@ -18,6 +19,19 @@ export async function fetchCoreRoommates() {
     }
   } catch {}
   return FALLBACK_CORE
+}
+
+// Async — used by AddReceipt to get the shared Gemini API key
+export async function fetchGeminiKey() {
+  try {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', GEMINI_KEY_SETTING)
+      .single()
+    return data?.value || ''
+  } catch {}
+  return ''
 }
 
 export default function Settings() {
@@ -45,10 +59,14 @@ export default function Settings() {
   const [defaultShowAll, setDefaultShowAll] = useState(
     localStorage.getItem('default-show-all-trips') === '1'
   )
-  const [geminiKey, setGeminiKey] = useState(localStorage.getItem('gemini-api-key') || '')
-  const [geminiKeySaved, setGeminiKeySaved] = useState(false)
 
-  useEffect(() => { loadRoster(); loadAllKnownNames() }, [])
+  // Gemini key — stored globally in app_settings
+  const [geminiDbKey, setGeminiDbKey] = useState(null) // null = loading
+  const [replacingKey, setReplacingKey] = useState(false)
+  const [newKeyInput, setNewKeyInput] = useState('')
+  const [geminiSaving, setGeminiSaving] = useState(false)
+
+  useEffect(() => { loadRoster(); loadAllKnownNames(); loadGeminiKey() }, [])
 
   useEffect(() => {
     function handleClick(e) {
@@ -156,6 +174,32 @@ export default function Settings() {
     }
     updateRoster([...roster, { name, isCore: true }])
     setNewPersonInput('')
+  }
+
+  async function loadGeminiKey() {
+    const key = await fetchGeminiKey()
+    setGeminiDbKey(key)
+  }
+
+  async function saveGeminiKey() {
+    const trimmed = newKeyInput.trim()
+    if (!trimmed) return
+    setGeminiSaving(true)
+    await supabase.from('app_settings').upsert(
+      { key: GEMINI_KEY_SETTING, value: trimmed },
+      { onConflict: 'key' }
+    )
+    setGeminiDbKey(trimmed)
+    setNewKeyInput('')
+    setReplacingKey(false)
+    setGeminiSaving(false)
+  }
+
+  async function deleteGeminiKey() {
+    await supabase.from('app_settings').delete().eq('key', GEMINI_KEY_SETTING)
+    setGeminiDbKey('')
+    setReplacingKey(false)
+    setNewKeyInput('')
   }
 
   function saveName() {
@@ -294,6 +338,66 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* Gemini API key — shared / apartment-wide */}
+      <section>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-700 mb-0.5">Gemini API key</p>
+          <p className="text-xs text-gray-400 mb-3">
+            Used to scan receipt photos. Shared for everyone in the apartment. Get a free key at{' '}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-accent-500 hover:underline">aistudio.google.com</a>.
+          </p>
+
+          {geminiDbKey === null ? (
+            <p className="text-sm text-gray-400">Loading…</p>
+          ) : geminiDbKey && !replacingKey ? (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-gray-500 tracking-widest select-none">••••••••••••••••</span>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => { setReplacingKey(true); setNewKeyInput('') }}
+                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Replace
+                </button>
+                <button
+                  onClick={deleteGeminiKey}
+                  className="text-xs px-3 py-1.5 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newKeyInput}
+                onChange={e => setNewKeyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveGeminiKey()}
+                placeholder="AIza..."
+                autoComplete="off"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+              />
+              <button
+                onClick={saveGeminiKey}
+                disabled={!newKeyInput.trim() || geminiSaving}
+                className="px-3 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
+              >
+                {geminiSaving ? 'Saving…' : 'Save'}
+              </button>
+              {replacingKey && (
+                <button
+                  onClick={() => { setReplacingKey(false); setNewKeyInput('') }}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Merge people */}
       <section>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -387,30 +491,6 @@ export default function Settings() {
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${defaultShowAll ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </label>
-          </div>
-          <div className="p-4">
-            <p className="text-sm font-medium text-gray-800 mb-0.5">Gemini API key</p>
-            <p className="text-xs text-gray-400 mb-2">
-              Used to scan receipt photos and auto-fill items. Get a free key at{' '}
-              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-accent-500 hover:underline">aistudio.google.com</a>.
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={geminiKey}
-                onChange={e => { setGeminiKey(e.target.value); setGeminiKeySaved(false) }}
-                placeholder="AIza..."
-                autoComplete="off"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-              <button
-                type="button"
-                onClick={() => { localStorage.setItem('gemini-api-key', geminiKey.trim()); setGeminiKeySaved(true) }}
-                className="px-3 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition"
-              >
-                {geminiKeySaved ? 'Saved ✓' : 'Save'}
-              </button>
-            </div>
           </div>
         </div>
       </section>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
-import { fetchCoreRoommates } from './Settings.jsx'
+import { fetchCoreRoommates, fetchGeminiKey } from './Settings.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 
@@ -215,9 +215,9 @@ Rules:
   }
 
   async function scanReceipts(files) {
-    const apiKey = localStorage.getItem('gemini-api-key')
+    const apiKey = await fetchGeminiKey()
     if (!apiKey) {
-      await showAlert('Add your free Gemini API key in Settings to use receipt scanning.', { title: 'No API key set' })
+      await showAlert('Add a Gemini API key in Settings to use receipt scanning.', { title: 'No API key set' })
       return
     }
     setScanning(true)
