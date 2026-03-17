@@ -115,20 +115,20 @@ function SortedLineTooltip({ active, payload, label }) {
 export default function Stats() {
   const myName = (localStorage.getItem('global-name') || '').toLowerCase()
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState(null)
+  const [raw, setRaw] = useState(null)
   const [selectedPeople, setSelectedPeople] = useState(null)
+  const [selectedCategories, setSelectedCategories] = useState(null)
   const [showAllStores, setShowAllStores] = useState(false)
   const [showAllItems, setShowAllItems] = useState(false)
 
   useEffect(() => {
     async function load() {
-      const [tripsRes, receiptsRes, itemsRes, claimsRes, mealsRes, settlementsRes] = await Promise.all([
+      const [tripsRes, receiptsRes, itemsRes, claimsRes, mealsRes] = await Promise.all([
         supabase.from('trips').select('*').order('created_at'),
         supabase.from('receipts').select('*'),
         supabase.from('items').select('id, receipt_id, meal_id, name, price'),
         supabase.from('claims').select('item_id, roommate'),
         supabase.from('meals').select('id, receipt_id, name, fee'),
-        supabase.from('settlements').select('*'),
       ])
 
       const trips = tripsRes.data || []
@@ -136,208 +136,203 @@ export default function Stats() {
       const items = itemsRes.data || []
       const claims = claimsRes.data || []
       const meals = mealsRes.data || []
-      const settlements = settlementsRes.data || []
 
-      // Core roommates = from Apartment Settings in DB
       const coreList = await fetchCoreRoommates()
       const coreRoommatesLower = new Set(coreList.map(m => m.toLowerCase()))
       coreRoommatesLower.add(myName)
 
-      // All people = anyone who has paid, claimed, or is a trip member
-      const totalPaid = {}
-      for (const r of receipts) {
-        const receiptItems = items.filter(i => i.receipt_id === r.id)
-        const total = receiptItems.reduce((s, i) => s + i.price, 0)
-          + (r.tip || 0) + (r.tax || 0) + (r.fees || 0)
-        const mealFees = meals.filter(m => m.receipt_id === r.id).reduce((s, m) => s + (m.fee || 0), 0)
-        totalPaid[r.paid_by] = (totalPaid[r.paid_by] || 0) + total + mealFees
-      }
+      // Available categories = those that actually appear in receipt data
+      const availableCategories = [...new Set(
+        receipts.map(r => r.category || 'Groceries')
+      )].sort((a, b) => {
+        const ai = CATEGORIES.findIndex(c => c.label === a)
+        const bi = CATEGORIES.findIndex(c => c.label === b)
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+      })
 
-      const totalConsumed = computeConsumption(receipts, items, claims, meals)
-
-      const allPeople = [...new Set([
-        ...Object.keys(totalPaid),
-        ...Object.keys(totalConsumed),
+      // All people (unfiltered, for color consistency)
+      const allPeopleUnfiltered = [...new Set([
+        ...receipts.map(r => r.paid_by).filter(Boolean),
+        ...Object.keys(computeConsumption(receipts, items, claims, meals)),
         ...trips.flatMap(t => t.members || []).filter(m => typeof m === 'string'),
       ])]
 
       const defaultSelected = new Set(
-        allPeople
+        allPeopleUnfiltered
           .filter(p => coreRoommatesLower.has(p.toLowerCase()))
           .map(p => p.toLowerCase())
       )
 
-      const personCards = allPeople.map(p => ({
-        name: p,
-        paid: totalPaid[p] || 0,
-        consumed: totalConsumed[p] || 0,
-        net: (totalPaid[p] || 0) - (totalConsumed[p] || 0),
-      })).sort((a, b) => b.paid - a.paid)
-
-      // Spending per trip
-      const tripIdToName = {}
-      for (const t of trips) tripIdToName[t.id] = t.name
-      const payers = [...new Set(receipts.map(r => r.paid_by))]
-
-      const spendingByTrip = trips.map(trip => {
-        const row = { tripName: trip.name.length > CHART_TRIP_NAME_LENGTH ? trip.name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : trip.name }
-        const tripReceipts = receipts.filter(r => r.trip_id === trip.id)
-        for (const payer of payers) row[payer] = 0
-        for (const r of tripReceipts) {
-          const itemsTotal = items.filter(i => i.receipt_id === r.id).reduce((s, i) => s + i.price, 0)
-          const mealFees = meals.filter(m => m.receipt_id === r.id).reduce((s, m) => s + (m.fee || 0), 0)
-          const total = itemsTotal + (r.tip || 0) + (r.tax || 0) + (r.fees || 0) + mealFees
-          row[r.paid_by] = (row[r.paid_by] || 0) + total
-        }
-        return row
-      }).filter(row => payers.some(p => row[p] > 0))
-
-      // Fair share
-      const totalHousehold = Object.values(totalConsumed).reduce((s, v) => s + v, 0)
-      const totalPaidAll = Object.values(totalPaid).reduce((s, v) => s + v, 0)
-      const fairShare = personCards.map(p => ({
-        name: toTitleCase(p.name),
-        nameLower: p.name.toLowerCase(),
-        'Paid %': totalPaidAll ? Math.round(p.paid / totalPaidAll * 100) : 0,
-        'Consumed %': totalHousehold ? Math.round(p.consumed / totalHousehold * 100) : 0,
-      }))
-
-      // Most purchased items
-      const itemFreq = {}
-      for (const item of items) {
-        const key = item.name.trim().toLowerCase()
-        if (!key) continue
-        if (!itemFreq[key]) itemFreq[key] = { name: item.name.trim(), count: 0, total: 0 }
-        itemFreq[key].count += 1
-        itemFreq[key].total += item.price
-      }
-      const topItems = Object.values(itemFreq)
-        .sort((a, b) => b.count - a.count || b.total - a.total)
-        .slice(0, 15)
-
-      // Store breakdown
-      const storeMap = {}
-      for (const r of receipts) {
-        const store = r.store_name || 'Unknown'
-        const itemsTotal = items.filter(i => i.receipt_id === r.id).reduce((s, i) => s + i.price, 0)
-        const mealFees = meals.filter(m => m.receipt_id === r.id).reduce((s, m) => s + (m.fee || 0), 0)
-        const total = itemsTotal + (r.tip || 0) + (r.tax || 0) + (r.fees || 0) + mealFees
-        if (!storeMap[store]) storeMap[store] = { name: store, total: 0, visits: 0 }
-        storeMap[store].total += total
-        storeMap[store].visits += 1
-      }
-      const topStores = Object.values(storeMap).sort((a, b) => b.total - a.total)
-
-
-      // Trip timeline
-      const tripTimeline = trips.map(trip => {
-        const tripReceipts = receipts.filter(r => r.trip_id === trip.id)
-        const itemsTotal = items
-          .filter(i => tripReceipts.some(r => r.id === i.receipt_id))
-          .reduce((s, i) => s + i.price, 0)
-        const extras = tripReceipts.reduce((s, r) => s + (r.tip || 0) + (r.tax || 0) + (r.fees || 0), 0)
-        const mealFees = meals
-          .filter(m => tripReceipts.some(r => r.id === m.receipt_id))
-          .reduce((s, m) => s + (m.fee || 0), 0)
-        return {
-          id: trip.id,
-          name: trip.name,
-          date: new Date(trip.created_at),
-          total: itemsTotal + extras + mealFees,
-          closed: trip.closed,
-        }
-      }).filter(t => t.total > 0)
-
-      // Cumulative personal spending
-      const receiptsByTrip = {}
-      for (const r of receipts) {
-        if (!receiptsByTrip[r.trip_id]) receiptsByTrip[r.trip_id] = []
-        receiptsByTrip[r.trip_id].push(r)
-      }
-      const itemsByReceipt2 = {}
-      for (const item of items) {
-        if (!itemsByReceipt2[item.receipt_id]) itemsByReceipt2[item.receipt_id] = []
-        itemsByReceipt2[item.receipt_id].push(item)
-      }
-      const mealsByReceipt = {}
-      for (const meal of meals) {
-        if (!mealsByReceipt[meal.receipt_id]) mealsByReceipt[meal.receipt_id] = []
-        mealsByReceipt[meal.receipt_id].push(meal)
-      }
-
-      const sortedTrips = trips.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-      const cumulativeByPerson = {}
-      const cumulativeLineData = sortedTrips
-        .map(trip => {
-          const tripReceipts = receiptsByTrip[trip.id] || []
-          if (!tripReceipts.length) return null
-          const tripItems = tripReceipts.flatMap(r => itemsByReceipt2[r.id] || [])
-          const tripMeals = tripReceipts.flatMap(r => mealsByReceipt[r.id] || [])
-          const tripItemIds = new Set(tripItems.map(i => i.id))
-          const tripClaims = claims.filter(c => tripItemIds.has(c.item_id))
-          const tripConsumed = computeConsumption(tripReceipts, tripItems, tripClaims, tripMeals)
-          if (!Object.keys(tripConsumed).length) return null
-
-          for (const [person, amt] of Object.entries(tripConsumed)) {
-            cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
-          }
-          const row = { tripName: trip.name.length > CHART_TRIP_NAME_LENGTH ? trip.name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : trip.name }
-          for (const person of allPeople) {
-            row[person] = parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
-          }
-          return row
-        })
-        .filter(Boolean)
-
-      // Spending by category
-      const categoryTotals = {}
-      for (const r of receipts) {
-        const cat = r.category || 'Groceries'
-        const receiptItems = itemsByReceipt2[r.id] || []
-        const itemsTotal = receiptItems.reduce((s, i) => s + (i.price || 0), 0)
-        const extras = (r.tip || 0) + (r.tax || 0) + (r.fees || 0)
-        const mealFees = (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
-        categoryTotals[cat] = (categoryTotals[cat] || 0) + itemsTotal + extras + mealFees
-      }
-      const spendingByCategory = Object.entries(categoryTotals)
-        .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
-        .sort((a, b) => b.value - a.value)
-
-      setStats({
-        personCards, spendingByTrip, payers, fairShare, topItems, topStores,
-        tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
-        coreRoommatesLower, defaultSelected, spendingByCategory,
-      })
+      setRaw({ trips, receipts, items, claims, meals, coreRoommatesLower, defaultSelected, allPeopleUnfiltered, availableCategories })
       setLoading(false)
     }
     load()
   }, [myName])
 
-  // Initialize selectedPeople once stats load
+  // Initialize selectedPeople and selectedCategories once raw loads
   useEffect(() => {
-    if (stats && selectedPeople === null) {
-      setSelectedPeople(stats.defaultSelected)
-    }
-  }, [stats, selectedPeople])
+    if (raw && selectedPeople === null) setSelectedPeople(raw.defaultSelected)
+    if (raw && selectedCategories === null) setSelectedCategories(new Set(raw.availableCategories))
+  }, [raw, selectedPeople, selectedCategories])
 
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
-  if (!stats) return null
+  if (!raw) return null
 
-  const {
-    personCards, spendingByTrip, payers, fairShare, topItems, topStores,
-    tripTimeline, totalPaidAll, cumulativeLineData, allPeople,
-    coreRoommatesLower, spendingByCategory,
-  } = stats
+  const { trips, receipts, items, claims, meals, coreRoommatesLower, allPeopleUnfiltered, availableCategories } = raw
+  const selected = selectedPeople || raw.defaultSelected
+  const selCats = selectedCategories || new Set(availableCategories)
 
-  const selected = selectedPeople || stats.defaultSelected
+  // Filter receipts by selected categories
+  const filteredReceipts = receipts.filter(r => selCats.has(r.category || 'Groceries'))
+  const filteredReceiptIds = new Set(filteredReceipts.map(r => r.id))
+  const filteredItems = items.filter(i => filteredReceiptIds.has(i.receipt_id))
+  const filteredItemIds = new Set(filteredItems.map(i => i.id))
+  const filteredClaims = claims.filter(c => filteredItemIds.has(c.item_id))
+  const filteredMeals = meals.filter(m => filteredReceiptIds.has(m.receipt_id))
 
-  // People visible in charts (preserving original casing from allPeople)
+  // --- Compute metrics from filtered data ---
+
+  const itemsByReceipt = {}
+  const mealsByReceipt = {}
+  for (const item of filteredItems) {
+    if (!itemsByReceipt[item.receipt_id]) itemsByReceipt[item.receipt_id] = []
+    itemsByReceipt[item.receipt_id].push(item)
+  }
+  for (const meal of filteredMeals) {
+    if (!mealsByReceipt[meal.receipt_id]) mealsByReceipt[meal.receipt_id] = []
+    mealsByReceipt[meal.receipt_id].push(meal)
+  }
+
+  const totalPaid = {}
+  for (const r of filteredReceipts) {
+    const receiptItems = itemsByReceipt[r.id] || []
+    const total = receiptItems.reduce((s, i) => s + i.price, 0)
+      + (r.tip || 0) + (r.tax || 0) + (r.fees || 0)
+    const mealFees = (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
+    totalPaid[r.paid_by] = (totalPaid[r.paid_by] || 0) + total + mealFees
+  }
+
+  const totalConsumed = computeConsumption(filteredReceipts, filteredItems, filteredClaims, filteredMeals)
+
+  const allPeople = allPeopleUnfiltered
+
+  const personCards = allPeople.map(p => ({
+    name: p,
+    paid: totalPaid[p] || 0,
+    consumed: totalConsumed[p] || 0,
+    net: (totalPaid[p] || 0) - (totalConsumed[p] || 0),
+  })).sort((a, b) => b.paid - a.paid)
+
+  const payers = [...new Set(filteredReceipts.map(r => r.paid_by))]
+
+  const spendingByTrip = trips.map(trip => {
+    const row = { tripName: trip.name.length > CHART_TRIP_NAME_LENGTH ? trip.name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : trip.name }
+    const tripReceipts = filteredReceipts.filter(r => r.trip_id === trip.id)
+    for (const payer of payers) row[payer] = 0
+    for (const r of tripReceipts) {
+      const itemsTotal = (itemsByReceipt[r.id] || []).reduce((s, i) => s + i.price, 0)
+      const mealFees = (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
+      const total = itemsTotal + (r.tip || 0) + (r.tax || 0) + (r.fees || 0) + mealFees
+      row[r.paid_by] = (row[r.paid_by] || 0) + total
+    }
+    return row
+  }).filter(row => payers.some(p => row[p] > 0))
+
+  const totalPaidAll = Object.values(totalPaid).reduce((s, v) => s + v, 0)
+  const totalHousehold = Object.values(totalConsumed).reduce((s, v) => s + v, 0)
+
+  const fairShare = personCards.map(p => ({
+    name: toTitleCase(p.name),
+    nameLower: p.name.toLowerCase(),
+    'Paid %': totalPaidAll ? Math.round(p.paid / totalPaidAll * 100) : 0,
+    'Consumed %': totalHousehold ? Math.round(p.consumed / totalHousehold * 100) : 0,
+  }))
+
+  const itemFreq = {}
+  for (const item of filteredItems) {
+    const key = item.name.trim().toLowerCase()
+    if (!key) continue
+    if (!itemFreq[key]) itemFreq[key] = { name: item.name.trim(), count: 0, total: 0 }
+    itemFreq[key].count += 1
+    itemFreq[key].total += item.price
+  }
+  const topItems = Object.values(itemFreq)
+    .sort((a, b) => b.count - a.count || b.total - a.total)
+    .slice(0, 15)
+
+  const storeMap = {}
+  for (const r of filteredReceipts) {
+    const store = r.store_name || 'Unknown'
+    const itemsTotal = (itemsByReceipt[r.id] || []).reduce((s, i) => s + i.price, 0)
+    const mealFees = (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
+    const total = itemsTotal + (r.tip || 0) + (r.tax || 0) + (r.fees || 0) + mealFees
+    if (!storeMap[store]) storeMap[store] = { name: store, total: 0, visits: 0 }
+    storeMap[store].total += total
+    storeMap[store].visits += 1
+  }
+  const topStores = Object.values(storeMap).sort((a, b) => b.total - a.total)
+
+  const sortedTrips = trips.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+  const cumulativeByPerson = {}
+  const cumulativeLineData = sortedTrips
+    .map(trip => {
+      const tripReceipts = filteredReceipts.filter(r => r.trip_id === trip.id)
+      if (!tripReceipts.length) return null
+      const tripItems = tripReceipts.flatMap(r => itemsByReceipt[r.id] || [])
+      const tripMeals = tripReceipts.flatMap(r => mealsByReceipt[r.id] || [])
+      const tripItemIds = new Set(tripItems.map(i => i.id))
+      const tripClaims = filteredClaims.filter(c => tripItemIds.has(c.item_id))
+      const tripConsumed = computeConsumption(tripReceipts, tripItems, tripClaims, tripMeals)
+      if (!Object.keys(tripConsumed).length) return null
+      for (const [person, amt] of Object.entries(tripConsumed)) {
+        cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
+      }
+      const row = { tripName: trip.name.length > CHART_TRIP_NAME_LENGTH ? trip.name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : trip.name }
+      for (const person of allPeople) {
+        row[person] = parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
+      }
+      return row
+    })
+    .filter(Boolean)
+
+  // Category breakdown always uses ALL receipts (unfiltered) — it's the overview
+  const categoryTotals = {}
+  for (const r of receipts) {
+    const cat = r.category || 'Groceries'
+    const rItems = items.filter(i => i.receipt_id === r.id)
+    const itemsTotal = rItems.reduce((s, i) => s + (i.price || 0), 0)
+    const extras = (r.tip || 0) + (r.tax || 0) + (r.fees || 0)
+    const mealFees = meals.filter(m => m.receipt_id === r.id).reduce((s, m) => s + (m.fee || 0), 0)
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + itemsTotal + extras + mealFees
+  }
+  const spendingByCategory = Object.entries(categoryTotals)
+    .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
+    .sort((a, b) => b.value - a.value)
+
+  // Trip timeline (unfiltered)
+  const tripTimeline = trips.map(trip => {
+    const tripReceipts = receipts.filter(r => r.trip_id === trip.id)
+    const itemsTotal = items
+      .filter(i => tripReceipts.some(r => r.id === i.receipt_id))
+      .reduce((s, i) => s + i.price, 0)
+    const extras = tripReceipts.reduce((s, r) => s + (r.tip || 0) + (r.tax || 0) + (r.fees || 0), 0)
+    const mealFees = meals
+      .filter(m => tripReceipts.some(r => r.id === m.receipt_id))
+      .reduce((s, m) => s + (m.fee || 0), 0)
+    return {
+      id: trip.id,
+      name: trip.name,
+      date: new Date(trip.created_at),
+      total: itemsTotal + extras + mealFees,
+      closed: trip.closed,
+    }
+  }).filter(t => t.total > 0)
+
+  // --- People visibility ---
   const visiblePeople = allPeople.filter(p => selected.has(p.toLowerCase()))
   const visibleCards = personCards.filter(p => selected.has(p.name.toLowerCase()))
-  const visibleFairShare = fairShare.filter(p => selected.has(p.nameLower))
   const visiblePayers = payers.filter(p => selected.has(p.toLowerCase()))
 
-  // For fair share, recalculate percentages based on visible subset
   const visibleTotalPaid = visibleCards.reduce((s, p) => s + p.paid, 0)
   const visibleTotalConsumed = visibleCards.reduce((s, p) => s + p.consumed, 0)
   const visibleFairShareRecalc = visibleCards.map(p => ({
@@ -349,7 +344,6 @@ export default function Stats() {
   const maxStore = topStores[0]?.total || 1
   const maxItem = topItems[0]?.count || 1
 
-  // Group people for checkboxes: core roommates vs others
   const coreInData = allPeople.filter(p => coreRoommatesLower.has(p.toLowerCase()))
   const othersInData = allPeople.filter(p => !coreRoommatesLower.has(p.toLowerCase()))
 
@@ -357,6 +351,14 @@ export default function Stats() {
     setSelectedPeople(prev => {
       const next = new Set(prev)
       next.has(nameLower) ? next.delete(nameLower) : next.add(nameLower)
+      return next
+    })
+  }
+
+  function toggleCategory(label) {
+    setSelectedCategories(prev => {
+      const next = new Set(prev)
+      next.has(label) ? next.delete(label) : next.add(label)
       return next
     })
   }
@@ -420,6 +422,45 @@ export default function Stats() {
         </div>
       </section>
 
+      {/* Category filter */}
+      {availableCategories.length > 1 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Filter by category</h2>
+            {selCats.size !== availableCategories.length && (
+              <button
+                onClick={() => setSelectedCategories(new Set(availableCategories))}
+                className="text-xs text-accent-600 hover:text-accent-700 transition"
+              >
+                Select all
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {availableCategories.map(label => {
+              const isSelected = selCats.has(label)
+              const cat = CATEGORIES.find(c => c.label === label)
+              return (
+                <button
+                  key={label}
+                  onClick={() => toggleCategory(label)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                    isSelected
+                      ? 'bg-accent-50 border-accent-300 text-accent-700'
+                      : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                  }`}
+                >
+                  {cat && (
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: isSelected ? cat.chartColor : '#d1d5db' }} />
+                  )}
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Cumulative personal spending */}
       {cumulativeLineData.length > 1 && visiblePeople.length > 0 && (
         <section>
@@ -449,7 +490,7 @@ export default function Stats() {
         </section>
       )}
 
-      {/* Spending by category */}
+      {/* Spending by category — always unfiltered overview */}
       {spendingByCategory.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending by category</h2>
@@ -653,7 +694,6 @@ export default function Stats() {
           </section>
         )
       })()}
-
 
       {/* Trip timeline */}
       {tripTimeline.length > 0 && (
