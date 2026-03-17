@@ -504,21 +504,9 @@ function toggleExpanded(person) {
                         }`}>
                           {date.getDate()}
                         </div>
-                        <div className="flex items-center gap-1">
-                          {dayTotal > 0 && isCurrent && (
-                            <span className="text-xs font-semibold text-accent-600">${dayTotal.toFixed(2)}</span>
-                          )}
-                          {/* Hover "+" button when day has any existing items */}
-                          {isCurrent && dayItems.length >= 1 && (
-                            <button
-                              onClick={e => { e.stopPropagation(); navigate(`/receipt/new?date=${fmtDate(date)}`) }}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full bg-accent-100 text-accent-600 hover:bg-accent-200 text-xs font-bold"
-                              title="Add another receipt"
-                            >
-                              +
-                            </button>
-                          )}
-                        </div>
+                        {dayTotal > 0 && isCurrent && (
+                          <span className="text-xs font-semibold text-accent-600">${dayTotal.toFixed(2)}</span>
+                        )}
                       </div>
                       <div className="space-y-1">
                         {dayReceipts.map(receipt => {
@@ -536,6 +524,16 @@ function toggleExpanded(person) {
                           )
                         })}
                       </div>
+                      {/* Hover "+" button — bottom right */}
+                      {isCurrent && dayItems.length >= 1 && (
+                        <button
+                          onClick={e => { e.stopPropagation(); navigate(`/receipt/new?date=${fmtDate(date)}`) }}
+                          className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full bg-accent-100 text-accent-600 hover:bg-accent-200 text-xs font-bold"
+                          title="Add another receipt"
+                        >
+                          +
+                        </button>
+                      )}
                     </div>
                   )
                 })}
