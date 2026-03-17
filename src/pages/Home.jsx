@@ -511,7 +511,7 @@ function toggleExpanded(person) {
                       onClick={handleCellClick}
                       className={`relative min-h-28 p-2.5 transition-colors group ${
                         !isCurrent ? 'bg-gray-50/60 cursor-default' : 'hover:bg-gray-50/80 cursor-pointer'
-                      } ${isToday ? 'ring-2 ring-inset ring-accent-500' : ''}`}
+                      } ${isToday ? 'ring-2 ring-inset ring-accent-600' : ''}`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full leading-none ${
