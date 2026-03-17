@@ -242,13 +242,13 @@ Rules:
   }
 
   async function scanReceipts(files) {
-    const apiKey = await fetchGeminiKey()
-    if (!apiKey) {
-      await showAlert('Add a Gemini API key in Settings to use receipt scanning.', { title: 'No API key set' })
-      return
-    }
     setScanning(true)
     try {
+      const apiKey = await fetchGeminiKey()
+      if (!apiKey) {
+        await showAlert('Add a Gemini API key in Settings to use receipt scanning.', { title: 'No API key set' })
+        return
+      }
       const results = await Promise.all(Array.from(files).map(f => scanOneFile(f, apiKey)))
 
       // Use store name + category from the first result that has them
@@ -318,10 +318,12 @@ Rules:
       if (finalItems.length > 0) {
         setLineItems([...finalItems, newItem()])
         setErrors(v => ({ ...v, items: undefined }))
+        markDirty()
+      } else {
+        await showAlert('No items could be extracted from this image. Try a clearer photo or enter items manually.', { title: 'No items found' })
       }
-      markDirty()
     } catch (err) {
-      await showAlert(err.message, { title: 'Scan failed' })
+      await showAlert(err?.message || String(err) || 'Unknown error', { title: 'Scan failed' })
     } finally {
       setScanning(false)
     }
@@ -696,7 +698,7 @@ Rules:
           accept="image/*"
           multiple
           className="hidden"
-          onChange={e => { if (e.target.files?.length) scanReceipts(e.target.files); e.target.value = '' }}
+          onChange={e => { const fileArray = Array.from(e.target.files || []); e.target.value = ''; if (fileArray.length) scanReceipts(fileArray) }}
         />
       </div>
 
