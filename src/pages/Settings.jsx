@@ -299,8 +299,8 @@ export default function Settings() {
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Apartment settings</h2>
         <p className="text-xs text-gray-400 mb-3">Changes here apply to everyone in the apartment.</p>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-700 mb-1">Roommate roster</p>
-          <p className="text-xs text-gray-400 mb-4">Checked roommates appear by default in Stats and as quick-add options when creating a trip.</p>
+          <p className="text-sm font-medium text-gray-700 mb-1">Pinned people</p>
+          <p className="text-xs text-gray-400 mb-4">Pinned people appear by default in Stats and as quick-add options when creating a trip.</p>
           {roster === null ? (
             <p className="text-sm text-gray-400">Loading…</p>
           ) : (
