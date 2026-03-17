@@ -348,66 +348,6 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Gemini API key — shared / apartment-wide */}
-      <section>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-700 mb-0.5">Gemini API key</p>
-          <p className="text-xs text-gray-400 mb-3">
-            Used to scan receipt photos. Shared for everyone in the apartment. Get a free key at{' '}
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-accent-500 hover:underline">aistudio.google.com</a>.
-          </p>
-
-          {geminiDbKey === null ? (
-            <p className="text-sm text-gray-400">Loading…</p>
-          ) : geminiDbKey && !replacingKey ? (
-            <div className="flex items-center gap-2">
-              <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm text-gray-400 tracking-widest select-none">••••••••••••••••</div>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  onClick={() => { setReplacingKey(true); setNewKeyInput('') }}
-                  className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Replace
-                </button>
-                <button
-                  onClick={deleteGeminiKey}
-                  className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newKeyInput}
-                onChange={e => setNewKeyInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && saveGeminiKey()}
-                placeholder="AIza..."
-                autoComplete="off"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-              <button
-                onClick={saveGeminiKey}
-                disabled={!newKeyInput.trim() || geminiSaving}
-                className="px-3 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
-              >
-                {geminiSaving ? 'Saving…' : 'Save'}
-              </button>
-              {replacingKey && (
-                <button
-                  onClick={() => { setReplacingKey(false); setNewKeyInput('') }}
-                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* Merge people */}
       <section>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -479,6 +419,65 @@ export default function Settings() {
 
           {mergeDone && (
             <p className="mt-3 text-sm text-accent-600 font-medium">{mergeDone} ✓</p>
+          )}
+        </div>
+      </section>
+
+      {/* Gemini API key — shared / apartment-wide */}
+      <section>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-700 mb-0.5">Gemini API key</p>
+          <p className="text-xs text-gray-400 mb-3">
+            Used to scan receipt photos. Shared for everyone in the apartment. Get a free key at{' '}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-accent-500 hover:underline">aistudio.google.com</a>.
+          </p>
+          {geminiDbKey === null ? (
+            <p className="text-sm text-gray-400">Loading…</p>
+          ) : geminiDbKey && !replacingKey ? (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm text-gray-400 tracking-widest select-none">••••••••••••••••</div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => { setReplacingKey(true); setNewKeyInput('') }}
+                  className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Replace
+                </button>
+                <button
+                  onClick={deleteGeminiKey}
+                  className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newKeyInput}
+                onChange={e => setNewKeyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveGeminiKey()}
+                placeholder="Paste API key…"
+                autoComplete="off"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+              />
+              <button
+                onClick={saveGeminiKey}
+                disabled={!newKeyInput.trim() || geminiSaving}
+                className="px-3 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
+              >
+                {geminiSaving ? 'Saving…' : 'Save'}
+              </button>
+              {replacingKey && (
+                <button
+                  onClick={() => { setReplacingKey(false); setNewKeyInput('') }}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           )}
         </div>
       </section>
