@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { FALLBACK_MEMBERS } from '../config.js'
+import { useDialog } from '../lib/useDialog.jsx'
 
 const FALLBACK_CORE = FALLBACK_MEMBERS
 const SETTINGS_KEY = 'apartment_members'
@@ -35,6 +36,7 @@ export async function fetchGeminiKey() {
 }
 
 export default function Settings() {
+  const { confirm, DialogUI } = useDialog()
   const currentName = localStorage.getItem('global-name') || ''
   const [nameInput, setNameInput] = useState(currentName)
 
@@ -196,6 +198,12 @@ export default function Settings() {
   }
 
   async function deleteGeminiKey() {
+    const ok = await confirm('This will remove the API key for everyone. Receipt scanning will stop working until a new key is added.', {
+      title: 'Delete API key?',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     await supabase.from('app_settings').delete().eq('key', GEMINI_KEY_SETTING)
     setGeminiDbKey('')
     setReplacingKey(false)
@@ -214,6 +222,8 @@ export default function Settings() {
   }, [defaultShowAll])
 
   return (
+    <>
+    {DialogUI}
     <div className="max-w-xl mx-auto p-4 py-8 space-y-8">
       <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
 
@@ -495,5 +505,6 @@ export default function Settings() {
         </div>
       </section>
     </div>
+    </>
   )
 }
