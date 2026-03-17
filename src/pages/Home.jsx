@@ -308,33 +308,32 @@ function toggleExpanded(person) {
               const hasOffset = data.theyOweMe.some(e => !e.settled)
               return (
                 <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <button
+                  <div
+                    className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition cursor-pointer"
                     onClick={() => toggleExpanded(`owe-${person}`)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left"
                   >
                     <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
                     <div className="flex items-center gap-2.5">
-                      {hasOffset && (
-                        <span className="text-xs text-gray-400">net</span>
-                      )}
+                      {hasOffset && <span className="text-xs text-gray-400">net</span>}
                       <span className="font-semibold text-amber-600">${netOwed.toFixed(2)}</span>
+                      {data.iOweThem.some(e => !e.settled) && (
+                        <button
+                          onClick={e => { e.stopPropagation(); markAllSettledWith(person, data) }}
+                          disabled={!!settling}
+                          className="text-xs px-2 py-0.5 bg-accent-600 text-white rounded-md hover:bg-accent-700 transition disabled:opacity-50 font-medium"
+                        >
+                          {settling?.person === person ? '…' : 'Mark sent'}
+                        </button>
+                      )}
                       <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-                    </svg>
+                        <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                      </svg>
                     </div>
-                  </button>
+                  </div>
                   {expanded && (
                     <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
-                      {data.iOweThem.every(e => e.settled) && data.theyOweMe.every(e => e.settled) ? (
+                      {data.iOweThem.every(e => e.settled) && data.theyOweMe.every(e => e.settled) && (
                         <p className="text-xs text-accent-600 font-medium py-1">All settled ✓</p>
-                      ) : (
-                        <button
-                          onClick={() => markAllSettledWith(person, data)}
-                          disabled={!!settling}
-                          className="w-full text-sm py-1.5 px-3 bg-accent-600 text-white rounded-lg hover:bg-accent-700 transition disabled:opacity-50 font-medium"
-                        >
-                          {settling?.person === person ? '…' : `Mark everything settled with ${toTitleCase(person)}`}
-                        </button>
                       )}
                       {data.iOweThem.map((entry, i) => (
                           <div key={i} className="flex items-center justify-between text-sm gap-2">
@@ -405,12 +404,19 @@ function toggleExpanded(person) {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowAllReceipts(s => !s)}
-          className="text-xs text-gray-400 hover:text-gray-600 transition px-2 py-1 rounded hover:bg-gray-100"
-        >
-          {showAllReceipts ? 'All' : 'Mine'}
-        </button>
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+          {[['mine', 'Mine'], ['all', 'All']].map(([v, label]) => (
+            <button
+              key={v}
+              onClick={() => setShowAllReceipts(v === 'all')}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                (v === 'all') === showAllReceipts ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Calendar view */}
