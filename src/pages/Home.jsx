@@ -6,22 +6,17 @@ import { version as buildVersion } from '../buildVersion.json'
 import { useDialog } from '../lib/useDialog.jsx'
 
 export default function Home() {
-  const [trips, setTrips] = useState([])
   const [standaloneReceipts, setStandaloneReceipts] = useState([])
-  const [claimersByTrip, setClaimersByTrip] = useState({})
   const [claimersByReceipt, setClaimersByReceipt] = useState({})
   // person -> { net, theyOweMe: [...], iOweThem: [...] }
   const [netByPerson, setNetByPerson] = useState({})
   const [rawData, setRawData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [settling, setSettling] = useState(null)
-  const [pickerDay, setPickerDay] = useState(null) // { date, receipts } for 2+ receipts on a day
-  const [tripTotals, setTripTotals] = useState({})
+  const [pickerDay, setPickerDay] = useState(null) // { date, items } for 2+ receipts on a day
   const [receiptTotals, setReceiptTotals] = useState({})
   const [expandedPeople, setExpandedPeople] = useState(new Set())
-  const [showAllTrips, setShowAllTrips] = useState(localStorage.getItem('default-show-all-trips') === '1')
-  const [draggingTripId, setDraggingTripId] = useState(null)
-  const [dragOverKey, setDragOverKey] = useState(null)
+  const [showAllReceipts, setShowAllReceipts] = useState(localStorage.getItem('default-show-all-trips') === '1')
   const [calMonth, setCalMonth] = useState(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -36,56 +31,31 @@ export default function Home() {
   useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
 
   async function fetchTrips() {
-    const [tripsRes, receiptsRes, itemsRes, claimsRes, settlementsRes, mealsRes, checkinsRes] = await Promise.all([
-      supabase.from('trips').select('*').order('created_at', { ascending: false }),
-      supabase.from('receipts').select('id, trip_id, paid_by, tip, tax, fees, receipt_date, members, store_name'),
+    const [receiptsRes, itemsRes, claimsRes, settlementsRes, mealsRes, checkinsRes] = await Promise.all([
+      supabase.from('receipts').select('id, paid_by, tip, tax, fees, receipt_date, members, store_name').not('receipt_date', 'is', null),
       supabase.from('items').select('id, receipt_id, meal_id, price'),
       supabase.from('claims').select('item_id, roommate'),
-      supabase.from('settlements').select('trip_id, receipt_id, debtor, creditor'),
+      supabase.from('settlements').select('receipt_id, debtor, creditor'),
       supabase.from('meals').select('id, receipt_id, fee'),
-      supabase.from('checkins').select('trip_id, receipt_id, roommate'),
+      supabase.from('checkins').select('receipt_id, roommate'),
     ])
 
-    const trips = tripsRes.data || []
-    const allReceipts = receiptsRes.data || []
+    const standalone = receiptsRes.data || []
     const allItems = itemsRes.data || []
     const allClaims = claimsRes.data || []
     const settlements = settlementsRes.data || []
     const allMeals = mealsRes.data || []
     const allCheckins = checkinsRes.data || []
 
-    setTrips(trips)
-
-    // Standalone receipts = those with receipt_date set (new model)
-    const standalone = allReceipts.filter(r => r.receipt_date)
     setStandaloneReceipts(standalone)
 
-    // Build claimersByTrip
-    const receiptIdToTripId = {}
-    for (const r of allReceipts) receiptIdToTripId[r.id] = r.trip_id
+    // Build claimersByReceipt
     const itemIdToReceiptId = {}
     for (const item of allItems) itemIdToReceiptId[item.id] = item.receipt_id
-    const tripMap = {}
-    for (const claim of allClaims) {
-      const tripId = receiptIdToTripId[itemIdToReceiptId[claim.item_id]]
-      if (!tripId) continue
-      if (!tripMap[tripId]) tripMap[tripId] = new Set()
-      tripMap[tripId].add(claim.roommate.toLowerCase())
-    }
-    for (const checkin of allCheckins) {
-      if (!checkin.trip_id) continue
-      if (!tripMap[checkin.trip_id]) tripMap[checkin.trip_id] = new Set()
-      tripMap[checkin.trip_id].add(checkin.roommate.toLowerCase())
-    }
-    setClaimersByTrip(tripMap)
-
-    // Build claimersByReceipt (for standalone receipts)
     const receiptMap = {}
     for (const claim of allClaims) {
       const receiptId = itemIdToReceiptId[claim.item_id]
       if (!receiptId) continue
-      const receipt = allReceipts.find(r => r.id === receiptId)
-      if (!receipt?.receipt_date) continue // only standalone
       if (!receiptMap[receiptId]) receiptMap[receiptId] = new Set()
       receiptMap[receiptId].add(claim.roommate.toLowerCase())
     }
@@ -96,19 +66,7 @@ export default function Home() {
     }
     setClaimersByReceipt(receiptMap)
 
-    // Compute total spend per trip
-    const tripTotalsMap = {}
-    for (const trip of trips) {
-      const tReceipts = allReceipts.filter(r => r.trip_id === trip.id)
-      const rIds = new Set(tReceipts.map(r => r.id))
-      const tItems = allItems.filter(i => rIds.has(i.receipt_id))
-      tripTotalsMap[trip.id] =
-        tItems.reduce((s, i) => s + Number(i.price || 0), 0) +
-        tReceipts.reduce((s, r) => s + Number(r.tip || 0) + Number(r.tax || 0) + Number(r.fees || 0), 0)
-    }
-    setTripTotals(tripTotalsMap)
-
-    // Compute total spend per standalone receipt
+    // Compute total spend per receipt
     const receiptTotalsMap = {}
     for (const receipt of standalone) {
       const rItems = allItems.filter(i => i.receipt_id === receipt.id)
@@ -118,51 +76,19 @@ export default function Home() {
     }
     setReceiptTotals(receiptTotalsMap)
 
-    const data = { trips, allReceipts, allItems, allClaims, settlements, allMeals, standalone }
+    const data = { allItems, allClaims, settlements, allMeals, standalone }
     setRawData(data)
     computeDebts(localStorage.getItem('global-name') || '', data)
     setLoading(false)
   }
 
-  function computeDebts(name, { trips, allReceipts, allItems, allClaims, settlements, allMeals = [], standalone = [] }) {
+  function computeDebts(name, { allItems, allClaims, settlements, allMeals = [], standalone = [] }) {
     if (!name) { setNetByPerson({}); return }
 
     const nameLc = name.toLowerCase()
     const byPerson = {}
 
-    // Trip-based debts (legacy)
-    for (const trip of trips) {
-      const tripReceipts = allReceipts.filter(r => r.trip_id === trip.id)
-      if (!tripReceipts.length) continue
-      const receiptIds = new Set(tripReceipts.map(r => r.id))
-      const tripItems = allItems.filter(i => receiptIds.has(i.receipt_id))
-      if (!tripItems.length) continue
-      const itemIds = new Set(tripItems.map(i => i.id))
-      const tripClaims = allClaims.filter(c => itemIds.has(c.item_id))
-      const tripMeals = allMeals.filter(m => receiptIds.has(m.receipt_id))
-
-      for (const debt of calculateDebts(tripReceipts, tripItems, tripClaims, tripMeals)) {
-        const settled = settlements.some(
-          s => s.trip_id === trip.id
-            && s.debtor.toLowerCase() === debt.debtor.toLowerCase()
-            && s.creditor.toLowerCase() === debt.creditor.toLowerCase()
-        )
-        if (debt.creditor.toLowerCase() === nameLc) {
-          const person = debt.debtor.toLowerCase()
-          if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
-          byPerson[person].theyOweMe.push({ ...debt, label: trip.name, tripId: trip.id, receiptId: null, settled })
-          byPerson[person].net += debt.amount
-        }
-        if (debt.debtor.toLowerCase() === nameLc) {
-          const person = debt.creditor.toLowerCase()
-          if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
-          byPerson[person].iOweThem.push({ ...debt, label: trip.name, tripId: trip.id, receiptId: null, settled })
-          byPerson[person].net -= debt.amount
-        }
-      }
-    }
-
-    // Standalone receipt debts
+    // Receipt debts
     for (const receipt of standalone) {
       const rItems = allItems.filter(i => i.receipt_id === receipt.id)
       if (!rItems.length) continue
@@ -180,13 +106,13 @@ export default function Home() {
         if (debt.creditor.toLowerCase() === nameLc) {
           const person = debt.debtor.toLowerCase()
           if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
-          byPerson[person].theyOweMe.push({ ...debt, label, tripId: null, receiptId: receipt.id, settled })
+          byPerson[person].theyOweMe.push({ ...debt, label, receiptId: receipt.id, settled })
           byPerson[person].net += debt.amount
         }
         if (debt.debtor.toLowerCase() === nameLc) {
           const person = debt.creditor.toLowerCase()
           if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
-          byPerson[person].iOweThem.push({ ...debt, label, tripId: null, receiptId: receipt.id, settled })
+          byPerson[person].iOweThem.push({ ...debt, label, receiptId: receipt.id, settled })
           byPerson[person].net -= debt.amount
         }
       }
@@ -223,36 +149,20 @@ function toggleExpanded(person) {
 
     async function markSettled(entry) {
     setSettling({ entry })
-    if (entry.tripId) {
-      await supabase.from('settlements').upsert(
-        { trip_id: entry.tripId, debtor: myName, creditor: entry.creditor },
-        { onConflict: 'trip_id,debtor,creditor' }
-      )
-    } else {
-      await supabase.from('settlements').delete()
-        .eq('receipt_id', entry.receiptId).eq('debtor', myName).eq('creditor', entry.creditor)
-      await supabase.from('settlements').insert({ receipt_id: entry.receiptId, debtor: myName, creditor: entry.creditor })
-    }
+    await supabase.from('settlements').delete()
+      .eq('receipt_id', entry.receiptId).eq('debtor', myName).eq('creditor', entry.creditor)
+    await supabase.from('settlements').insert({ receipt_id: entry.receiptId, debtor: myName, creditor: entry.creditor })
     await fetchTrips()
     setSettling(null)
   }
 
   async function markAllSettledWith(person, data) {
     setSettling({ person })
-    // Trip-based settlements (can upsert)
-    const tripUpserts = [
-      ...data.iOweThem.filter(e => e.tripId).map(e => ({ trip_id: e.tripId, debtor: myName, creditor: person })),
-      ...data.theyOweMe.filter(e => e.tripId).map(e => ({ trip_id: e.tripId, debtor: person, creditor: myName })),
+    const entries = [
+      ...data.iOweThem.map(e => ({ receipt_id: e.receiptId, debtor: myName, creditor: person })),
+      ...data.theyOweMe.map(e => ({ receipt_id: e.receiptId, debtor: person, creditor: myName })),
     ]
-    if (tripUpserts.length > 0) {
-      await supabase.from('settlements').upsert(tripUpserts, { onConflict: 'trip_id,debtor,creditor' })
-    }
-    // Receipt-based settlements (delete + insert)
-    const receiptEntries = [
-      ...data.iOweThem.filter(e => e.receiptId).map(e => ({ receipt_id: e.receiptId, debtor: myName, creditor: person })),
-      ...data.theyOweMe.filter(e => e.receiptId).map(e => ({ receipt_id: e.receiptId, debtor: person, creditor: myName })),
-    ]
-    for (const s of receiptEntries) {
+    for (const s of entries) {
       await supabase.from('settlements').delete()
         .eq('receipt_id', s.receipt_id).eq('debtor', s.debtor).eq('creditor', s.creditor)
       await supabase.from('settlements').insert(s)
@@ -261,49 +171,7 @@ function toggleExpanded(person) {
     setSettling(null)
   }
 
-  async function moveTrip(tripId, date) {
-    const dateStr = fmtDate(date)
-    setTrips(prev => prev.map(t => t.id === tripId ? { ...t, trip_date: dateStr } : t))
-    await supabase.from('trips').update({ trip_date: dateStr }).eq('id', tripId)
-  }
-
   const iOweTotal = iOweEntries.reduce((s, [, d]) => s + unsettledIOwe(d), 0)
-
-  function renderTripRow(trip) {
-    const claimers = claimersByTrip[trip.id] || new Set()
-    const waitingOn = claimers.size > 0 && !trip.closed
-      ? (trip.members || []).filter(m => !claimers.has(m.toLowerCase()))
-      : []
-
-    return (
-      <li key={trip.id}>
-        <Link
-          to={`/trip/${trip.id}`}
-          className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm transition"
-        >
-          <div className="min-w-0">
-            <p className="font-medium text-gray-900">{trip.name}</p>
-            <p className="text-xs text-gray-400">
-              {new Date(trip.created_at).toLocaleDateString('en-US', {
-                month: 'short', day: 'numeric', year: 'numeric',
-              })}
-            </p>
-            {waitingOn.length > 0 && (
-              <p className="text-xs text-amber-600 mt-0.5">
-                Waiting on: {waitingOn.join(', ')}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 ml-3 shrink-0">
-            {trip.closed && (
-              <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Closed</span>
-            )}
-            <span className="text-gray-300">›</span>
-          </div>
-        </Link>
-      </li>
-    )
-  }
 
   return (
     <>
@@ -316,15 +184,15 @@ function toggleExpanded(person) {
           <h2 className="font-semibold text-gray-900 text-lg mb-0.5">
             {pickerDay.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </h2>
-          <p className="text-sm text-gray-400 mb-4">Choose a receipt</p>
+          <p className="text-sm text-gray-400 mb-4">Choose one</p>
           <ul className="space-y-2 mb-4">
-            {pickerDay.receipts.map(r => (
-              <li key={r.id}>
+            {pickerDay.items.map(item => (
+              <li key={item.id}>
                 <button
-                  onClick={() => { setPickerDay(null); navigate(`/receipt/${r.id}`) }}
+                  onClick={() => { setPickerDay(null); navigate(item.url) }}
                   className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-accent-300 hover:bg-accent-50 transition text-sm font-medium text-gray-800"
                 >
-                  {r.store_name}
+                  {item.label}
                 </button>
               </li>
             ))}
@@ -384,7 +252,7 @@ function toggleExpanded(person) {
                         <div key={i} className="flex items-center justify-between text-sm gap-2">
                           <div className="min-w-0">
                             <Link
-                              to={entry.receiptId ? `/receipt/${entry.receiptId}` : `/trip/${entry.tripId}`}
+                              to={`/receipt/${entry.receiptId}`}
                               className="text-gray-700 hover:underline"
                               onClick={e => e.stopPropagation()}
                             >
@@ -405,7 +273,7 @@ function toggleExpanded(person) {
                         <div key={i} className="flex items-center justify-between text-sm gap-2">
                           <div className="min-w-0">
                             <Link
-                              to={entry.receiptId ? `/receipt/${entry.receiptId}` : `/trip/${entry.tripId}`}
+                              to={`/receipt/${entry.receiptId}`}
                               className="text-gray-700 hover:underline"
                               onClick={e => e.stopPropagation()}
                             >
@@ -471,7 +339,7 @@ function toggleExpanded(person) {
                           <div key={i} className="flex items-center justify-between text-sm gap-2">
                             <div className="min-w-0">
                               <Link
-                                to={entry.receiptId ? `/receipt/${entry.receiptId}` : `/trip/${entry.tripId}`}
+                                to={`/receipt/${entry.receiptId}`}
                                 className="text-gray-700 hover:underline"
                                 onClick={e => e.stopPropagation()}
                               >
@@ -499,7 +367,7 @@ function toggleExpanded(person) {
                         <div key={i} className="flex items-center justify-between text-sm gap-2">
                           <div className="min-w-0">
                             <Link
-                              to={entry.receiptId ? `/receipt/${entry.receiptId}` : `/trip/${entry.tripId}`}
+                              to={`/receipt/${entry.receiptId}`}
                               className="text-gray-700 hover:underline"
                               onClick={e => e.stopPropagation()}
                             >
@@ -537,18 +405,7 @@ function toggleExpanded(person) {
           return { date, isCurrent: dayNum >= 1 && dayNum <= daysInMonth }
         })
 
-        // Group trips by local date key — use trip_date if set, else created_at
-        const tripsByDate = {}
-        for (const trip of trips) {
-          const d = trip.trip_date
-            ? new Date(trip.trip_date + 'T12:00:00')
-            : new Date(trip.created_at)
-          const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
-          if (!tripsByDate[key]) tripsByDate[key] = []
-          tripsByDate[key].push(trip)
-        }
-
-        // Group standalone receipts by receipt_date
+        // Group receipts by receipt_date
         const receiptsByDate = {}
         for (const receipt of standaloneReceipts) {
           const d = new Date(receipt.receipt_date + 'T12:00:00')
@@ -584,11 +441,11 @@ function toggleExpanded(person) {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setShowAllTrips(s => !s)}
+                  onClick={() => setShowAllReceipts(s => !s)}
                   className="text-xs text-gray-400 hover:text-gray-600 transition px-2 py-1 rounded hover:bg-gray-100"
-                  title={showAllTrips ? 'Showing all trips' : 'Showing only your trips'}
+                  title={showAllReceipts ? 'Showing all receipts' : 'Showing only your receipts'}
                 >
-                  {showAllTrips ? 'All trips' : 'My trips'}
+                  {showAllReceipts ? 'All' : 'Mine'}
                 </button>
                 <button
                   onClick={() => setCalMonth(prev => { const d = new Date(prev.year, prev.month + 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
@@ -616,26 +473,20 @@ function toggleExpanded(person) {
                 {calDays.map(({ date, isCurrent }, i) => {
                   const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
                   const isToday = date.toDateString() === now.toDateString()
-                  const dayTrips = (tripsByDate[key] || []).filter(trip =>
-                    showAllTrips || !myName || (trip.members || []).some(m => m.toLowerCase() === myName.toLowerCase())
-                  )
                   const dayReceipts = (receiptsByDate[key] || []).filter(r =>
-                    showAllTrips || !myName || (r.members || []).some(m => m.toLowerCase() === myName.toLowerCase())
+                    showAllReceipts || !myName || !(r.members?.length) || r.members.some(m => m.toLowerCase() === myName.toLowerCase())
                   )
-                  const tripTotal = dayTrips.reduce((s, t) => s + (tripTotals[t.id] || 0), 0)
-                  const receiptTotal = dayReceipts.reduce((s, r) => s + (receiptTotals[r.id] || 0), 0)
-                  const dayTotal = tripTotal + receiptTotal
-
-                  const isDragTarget = dragOverKey === key && draggingTripId
+                  const dayTotal = dayReceipts.reduce((s, r) => s + (receiptTotals[r.id] || 0), 0)
+                  const dayItems = dayReceipts.map(r => ({ id: r.id, label: r.store_name, url: `/receipt/${r.id}` }))
 
                   function handleCellClick() {
-                    if (draggingTripId || !isCurrent) return
-                    if (dayReceipts.length === 0) {
+                    if (!isCurrent) return
+                    if (dayItems.length === 0) {
                       navigate(`/receipt/new?date=${fmtDate(date)}`)
-                    } else if (dayReceipts.length === 1) {
-                      navigate(`/receipt/${dayReceipts[0].id}`)
+                    } else if (dayItems.length === 1) {
+                      navigate(dayItems[0].url)
                     } else {
-                      setPickerDay({ date, receipts: dayReceipts })
+                      setPickerDay({ date, items: dayItems })
                     }
                   }
 
@@ -643,19 +494,9 @@ function toggleExpanded(person) {
                     <div
                       key={`${key}-${i}`}
                       onClick={handleCellClick}
-                      onDragOver={e => { e.preventDefault(); setDragOverKey(key) }}
-                      onDragLeave={() => setDragOverKey(null)}
-                      onDrop={e => {
-                        e.preventDefault()
-                        if (draggingTripId) moveTrip(draggingTripId, date)
-                        setDraggingTripId(null)
-                        setDragOverKey(null)
-                      }}
                       className={`relative min-h-28 p-2.5 transition-colors group ${
-                        isDragTarget
-                          ? 'bg-accent-50 ring-2 ring-inset ring-accent-400'
-                          : !isCurrent ? 'bg-gray-50/60 cursor-default' : 'hover:bg-gray-50/80 cursor-pointer'
-                      } ${isToday && !isDragTarget ? 'ring-2 ring-inset ring-accent-500' : ''}`}
+                        !isCurrent ? 'bg-gray-50/60 cursor-default' : 'hover:bg-gray-50/80 cursor-pointer'
+                      } ${isToday ? 'ring-2 ring-inset ring-accent-500' : ''}`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full leading-none ${
@@ -667,8 +508,8 @@ function toggleExpanded(person) {
                           {dayTotal > 0 && isCurrent && (
                             <span className="text-xs font-semibold text-accent-600">${dayTotal.toFixed(2)}</span>
                           )}
-                          {/* Hover "+" button when day has one or more receipts */}
-                          {isCurrent && dayReceipts.length >= 1 && (
+                          {/* Hover "+" button when day has any existing items */}
+                          {isCurrent && dayItems.length >= 1 && (
                             <button
                               onClick={e => { e.stopPropagation(); navigate(`/receipt/new?date=${fmtDate(date)}`) }}
                               className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full bg-accent-100 text-accent-600 hover:bg-accent-200 text-xs font-bold"
@@ -680,30 +521,6 @@ function toggleExpanded(person) {
                         </div>
                       </div>
                       <div className="space-y-1">
-                        {/* Old trips (legacy) */}
-                        {dayTrips.map(trip => {
-                          const claimers = claimersByTrip[trip.id] || new Set()
-                          const waitingOn = claimers.size > 0 && !trip.closed
-                            ? (trip.members || []).filter(m => !claimers.has(m.toLowerCase()))
-                            : []
-                          return (
-                            <div
-                              key={trip.id}
-                              draggable
-                              onDragStart={e => { e.stopPropagation(); setDraggingTripId(trip.id) }}
-                              onDragEnd={() => { setDraggingTripId(null); setDragOverKey(null) }}
-                              className={`flex items-center gap-1.5 text-xs text-gray-500 cursor-grab active:cursor-grabbing ${draggingTripId === trip.id ? 'opacity-40' : ''}`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                trip.closed ? 'bg-gray-300' : waitingOn.length > 0 ? 'bg-amber-400' : 'bg-accent-500'
-                              }`} />
-                              <Link to={`/trip/${trip.id}`} onClick={e => e.stopPropagation()} className="truncate hover:text-accent-700 hover:underline">
-                                {trip.name}
-                              </Link>
-                            </div>
-                          )
-                        })}
-                        {/* Standalone receipts — not individually clickable; whole cell handles navigation */}
                         {dayReceipts.map(receipt => {
                           const claimers = claimersByReceipt[receipt.id] || new Set()
                           const waitingOn = claimers.size > 0
