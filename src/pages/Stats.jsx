@@ -157,9 +157,18 @@ export default function Stats() {
         ...trips.flatMap(t => t.members || []).filter(m => typeof m === 'string'),
       ])]
 
+      // Query roster directly (no fallback) so only explicitly pinned members
+      // are the default selection — FALLBACK_MEMBERS are not used here.
+      const { data: rosterData } = await supabase
+        .from('app_settings').select('value').eq('key', 'apartment_members').single()
+      const pinnedLower = new Set(
+        (rosterData?.value || [])
+          .filter(m => m.isCore)
+          .map(m => m.name.toLowerCase())
+      )
       const defaultSelected = new Set(
         allPeopleUnfiltered
-          .filter(p => coreRoommatesLower.has(p.toLowerCase()))
+          .filter(p => pinnedLower.has(p.toLowerCase()))
           .map(p => p.toLowerCase())
       )
 
@@ -171,7 +180,18 @@ export default function Stats() {
 
   // Initialize selectedPeople and selectedCategories once raw loads
   useEffect(() => {
-    if (raw && selectedPeople === null) setSelectedPeople(raw.defaultSelected)
+    if (raw && selectedPeople === null) {
+      const saved = localStorage.getItem('stats-selected-people')
+      if (saved) {
+        try {
+          setSelectedPeople(new Set(JSON.parse(saved)))
+        } catch {
+          setSelectedPeople(raw.defaultSelected)
+        }
+      } else {
+        setSelectedPeople(raw.defaultSelected)
+      }
+    }
     if (raw && selectedCategories === null) setSelectedCategories(new Set(raw.availableCategories))
   }, [raw, selectedPeople, selectedCategories])
 
@@ -351,6 +371,7 @@ export default function Stats() {
     setSelectedPeople(prev => {
       const next = new Set(prev)
       next.has(nameLower) ? next.delete(nameLower) : next.add(nameLower)
+      localStorage.setItem('stats-selected-people', JSON.stringify([...next]))
       return next
     })
   }
@@ -373,7 +394,11 @@ export default function Stats() {
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Show people</h2>
           {selected.size !== allPeople.length && (
             <button
-              onClick={() => setSelectedPeople(new Set(allPeople.map(p => p.toLowerCase())))}
+              onClick={() => {
+              const all = new Set(allPeople.map(p => p.toLowerCase()))
+              localStorage.setItem('stats-selected-people', JSON.stringify([...all]))
+              setSelectedPeople(all)
+            }}
               className="text-xs text-accent-600 hover:text-accent-700 transition"
             >
               Select all
