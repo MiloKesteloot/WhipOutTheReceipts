@@ -550,7 +550,7 @@ function toggleExpanded(person) {
             </div>
 
             {/* Day-of-week headers */}
-            <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/50 select-none">
+            <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/50">
               {['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d => (
                 <div key={d} className="text-center text-xs font-semibold text-gray-400 tracking-widest py-3">{d}</div>
               ))}
@@ -584,7 +584,7 @@ function toggleExpanded(person) {
                     <div
                       key={`${key}-${i}`}
                       onClick={handleCellClick}
-                      className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 ${
+                      className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 select-none ${
                         !isCurrent ? 'bg-gray-50/60' : ''
                       } ${isToday ? 'ring-2 ring-inset ring-accent-600' : ''}`}
                     >
