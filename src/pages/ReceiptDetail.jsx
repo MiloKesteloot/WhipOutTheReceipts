@@ -490,10 +490,13 @@ export default function ReceiptDetail() {
               return (
                 <li className="flex items-center gap-3 px-4 py-3 bg-gray-50/60">
                   <input type="checkbox" checked readOnly disabled className="h-4 w-4 rounded accent-accent-600 opacity-40" />
-                  <p className="flex-1 text-sm text-gray-400 truncate">
-                    {parts.join(' · ')}
-                    <span className="ml-1.5 text-xs">🔒</span>
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-400 truncate">
+                      {parts.join(' · ')}
+                      <span className="ml-1.5 text-xs">🔒</span>
+                    </p>
+                    <p className="text-xs text-gray-300">Distributed proportionally to what you bought</p>
+                  </div>
                   <span className="text-sm font-medium text-gray-400 shrink-0">${(t + ti + f).toFixed(2)}</span>
                 </li>
               )
