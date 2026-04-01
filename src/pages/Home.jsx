@@ -510,7 +510,6 @@ function toggleExpanded(person) {
                   const dayItems = dayReceipts.map(r => ({ id: r.id, label: r.store_name, url: `/receipt/${r.id}` }))
 
                   function handleCellClick() {
-                    if (!isCurrent) return
                     if (dayItems.length === 0) {
                       navigate(`/receipt/new?date=${fmtDate(date)}`)
                     } else if (dayItems.length === 1) {
@@ -524,8 +523,8 @@ function toggleExpanded(person) {
                     <div
                       key={`${key}-${i}`}
                       onClick={handleCellClick}
-                      className={`relative min-h-28 p-2.5 transition-colors group ${
-                        !isCurrent ? 'bg-gray-50/60 cursor-default' : 'hover:bg-gray-50/80 cursor-pointer'
+                      className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 ${
+                        !isCurrent ? 'bg-gray-50/60' : ''
                       } ${isToday ? 'ring-2 ring-inset ring-accent-600' : ''}`}
                     >
                       <div className="flex items-start justify-between mb-2">
