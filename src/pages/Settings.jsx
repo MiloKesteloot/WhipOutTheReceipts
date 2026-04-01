@@ -57,6 +57,8 @@ export default function Settings() {
   const [mergeConfirm, setMergeConfirm] = useState(false)
   const [mergeDone, setMergeDone] = useState(null)
 
+  const [tab, setTab] = useState('group')
+
   // Personal settings — localStorage only
   const [defaultShowAll, setDefaultShowAll] = useState(
     localStorage.getItem('default-show-all-trips') === '1'
@@ -224,80 +226,31 @@ export default function Settings() {
   return (
     <>
     {DialogUI}
-    <div className="max-w-xl mx-auto p-4 py-8 space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-
-      {/* Your Name */}
-      <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Your name</h2>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex gap-2">
-            <div className="relative flex-1" ref={nameInputRef}>
-              <input
-                type="text"
-                value={nameInput}
-                onChange={e => { setNameInput(e.target.value); setNameOpen(true) }}
-                onClick={() => setNameOpen(true)}
-                onKeyDown={e => e.key === 'Enter' && saveName()}
-                autoComplete="off"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-              {nameOpen && (() => {
-                const coreNames = (roster || []).filter(m => m.isCore).map(m => m.name)
-                const coreSet = new Set(coreNames.map(n => n.toLowerCase()))
-                const otherNames = allKnownNames.filter(n => !coreSet.has(n.toLowerCase()))
-                const isExactMatch = [...coreNames, ...otherNames].some(n => n.toLowerCase() === nameInput.toLowerCase())
-                const matchCore = coreNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
-                const matchOther = otherNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
-                if (matchCore.length === 0 && matchOther.length === 0) return null
-                return (
-                  <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                    {matchCore.map(n => (
-                      <li key={n}>
-                        <button
-                          type="button"
-                          onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors flex items-center justify-between"
-                        >
-                          {n}
-                          <span className="text-xs text-gray-300">pinned</span>
-                        </button>
-                      </li>
-                    ))}
-                    {matchCore.length > 0 && matchOther.length > 0 && (
-                      <li className="border-t border-gray-100" />
-                    )}
-                    {matchOther.map(n => (
-                      <li key={n}>
-                        <button
-                          type="button"
-                          onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors"
-                        >
-                          {n}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              })()}
-            </div>
+    <div className="max-w-xl mx-auto p-4 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+          {[['group', 'Group'], ['personal', 'Personal']].map(([v, label]) => (
             <button
-              onClick={saveName}
-              disabled={!nameInput.trim() || nameInput.trim().replace(/\b\w/g, c => c.toUpperCase()) === currentName}
-              className="px-4 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
+              key={v}
+              onClick={() => setTab(v)}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                tab === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
             >
-              Save
+              {label}
             </button>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">Changing your name will reload the page.</p>
+          ))}
         </div>
-      </section>
+      </div>
 
-      {/* Apartment Settings */}
+      <div className="space-y-8">
+
+      {/* ── GROUP TAB ── */}
+      {tab === 'group' && <>
+
+      {/* Pinned people */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Apartment settings</h2>
-        <p className="text-xs text-gray-400 mb-3">Changes here apply to everyone in the apartment.</p>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-sm font-medium text-gray-700 mb-1">Pinned people</p>
           <p className="text-xs text-gray-400 mb-4">Pinned people appear by default in Stats and as quick-add options when creating a trip.</p>
@@ -482,16 +435,80 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Personal Settings */}
+      </> /* end group tab */}
+
+      {/* ── PERSONAL TAB ── */}
+      {tab === 'personal' && <>
+
+      {/* Your Name */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Personal settings</h2>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Your name</h2>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1" ref={nameInputRef}>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={e => { setNameInput(e.target.value); setNameOpen(true) }}
+                onClick={() => setNameOpen(true)}
+                onKeyDown={e => e.key === 'Enter' && saveName()}
+                autoComplete="off"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+              />
+              {nameOpen && (() => {
+                const coreNames = (roster || []).filter(m => m.isCore).map(m => m.name)
+                const coreSet = new Set(coreNames.map(n => n.toLowerCase()))
+                const otherNames = allKnownNames.filter(n => !coreSet.has(n.toLowerCase()))
+                const isExactMatch = [...coreNames, ...otherNames].some(n => n.toLowerCase() === nameInput.toLowerCase())
+                const matchCore = coreNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
+                const matchOther = otherNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
+                if (matchCore.length === 0 && matchOther.length === 0) return null
+                return (
+                  <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {matchCore.map(n => (
+                      <li key={n}>
+                        <button type="button" onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors flex items-center justify-between">
+                          {n}
+                          <span className="text-xs text-gray-300">pinned</span>
+                        </button>
+                      </li>
+                    ))}
+                    {matchCore.length > 0 && matchOther.length > 0 && <li className="border-t border-gray-100" />}
+                    {matchOther.map(n => (
+                      <li key={n}>
+                        <button type="button" onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors">
+                          {n}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
+            </div>
+            <button
+              onClick={saveName}
+              disabled={!nameInput.trim() || nameInput.trim().replace(/\b\w/g, c => c.toUpperCase()) === currentName}
+              className="px-4 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-2">Changing your name will reload the page.</p>
+        </div>
+      </section>
+
+      {/* Personal preferences */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Preferences</h2>
         <p className="text-xs text-gray-400 mb-3">Saved on this device only.</p>
         <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
           <div className="p-4">
             <label className="flex items-center justify-between cursor-pointer">
               <div>
-                <p className="text-sm font-medium text-gray-800">Show all trips by default</p>
-                <p className="text-xs text-gray-400 mt-0.5">When off, only trips you're a member of are shown on the home page</p>
+                <p className="text-sm font-medium text-gray-800">Show all receipts by default</p>
+                <p className="text-xs text-gray-400 mt-0.5">When off, only receipts you're a member of are shown on the home page</p>
               </div>
               <button
                 onClick={() => setDefaultShowAll(v => !v)}
@@ -503,6 +520,10 @@ export default function Settings() {
           </div>
         </div>
       </section>
+
+      </> /* end personal tab */}
+
+      </div>
     </div>
     </>
   )
