@@ -254,7 +254,7 @@ function toggleExpanded(person) {
       </div>
     )}
 
-    <div className="max-w-5xl mx-auto px-4 pt-0 pb-8">
+    <div className="max-w-5xl mx-auto px-4 pt-4 pb-8">
 
       {/* View toolbar */}
       {view !== null && (
@@ -270,7 +270,7 @@ function toggleExpanded(person) {
             >
               {label}
               {v === 'todo' && todoBadge > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                <span className="absolute -top-1 -right-1 z-10 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
                   {todoBadge}
                 </span>
               )}
