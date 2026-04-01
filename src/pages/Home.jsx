@@ -31,6 +31,13 @@ export default function Home() {
   }, [])
   useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
 
+  useEffect(() => {
+    if (!pickerDay) return
+    function onKey(e) { if (e.key === 'Escape') setPickerDay(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pickerDay])
+
   async function fetchTrips() {
     const [receiptsRes, itemsRes, claimsRes, settlementsRes, mealsRes, checkinsRes] = await Promise.all([
       supabase.from('receipts').select('id, paid_by, tip, tax, fees, receipt_date, members, store_name').not('receipt_date', 'is', null),

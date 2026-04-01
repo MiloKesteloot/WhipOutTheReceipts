@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 /**
  * useDialog()
@@ -27,6 +27,17 @@ export function useDialog() {
       setDialog({ type: 'alert', message, resolve, ...options })
     })
   }, [])
+
+  useEffect(() => {
+    if (!dialog) return
+    function onKey(e) {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      dialog.type === 'confirm' ? handleCancel() : handleConfirm()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [dialog])
 
   function handleConfirm() {
     dialog.resolve(true)
