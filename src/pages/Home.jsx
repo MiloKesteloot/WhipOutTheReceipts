@@ -77,22 +77,37 @@ export default function Home() {
     }
     setReceiptTotals(receiptTotalsMap)
 
-    const data = { allItems, allClaims, settlements, allMeals, standalone }
+    const data = { allItems, allClaims, settlements, allMeals, standalone, allCheckins }
     setRawData(data)
     computeDebts(localStorage.getItem('global-name') || '', data)
     setLoading(false)
   }
 
-  function computeDebts(name, { allItems, allClaims, settlements, allMeals = [], standalone = [] }) {
+  function computeDebts(name, { allItems, allClaims, settlements, allMeals = [], standalone = [], allCheckins = [] }) {
     if (!name) { setNetByPerson({}); return }
 
     const nameLc = name.toLowerCase()
     const byPerson = {}
 
+    // Build checkin set per receipt
+    const checkinsByReceipt = {}
+    for (const c of allCheckins) {
+      if (!c.receipt_id) continue
+      if (!checkinsByReceipt[c.receipt_id]) checkinsByReceipt[c.receipt_id] = new Set()
+      checkinsByReceipt[c.receipt_id].add(c.roommate.toLowerCase())
+    }
+
     // Receipt debts
     for (const receipt of standalone) {
       const rItems = allItems.filter(i => i.receipt_id === receipt.id)
       if (!rItems.length) continue
+
+      // Skip until everyone on the receipt has checked in
+      const members = (receipt.members || []).map(m => m.toLowerCase())
+      if (members.length > 0) {
+        const checkedIn = checkinsByReceipt[receipt.id] || new Set()
+        if (!members.every(m => checkedIn.has(m))) continue
+      }
       const itemIds = new Set(rItems.map(i => i.id))
       const rClaims = allClaims.filter(c => itemIds.has(c.item_id))
       const rMeals = allMeals.filter(m => m.receipt_id === receipt.id)
