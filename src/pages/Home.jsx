@@ -348,7 +348,7 @@ function toggleExpanded(person) {
                 <h2 className="font-semibold text-gray-800">People you owe</h2>
                 <span className="text-sm font-semibold text-amber-600">${iOweTotal.toFixed(2)}</span>
               </div>
-              <ul className="space-y-1.5">
+              <ul className="space-y-1.5 select-none">
                 {iOweEntries.map(([person, data]) => {
                   const netOwed = unsettledIOwe(data)
                   const expanded = expandedPeople.has(`owe-${person}`)
@@ -423,7 +423,7 @@ function toggleExpanded(person) {
                 <h2 className="font-semibold text-gray-800">People who owe you</h2>
                 <span className="text-sm font-semibold text-accent-600">${pendingTotal.toFixed(2)}</span>
               </div>
-              <ul className="space-y-1.5">
+              <ul className="space-y-1.5 select-none">
                 {owedToMeEntries.map(([person, data]) => {
                   const expanded = expandedPeople.has(person)
                   const netAmt = unsettledOwedToMe(data)
@@ -517,7 +517,7 @@ function toggleExpanded(person) {
         return (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 select-none">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <button
                 onClick={() => setCalMonth(prev => { const d = new Date(prev.year, prev.month - 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
                 className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600"
@@ -584,7 +584,7 @@ function toggleExpanded(person) {
                     <div
                       key={`${key}-${i}`}
                       onClick={handleCellClick}
-                      className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 select-none ${
+                      className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 ${
                         !isCurrent ? 'bg-gray-50/60' : ''
                       } ${isToday ? 'ring-2 ring-inset ring-accent-600' : ''}`}
                     >
@@ -672,7 +672,7 @@ function toggleExpanded(person) {
                         <button
                           key={r.id}
                           onClick={() => navigate(`/receipt/${r.id}`)}
-                          className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm transition text-left"
+                          className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm transition text-left select-none"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <span className={`w-2 h-2 rounded-full shrink-0 ${waitingOn.length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
@@ -709,7 +709,7 @@ function toggleExpanded(person) {
           <div className="text-center py-16 text-gray-400 text-sm">No receipts yet.</div>
         )
         return (
-          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100 select-none">
             {filtered.map(r => {
               const claimers = claimersByReceipt[r.id] || new Set()
               const waitingOn = claimers.size > 0 && r.members?.length
