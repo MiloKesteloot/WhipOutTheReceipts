@@ -140,7 +140,7 @@ export default function Settings() {
     if (data?.value) {
       setRoster(data.value)
     } else {
-      const initial = FALLBACK_CORE.map(name => ({ name, isCore: true }))
+      const initial = FALLBACK_CORE.map(name => ({ name, isCore: false }))
       setRoster(initial)
       await persistRoster(initial)
     }

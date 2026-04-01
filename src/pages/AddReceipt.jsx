@@ -107,7 +107,13 @@ export default function AddReceipt() {
         } else {
           const savedName = localStorage.getItem('global-name')
           if (savedName) setPaidBy(savedName)
-          setReceiptMembers(core)
+          // Default: only the logged-in user + explicitly pinned core members (isCore=true).
+          // Query roster directly to avoid the FALLBACK_CORE which marks everyone as core.
+          const { data: rosterData } = await supabase
+            .from('app_settings').select('value').eq('key', 'apartment_members').single()
+          const pinned = (rosterData?.value || []).filter(m => m.isCore).map(m => m.name)
+          const defaultMembers = [...new Set([...pinned, ...(savedName ? [savedName] : [])])]
+          setReceiptMembers(defaultMembers)
         }
         loadComplete.current = true
         return
