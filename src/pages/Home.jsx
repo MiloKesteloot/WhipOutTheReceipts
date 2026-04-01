@@ -17,7 +17,7 @@ export default function Home() {
   const [receiptTotals, setReceiptTotals] = useState({})
   const [expandedPeople, setExpandedPeople] = useState(new Set())
   const [showAllReceipts, setShowAllReceipts] = useState(localStorage.getItem('default-show-all-trips') === '1')
-  const [view, setView] = useState(() => localStorage.getItem('home-view') || 'calendar')
+  const [view, setView] = useState(null)
   const [calMonth, setCalMonth] = useState(() => {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
@@ -86,7 +86,21 @@ export default function Home() {
 
     const data = { allItems, allClaims, settlements, allMeals, standalone, allCheckins }
     setRawData(data)
-    computeDebts(localStorage.getItem('global-name') || '', data)
+    const nameLc = (localStorage.getItem('global-name') || '').toLowerCase()
+    const byPerson = computeDebts(localStorage.getItem('global-name') || '', data)
+    // Smart routing: todo if unchecked receipts or unsettled debts, else calendar
+    const hasUnchecked = nameLc && standalone.some(r => {
+      const members = (r.members || []).map(m => m.toLowerCase())
+      return members.includes(nameLc)
+        && allItems.some(i => i.receipt_id === r.id)
+        && !(receiptMap[r.id]?.has(nameLc))
+    })
+    const hasDebts = nameLc && Object.values(byPerson || {}).some(d => {
+      const owe = d.iOweThem.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
+             - d.theyOweMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
+      return owe > 0.005
+    })
+    setView(hasUnchecked || hasDebts ? 'todo' : 'calendar')
     setLoading(false)
   }
 
@@ -142,6 +156,7 @@ export default function Home() {
     }
 
     setNetByPerson(byPerson)
+    return byPerson
   }
 
   const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
@@ -196,6 +211,15 @@ function toggleExpanded(person) {
 
   const iOweTotal = iOweEntries.reduce((s, [, d]) => s + unsettledIOwe(d), 0)
 
+  const myNameLc = myName.toLowerCase()
+  const uncheckedReceipts = myName ? standaloneReceipts.filter(r => {
+    const members = (r.members || []).map(m => m.toLowerCase())
+    if (!members.includes(myNameLc)) return false
+    if (!(rawData?.allItems || []).some(i => i.receipt_id === r.id)) return false
+    return !(claimersByReceipt[r.id]?.has(myNameLc))
+  }) : []
+  const todoBadge = uncheckedReceipts.length + iOweEntries.length
+
   return (
     <>
     {DialogUI}
@@ -231,192 +255,25 @@ function toggleExpanded(person) {
     )}
 
     <div className="max-w-5xl mx-auto px-4 pt-0 pb-8">
-      {/* Debt summaries — narrower for readability */}
-      <div className="max-w-2xl space-y-4 mb-8">
-
-      {/* People who owe you — grouped by person, collapsible, net amounts */}
-      {myName && owedToMeEntries.length > 0 && (
-        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-800">People who owe you</h2>
-            <span className="text-sm font-semibold text-accent-600">${pendingTotal.toFixed(2)}</span>
-          </div>
-          <ul className="space-y-1.5">
-            {owedToMeEntries.map(([person, data]) => {
-              const expanded = expandedPeople.has(person)
-              const netAmt = unsettledOwedToMe(data)
-              const hasOffset = data.iOweThem.some(e => !e.settled)
-              return (
-                <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => toggleExpanded(person)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left"
-                  >
-                    <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
-                    <div className="flex items-center gap-2.5">
-                      {hasOffset && (
-                        <span className="text-xs text-gray-400">net</span>
-                      )}
-                      <span className="font-semibold text-gray-900">${netAmt.toFixed(2)}</span>
-                      <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-                    </svg>
-                    </div>
-                  </button>
-                  {expanded && (
-                    <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
-                      {data.theyOweMe.map((entry, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm gap-2">
-                          <div className="min-w-0">
-                            <Link
-                              to={`/receipt/${entry.receiptId}`}
-                              className="text-gray-700 hover:underline"
-                              onClick={e => e.stopPropagation()}
-                            >
-                              {entry.label}
-                            </Link>
-                            <span className="text-gray-400 text-xs ml-1.5">owes you</span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
-                            {entry.settled
-                              ? <span className="text-xs text-accent-600 font-medium">✓ sent</span>
-                              : <span className="text-xs text-amber-500">awaiting</span>
-                            }
-                          </div>
-                        </div>
-                      ))}
-                      {data.iOweThem.map((entry, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm gap-2">
-                          <div className="min-w-0">
-                            <Link
-                              to={`/receipt/${entry.receiptId}`}
-                              className="text-gray-700 hover:underline"
-                              onClick={e => e.stopPropagation()}
-                            >
-                              {entry.label}
-                            </Link>
-                            <span className="text-gray-400 text-xs ml-1.5">offset</span>
-                          </div>
-                          <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-
-      {/* People you owe — grouped by person, collapsible, net amounts */}
-      {myName && iOweEntries.length > 0 && (
-        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-800">People you owe</h2>
-            <span className="text-sm font-semibold text-amber-600">${iOweTotal.toFixed(2)}</span>
-          </div>
-          <ul className="space-y-1.5">
-            {iOweEntries.map(([person, data]) => {
-              const netOwed = unsettledIOwe(data)
-              const expanded = expandedPeople.has(`owe-${person}`)
-              const hasOffset = data.theyOweMe.some(e => !e.settled)
-              return (
-                <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <div
-                    className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition cursor-pointer"
-                    onClick={() => toggleExpanded(`owe-${person}`)}
-                  >
-                    <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
-                    <div className="flex items-center gap-2.5">
-                      {hasOffset && <span className="text-xs text-gray-400">net</span>}
-                      <span className="font-semibold text-amber-600">${netOwed.toFixed(2)}</span>
-                      {data.iOweThem.some(e => !e.settled) && (
-                        <button
-                          onClick={e => { e.stopPropagation(); markAllSettledWith(person, data) }}
-                          disabled={!!settling}
-                          className="text-xs px-2 py-0.5 bg-accent-600 text-white rounded-md hover:bg-accent-700 transition disabled:opacity-50 font-medium"
-                        >
-                          {settling?.person === person ? '…' : 'Mark sent'}
-                        </button>
-                      )}
-                      <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-                      </svg>
-                    </div>
-                  </div>
-                  {expanded && (
-                    <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
-                      {data.iOweThem.every(e => e.settled) && data.theyOweMe.every(e => e.settled) && (
-                        <p className="text-xs text-accent-600 font-medium py-1">All settled ✓</p>
-                      )}
-                      {data.iOweThem.map((entry, i) => (
-                          <div key={i} className="flex items-center justify-between text-sm gap-2">
-                            <div className="min-w-0">
-                              <Link
-                                to={`/receipt/${entry.receiptId}`}
-                                className="text-gray-700 hover:underline"
-                                onClick={e => e.stopPropagation()}
-                              >
-                                {entry.label}
-                              </Link>
-                              <span className="text-gray-400 text-xs ml-1.5">you owe</span>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
-                              {entry.settled ? (
-                                <span className="text-xs text-accent-600 font-medium">✓ sent</span>
-                              ) : (
-                                <button
-                                  onClick={() => markSettled({ ...entry, creditor: person })}
-                                  disabled={!!settling}
-                                  className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50"
-                                >
-                                  Mark sent
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                      ))}
-                      {data.theyOweMe.map((entry, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm gap-2">
-                          <div className="min-w-0">
-                            <Link
-                              to={`/receipt/${entry.receiptId}`}
-                              className="text-gray-700 hover:underline"
-                              onClick={e => e.stopPropagation()}
-                            >
-                              {entry.label}
-                            </Link>
-                            <span className="text-gray-400 text-xs ml-1.5">offset</span>
-                          </div>
-                          <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-
-      </div>{/* end debt summaries */}
 
       {/* View toolbar */}
+      {view !== null && (
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          {[['calendar', 'Calendar'], ['days', 'Days'], ['receipts', 'Receipts']].map(([v, label]) => (
+          {[['todo', 'Todo'], ['calendar', 'Calendar'], ['days', 'Days'], ['receipts', 'Receipts']].map(([v, label]) => (
             <button
               key={v}
-              onClick={() => { setView(v); localStorage.setItem('home-view', v) }}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              onClick={() => setView(v)}
+              className={`relative px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
               {label}
+              {v === 'todo' && todoBadge > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {todoBadge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -434,6 +291,193 @@ function toggleExpanded(person) {
           ))}
         </div>
       </div>
+      )}
+
+      {/* Todo view */}
+      {view === 'todo' && (
+        <div className="max-w-2xl mx-auto space-y-4">
+
+          {/* Receipts to check off */}
+          {uncheckedReceipts.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="font-semibold text-gray-800">Receipts to check off</h2>
+                <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{uncheckedReceipts.length}</span>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {uncheckedReceipts.map(r => {
+                  const date = new Date(r.receipt_date + 'T12:00:00')
+                  return (
+                    <li key={r.id}>
+                      <Link
+                        to={`/receipt/${r.id}`}
+                        className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-2 h-2 rounded-full shrink-0 bg-amber-400" />
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
+                            <p className="text-xs text-gray-400">
+                              {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · Paid by {r.paid_by}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-gray-300 shrink-0 ml-3">›</span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* People you owe */}
+          {myName && iOweEntries.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-gray-800">People you owe</h2>
+                <span className="text-sm font-semibold text-amber-600">${iOweTotal.toFixed(2)}</span>
+              </div>
+              <ul className="space-y-1.5">
+                {iOweEntries.map(([person, data]) => {
+                  const netOwed = unsettledIOwe(data)
+                  const expanded = expandedPeople.has(`owe-${person}`)
+                  const hasOffset = data.theyOweMe.some(e => !e.settled)
+                  return (
+                    <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
+                      <div
+                        className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition cursor-pointer"
+                        onClick={() => toggleExpanded(`owe-${person}`)}
+                      >
+                        <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
+                        <div className="flex items-center gap-2.5">
+                          {hasOffset && <span className="text-xs text-gray-400">net</span>}
+                          <span className="font-semibold text-amber-600">${netOwed.toFixed(2)}</span>
+                          {data.iOweThem.some(e => !e.settled) && (
+                            <button
+                              onClick={e => { e.stopPropagation(); markAllSettledWith(person, data) }}
+                              disabled={!!settling}
+                              className="text-xs px-2 py-0.5 bg-accent-600 text-white rounded-md hover:bg-accent-700 transition disabled:opacity-50 font-medium"
+                            >
+                              {settling?.person === person ? '…' : 'Mark sent'}
+                            </button>
+                          )}
+                          <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                          </svg>
+                        </div>
+                      </div>
+                      {expanded && (
+                        <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+                          {data.iOweThem.every(e => e.settled) && data.theyOweMe.every(e => e.settled) && (
+                            <p className="text-xs text-accent-600 font-medium py-1">All settled ✓</p>
+                          )}
+                          {data.iOweThem.map((entry, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm gap-2">
+                              <div className="min-w-0">
+                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
+                                <span className="text-gray-400 text-xs ml-1.5">you owe</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
+                                {entry.settled ? (
+                                  <span className="text-xs text-accent-600 font-medium">✓ sent</span>
+                                ) : (
+                                  <button onClick={() => markSettled({ ...entry, creditor: person })} disabled={!!settling} className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">Mark sent</button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {data.theyOweMe.map((entry, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm gap-2">
+                              <div className="min-w-0">
+                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
+                                <span className="text-gray-400 text-xs ml-1.5">offset</span>
+                              </div>
+                              <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* People who owe you */}
+          {myName && owedToMeEntries.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-gray-800">People who owe you</h2>
+                <span className="text-sm font-semibold text-accent-600">${pendingTotal.toFixed(2)}</span>
+              </div>
+              <ul className="space-y-1.5">
+                {owedToMeEntries.map(([person, data]) => {
+                  const expanded = expandedPeople.has(person)
+                  const netAmt = unsettledOwedToMe(data)
+                  const hasOffset = data.iOweThem.some(e => !e.settled)
+                  return (
+                    <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
+                      <button onClick={() => toggleExpanded(person)} className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left">
+                        <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
+                        <div className="flex items-center gap-2.5">
+                          {hasOffset && <span className="text-xs text-gray-400">net</span>}
+                          <span className="font-semibold text-gray-900">${netAmt.toFixed(2)}</span>
+                          <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                          </svg>
+                        </div>
+                      </button>
+                      {expanded && (
+                        <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+                          {data.theyOweMe.map((entry, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm gap-2">
+                              <div className="min-w-0">
+                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
+                                <span className="text-gray-400 text-xs ml-1.5">owes you</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
+                                {entry.settled ? <span className="text-xs text-accent-600 font-medium">✓ sent</span> : <span className="text-xs text-amber-500">awaiting</span>}
+                              </div>
+                            </div>
+                          ))}
+                          {data.iOweThem.map((entry, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm gap-2">
+                              <div className="min-w-0">
+                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
+                                <span className="text-gray-400 text-xs ml-1.5">offset</span>
+                              </div>
+                              <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* All clear */}
+          {uncheckedReceipts.length === 0 && iOweEntries.length === 0 && owedToMeEntries.length === 0 && (
+            <div className="py-16 text-center">
+              <p className="text-3xl mb-3">🎉</p>
+              <p className="font-semibold text-gray-800 text-lg">You're all caught up!</p>
+              <p className="text-sm text-gray-400 mt-1">No receipts to check off and no outstanding debts.</p>
+              <button
+                onClick={() => setView('calendar')}
+                className="mt-4 text-sm text-accent-600 hover:text-accent-700 font-medium transition"
+              >
+                View calendar →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Calendar view */}
       {view === 'calendar' && (() => {
