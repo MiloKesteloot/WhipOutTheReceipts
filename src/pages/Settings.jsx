@@ -229,7 +229,7 @@ export default function Settings() {
     <div className="max-w-xl mx-auto p-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 select-none">
           {[['group', 'Group'], ['personal', 'Personal']].map(([v, label]) => (
             <button
               key={v}

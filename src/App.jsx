@@ -13,7 +13,7 @@ function TopNav({ myName, onSignOut }) {
   const active = path => pathname === path
 
   return (
-    <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50">
+    <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50 select-none">
       <div className="max-w-5xl mx-auto flex items-center px-4 h-14">
         <Link to="/" className="font-bold text-gray-900 text-base mr-4 shrink-0">
           Receipts

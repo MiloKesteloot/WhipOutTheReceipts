@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 /* ── Accent color ────────────────────────────────────────────────────────────
    Change these 7 values to switch the accent color across the entire app.
    Values are space-separated RGB (no commas), which lets Tailwind's

@@ -268,7 +268,7 @@ function toggleExpanded(person) {
 
       {/* View toolbar */}
       {view !== null && (
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 select-none">
         <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
           {[['todo', 'Todo'], ['calendar', 'Calendar'], ['days', 'Days'], ['receipts', 'Receipts']].map(([v, label]) => (
             <button
@@ -517,7 +517,7 @@ function toggleExpanded(person) {
         return (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 select-none">
               <button
                 onClick={() => setCalMonth(prev => { const d = new Date(prev.year, prev.month - 1, 1); return { year: d.getFullYear(), month: d.getMonth() } })}
                 className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600"
@@ -550,7 +550,7 @@ function toggleExpanded(person) {
             </div>
 
             {/* Day-of-week headers */}
-            <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/50">
+            <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/50 select-none">
               {['SUN','MON','TUE','WED','THU','FRI','SAT'].map(d => (
                 <div key={d} className="text-center text-xs font-semibold text-gray-400 tracking-widest py-3">{d}</div>
               ))}
@@ -584,7 +584,7 @@ function toggleExpanded(person) {
                     <div
                       key={`${key}-${i}`}
                       onClick={handleCellClick}
-                      className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 ${
+                      className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 select-none ${
                         !isCurrent ? 'bg-gray-50/60' : ''
                       } ${isToday ? 'ring-2 ring-inset ring-accent-600' : ''}`}
                     >
