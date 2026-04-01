@@ -100,7 +100,11 @@ export default function Home() {
              - d.theyOweMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
       return owe > 0.005
     })
-    setView(hasUnchecked || hasDebts ? 'todo' : 'calendar')
+    const saved = sessionStorage.getItem('home-view')
+    const defaultView = hasUnchecked || hasDebts ? 'todo' : 'calendar'
+    const resolvedView = saved || defaultView
+    sessionStorage.setItem('home-view', resolvedView)
+    setView(resolvedView)
     setLoading(false)
   }
 
@@ -263,7 +267,7 @@ function toggleExpanded(person) {
           {[['todo', 'Todo'], ['calendar', 'Calendar'], ['days', 'Days'], ['receipts', 'Receipts']].map(([v, label]) => (
             <button
               key={v}
-              onClick={() => setView(v)}
+              onClick={() => { sessionStorage.setItem('home-view', v); setView(v) }}
               className={`relative px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
@@ -469,7 +473,7 @@ function toggleExpanded(person) {
               <p className="font-semibold text-gray-800 text-lg">You're all caught up!</p>
               <p className="text-sm text-gray-400 mt-1">No receipts to check off and no outstanding debts.</p>
               <button
-                onClick={() => setView('calendar')}
+                onClick={() => { sessionStorage.setItem('home-view', 'calendar'); setView('calendar') }}
                 className="mt-4 text-sm text-accent-600 hover:text-accent-700 font-medium transition"
               >
                 View calendar →
