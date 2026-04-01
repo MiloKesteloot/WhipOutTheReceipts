@@ -516,7 +516,7 @@ export default function ReceiptDetail() {
             <button
               onClick={saveClaims}
               disabled={saving}
-              className="px-5 py-2 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50"
+              className="px-5 py-2 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50 min-w-[140px] whitespace-nowrap text-center"
             >
               {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save my claims'}
             </button>
