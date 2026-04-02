@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import Home from './pages/Home.jsx'
 import TripDetail from './pages/TripDetail.jsx'
@@ -11,6 +11,7 @@ import Settings from './pages/Settings.jsx'
 function TopNav({ myName, onSignOut }) {
   const { pathname } = useLocation()
   const active = path => pathname === path
+  useEffect(() => { window.getSelection()?.removeAllRanges() }, [pathname])
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50 select-none">

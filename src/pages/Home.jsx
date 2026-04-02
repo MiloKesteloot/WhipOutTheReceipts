@@ -30,6 +30,7 @@ export default function Home() {
     fetchTrips()
   }, [])
   useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
+  useEffect(() => { window.getSelection()?.removeAllRanges() }, [view])
 
   useEffect(() => {
     if (!pickerDay) return
