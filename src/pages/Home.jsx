@@ -399,7 +399,7 @@ function toggleExpanded(person) {
                               </div>
                             </div>
                           ))}
-                          {data.theyOweMe.map((entry, i) => (
+                          {data.theyOweMe.filter(e => !e.settled).map((entry, i) => (
                             <div key={i} className="flex items-center justify-between text-sm gap-2">
                               <div className="min-w-0">
                                 <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
@@ -455,7 +455,7 @@ function toggleExpanded(person) {
                               </div>
                             </div>
                           ))}
-                          {data.iOweThem.map((entry, i) => (
+                          {data.iOweThem.filter(e => !e.settled).map((entry, i) => (
                             <div key={i} className="flex items-center justify-between text-sm gap-2">
                               <div className="min-w-0">
                                 <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
