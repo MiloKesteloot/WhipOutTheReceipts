@@ -7,6 +7,7 @@ import AddReceipt from './pages/AddReceipt.jsx'
 import Welcome from './pages/Welcome.jsx'
 import Stats from './pages/Stats.jsx'
 import Settings from './pages/Settings.jsx'
+import Payments from './pages/Payments.jsx'
 
 function TopNav({ myName, onSignOut }) {
   const { pathname } = useLocation()
@@ -37,6 +38,16 @@ function TopNav({ myName, onSignOut }) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
           Stats
+        </Link>
+
+        <Link
+          to="/payments"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/payments') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/payments') ? 2.5 : 2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
+          Payments
         </Link>
 
         <Link
@@ -96,6 +107,7 @@ export default function App() {
         <Route path="/trip/:id/add-receipt" element={<AddReceipt />} />
         <Route path="/trip/:id/receipt/:receiptId/edit" element={<AddReceipt />} />
         <Route path="/stats" element={<Stats />} />
+        <Route path="/payments" element={<Payments />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
     </div>
