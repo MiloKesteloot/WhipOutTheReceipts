@@ -232,7 +232,13 @@ export default function ReceiptDetail() {
 
   const checkinNames = new Set(checkins.map(c => c.roommate.toLowerCase()))
   const claimerNames = new Set(claims.map(c => c.roommate.toLowerCase()))
-  const waitingOn = (receipt?.members || []).filter(
+  const receiptMembers = (() => {
+    const base = receipt?.members || []
+    const payer = receipt?.paid_by
+    if (!payer || base.some(m => m.toLowerCase() === payer.toLowerCase())) return base
+    return [...base, payer]
+  })()
+  const waitingOn = receiptMembers.filter(
     m => !checkinNames.has(m.toLowerCase()) && !claimerNames.has(m.toLowerCase())
   )
 

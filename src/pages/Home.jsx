@@ -5,6 +5,14 @@ import { calculateDebts } from '../lib/splitLogic.js'
 import { version as buildVersion } from '../buildVersion.json'
 import { useDialog } from '../lib/useDialog.jsx'
 
+function effectiveMembers(receipt) {
+  const members = receipt.members || []
+  const payer = receipt.paid_by
+  if (!payer) return members
+  if (members.some(m => m.toLowerCase() === payer.toLowerCase())) return members
+  return [...members, payer]
+}
+
 export default function Home() {
   const [standaloneReceipts, setStandaloneReceipts] = useState([])
   const [claimersByReceipt, setClaimersByReceipt] = useState({})
@@ -91,7 +99,7 @@ export default function Home() {
     const byPerson = computeDebts(localStorage.getItem('global-name') || '', data)
     // Smart routing: todo if unchecked receipts or unsettled debts, else calendar
     const hasUnchecked = nameLc && standalone.some(r => {
-      const members = (r.members || []).map(m => m.toLowerCase())
+      const members = effectiveMembers(r).map(m => m.toLowerCase())
       return members.includes(nameLc)
         && allItems.some(i => i.receipt_id === r.id)
         && !(receiptMap[r.id]?.has(nameLc))
@@ -135,7 +143,7 @@ export default function Home() {
       if (!rItems.length) continue
 
       // Skip until everyone on the receipt has checked in
-      const members = (receipt.members || []).map(m => m.toLowerCase())
+      const members = effectiveMembers(receipt).map(m => m.toLowerCase())
       if (members.length > 0) {
         const checkedIn = checkinsByReceipt[receipt.id] || new Set()
         if (!members.every(m => checkedIn.has(m))) continue
@@ -224,7 +232,7 @@ function toggleExpanded(person) {
 
   const myNameLc = myName.toLowerCase()
   const uncheckedReceipts = myName ? standaloneReceipts.filter(r => {
-    const members = (r.members || []).map(m => m.toLowerCase())
+    const members = effectiveMembers(r).map(m => m.toLowerCase())
     if (!members.includes(myNameLc)) return false
     if (!(rawData?.allItems || []).some(i => i.receipt_id === r.id)) return false
     return !(claimersByReceipt[r.id]?.has(myNameLc))
@@ -566,7 +574,7 @@ function toggleExpanded(person) {
                   const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
                   const isToday = date.toDateString() === now.toDateString()
                   const dayReceipts = (receiptsByDate[key] || []).filter(r =>
-                    showAllReceipts || !myName || !(r.members?.length) || r.members.some(m => m.toLowerCase() === myName.toLowerCase())
+                    showAllReceipts || !myName || effectiveMembers(r).length === 0 || effectiveMembers(r).some(m => m.toLowerCase() === myName.toLowerCase())
                   )
                   const dayTotal = dayReceipts.reduce((s, r) => s + (receiptTotals[r.id] || 0), 0)
                   const dayItems = dayReceipts.map(r => ({ id: r.id, label: r.store_name, url: `/receipt/${r.id}` }))
@@ -603,7 +611,7 @@ function toggleExpanded(person) {
                         {dayReceipts.map(receipt => {
                           const claimers = claimersByReceipt[receipt.id] || new Set()
                           const waitingOn = claimers.size > 0
-                            ? (receipt.members || []).filter(m => !claimers.has(m.toLowerCase()))
+                            ? effectiveMembers(receipt).filter(m => !claimers.has(m.toLowerCase()))
                             : []
                           return (
                             <div key={receipt.id} className="flex items-center gap-1.5 text-xs text-gray-600">
@@ -637,7 +645,7 @@ function toggleExpanded(person) {
       {/* Days view */}
       {view === 'days' && (() => {
         const filtered = standaloneReceipts.filter(r =>
-          showAllReceipts || !myName || !(r.members?.length) || r.members.some(m => m.toLowerCase() === myName.toLowerCase())
+          showAllReceipts || !myName || effectiveMembers(r).length === 0 || effectiveMembers(r).some(m => m.toLowerCase() === myName.toLowerCase())
         )
         const byDate = {}
         for (const r of filtered) {
@@ -665,8 +673,8 @@ function toggleExpanded(person) {
                   <div className="space-y-2">
                     {receipts.map(r => {
                       const claimers = claimersByReceipt[r.id] || new Set()
-                      const waitingOn = claimers.size > 0 && r.members?.length
-                        ? r.members.filter(m => !claimers.has(m.toLowerCase()))
+                      const waitingOn = claimers.size > 0 && effectiveMembers(r).length
+                        ? effectiveMembers(r).filter(m => !claimers.has(m.toLowerCase()))
                         : []
                       const total = receiptTotals[r.id] || 0
                       return (
@@ -703,7 +711,7 @@ function toggleExpanded(person) {
       {view === 'receipts' && (() => {
         const filtered = [...standaloneReceipts]
           .filter(r =>
-            showAllReceipts || !myName || !(r.members?.length) || r.members.some(m => m.toLowerCase() === myName.toLowerCase())
+            showAllReceipts || !myName || effectiveMembers(r).length === 0 || effectiveMembers(r).some(m => m.toLowerCase() === myName.toLowerCase())
           )
           .sort((a, b) => b.receipt_date.localeCompare(a.receipt_date))
         if (filtered.length === 0) return (
@@ -713,8 +721,8 @@ function toggleExpanded(person) {
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100 select-none">
             {filtered.map(r => {
               const claimers = claimersByReceipt[r.id] || new Set()
-              const waitingOn = claimers.size > 0 && r.members?.length
-                ? r.members.filter(m => !claimers.has(m.toLowerCase()))
+              const waitingOn = claimers.size > 0 && effectiveMembers(r).length
+                ? effectiveMembers(r).filter(m => !claimers.has(m.toLowerCase()))
                 : []
               const total = receiptTotals[r.id] || 0
               const date = new Date(r.receipt_date + 'T12:00:00')
