@@ -185,15 +185,15 @@ export default function TripDetail() {
     setIsDirty(false)
   }
 
-  async function markSettled(debtor, creditor) {
+  async function markSettled(debtor, creditor, amount) {
     setSettling(true)
     await supabase.from('settlements').upsert(
-      { trip_id: id, debtor, creditor },
+      { trip_id: id, debtor, creditor, amount },
       { onConflict: 'trip_id,debtor,creditor' }
     )
     setSettlements(prev => [
       ...prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)),
-      { trip_id: id, debtor, creditor },
+      { trip_id: id, debtor, creditor, amount },
     ])
     setSettling(false)
   }
@@ -206,11 +206,22 @@ export default function TripDetail() {
     setSettling(false)
   }
 
-  function isSettled(debtor, creditor) {
-    return settlements.some(
+  function getSettlement(debtor, creditor) {
+    return settlements.find(
       s => s.debtor.toLowerCase() === debtor.toLowerCase()
         && s.creditor.toLowerCase() === creditor.toLowerCase()
-    )
+    ) || null
+  }
+
+  // Returns { status: 'none' | 'partial' | 'full', paid, remaining }
+  function settlementState(currentDebt, settlement) {
+    if (!settlement) return { status: 'none', paid: 0, remaining: currentDebt }
+    const paid = settlement.amount ?? null
+    // Legacy settlement with no stored amount: treat as fully settled
+    if (paid == null) return { status: 'full', paid: currentDebt, remaining: 0 }
+    const remaining = Math.round((currentDebt - paid) * 100) / 100
+    if (remaining <= 0.005) return { status: 'full', paid, remaining: 0 }
+    return { status: 'partial', paid, remaining }
   }
 
   async function handleBack() {
@@ -587,21 +598,28 @@ export default function TripDetail() {
           <h3 className="font-semibold text-gray-800 mb-3">People who owe you</h3>
           <ul className="space-y-3">
             {debts.filter(d => d.creditor === myName).map((d, i) => {
-              const settled = isSettled(d.debtor, d.creditor)
+              const ss = settlementState(d.amount, getSettlement(d.debtor, d.creditor))
               const theirItems = (breakdown[d.debtor] || []).filter(e => e.payer === myName)
               return (
                 <li key={i}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-semibold ${settled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                      <span className={`text-sm font-semibold ${ss.status === 'full' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
                         {d.debtor}
                       </span>
-                      {settled
+                      {ss.status === 'full'
                         ? <span className="text-xs text-accent-600 font-medium">✓ Sent</span>
-                        : <span className="text-xs text-amber-500">awaiting</span>
+                        : ss.status === 'partial'
+                          ? <span className="text-xs text-amber-500">partial</span>
+                          : <span className="text-xs text-amber-500">awaiting</span>
                       }
                     </div>
-                    <span className="text-sm font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-gray-900">${d.amount.toFixed(2)}</p>
+                      {ss.status === 'partial' && (
+                        <p className="text-xs text-gray-400">${ss.remaining.toFixed(2)} still owed</p>
+                      )}
+                    </div>
                   </div>
                   {theirItems.length > 0 && (
                     <ul className="mt-1 space-y-0.5 pl-1">
@@ -630,15 +648,15 @@ export default function TripDetail() {
             ) : (
               <ul className="space-y-2">
                 {debts.map((d, i) => {
-                  const settled = isSettled(d.debtor, d.creditor)
+                  const ss = settlementState(d.amount, getSettlement(d.debtor, d.creditor))
                   return (
                     <li key={i} className="flex items-center justify-between text-sm gap-2">
-                      <span className={`text-gray-700 ${settled ? 'line-through text-gray-400' : ''}`}>
+                      <span className={`text-gray-700 ${ss.status === 'full' ? 'line-through text-gray-400' : ''}`}>
                         <strong>{d.debtor}</strong> owes <strong>{d.creditor}</strong>
                       </span>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
-                        {settled ? (
+                        {ss.status === 'full' ? (
                           myName === d.debtor ? (
                             <button
                               onClick={() => unmarkSettled(d.debtor, d.creditor)}
@@ -651,10 +669,35 @@ export default function TripDetail() {
                           ) : (
                             <span className="text-xs text-accent-600 font-medium">✓ Sent</span>
                           )
+                        ) : ss.status === 'partial' ? (
+                          myName === d.debtor ? (
+                            <>
+                              <button
+                                onClick={() => unmarkSettled(d.debtor, d.creditor)}
+                                disabled={settling}
+                                className="text-xs text-gray-400 hover:text-red-400 transition disabled:opacity-50"
+                                title="Click to undo"
+                              >
+                                sent ${ss.paid.toFixed(2)}
+                              </button>
+                              <button
+                                onClick={() => markSettled(d.debtor, d.creditor, d.amount)}
+                                disabled={settling}
+                                className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50"
+                              >
+                                Mark ${ss.remaining.toFixed(2)} more sent
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs text-accent-600">sent ${ss.paid.toFixed(2)}</span>
+                              <span className="text-xs text-amber-500">${ss.remaining.toFixed(2)} pending</span>
+                            </>
+                          )
                         ) : (
                           myName === d.debtor ? (
                             <button
-                              onClick={() => markSettled(d.debtor, d.creditor)}
+                              onClick={() => markSettled(d.debtor, d.creditor, d.amount)}
                               disabled={settling}
                               className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50"
                             >
