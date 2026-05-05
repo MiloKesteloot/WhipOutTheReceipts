@@ -241,11 +241,21 @@ export default function Stats() {
 
   const payers = [...new Set(filteredReceipts.map(r => r.paid_by))]
 
-  const spendingByTrip = trips.map(trip => {
-    const row = { tripName: trip.name.length > CHART_TRIP_NAME_LENGTH ? trip.name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : trip.name }
-    const tripReceipts = filteredReceipts.filter(r => r.trip_id === trip.id)
+  const receiptsByMonth = {}
+  for (const r of filteredReceipts) {
+    if (!r.receipt_date) continue
+    const monthKey = r.receipt_date.slice(0, 7) // "YYYY-MM"
+    if (!receiptsByMonth[monthKey]) receiptsByMonth[monthKey] = []
+    receiptsByMonth[monthKey].push(r)
+  }
+  const sortedMonths = Object.keys(receiptsByMonth).sort()
+
+  const spendingByMonth = sortedMonths.map(monthKey => {
+    const [year, month] = monthKey.split('-').map(Number)
+    const label = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+    const row = { tripName: label }
     for (const payer of payers) row[payer] = 0
-    for (const r of tripReceipts) {
+    for (const r of receiptsByMonth[monthKey]) {
       const itemsTotal = (itemsByReceipt[r.id] || []).reduce((s, i) => s + i.price, 0)
       const mealFees = (mealsByReceipt[r.id] || []).reduce((s, m) => s + (m.fee || 0), 0)
       const total = itemsTotal + (r.tip || 0) + (r.tax || 0) + (r.fees || 0) + mealFees
@@ -281,22 +291,24 @@ export default function Stats() {
   }
   const topStores = Object.values(storeMap).sort((a, b) => b.total - a.total)
 
-  const sortedTrips = trips.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+  const sortedReceiptsForCumulative = filteredReceipts
+    .filter(r => r.receipt_date)
+    .sort((a, b) => a.receipt_date.localeCompare(b.receipt_date))
+
   const cumulativeByPerson = {}
-  const cumulativeLineData = sortedTrips
-    .map(trip => {
-      const tripReceipts = filteredReceipts.filter(r => r.trip_id === trip.id)
-      if (!tripReceipts.length) return null
-      const tripItems = tripReceipts.flatMap(r => itemsByReceipt[r.id] || [])
-      const tripMeals = tripReceipts.flatMap(r => mealsByReceipt[r.id] || [])
-      const tripItemIds = new Set(tripItems.map(i => i.id))
-      const tripClaims = filteredClaims.filter(c => tripItemIds.has(c.item_id))
-      const tripConsumed = computeConsumption(tripReceipts, tripItems, tripClaims, tripMeals)
-      if (!Object.keys(tripConsumed).length) return null
-      for (const [person, amt] of Object.entries(tripConsumed)) {
+  const cumulativeLineData = sortedReceiptsForCumulative
+    .map(receipt => {
+      const rItems = itemsByReceipt[receipt.id] || []
+      const rMeals = mealsByReceipt[receipt.id] || []
+      const rItemIds = new Set(rItems.map(i => i.id))
+      const rClaims = filteredClaims.filter(c => rItemIds.has(c.item_id))
+      const rConsumed = computeConsumption([receipt], rItems, rClaims, rMeals)
+      if (!Object.keys(rConsumed).length) return null
+      for (const [person, amt] of Object.entries(rConsumed)) {
         cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
       }
-      const row = { tripName: trip.name.length > CHART_TRIP_NAME_LENGTH ? trip.name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : trip.name }
+      const name = receipt.store_name || 'Receipt'
+      const row = { tripName: name.length > CHART_TRIP_NAME_LENGTH ? name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : name }
       for (const person of allPeople) {
         row[person] = parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
       }
@@ -565,13 +577,13 @@ export default function Stats() {
         </section>
       )}
 
-      {/* Spending per trip */}
-      {spendingByTrip.length > 0 && visiblePayers.length > 0 && (
+      {/* Spending per month */}
+      {spendingByMonth.length > 0 && visiblePayers.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending per trip</h2>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending per month</h2>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={spendingByTrip} margin={{ top: 4, right: 4, left: -10, bottom: 40 }}>
+              <BarChart data={spendingByMonth} margin={{ top: 4, right: 4, left: -10, bottom: 40 }}>
                 <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
                 <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
                 <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
