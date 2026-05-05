@@ -318,6 +318,16 @@ export default function Stats() {
     })
     .filter(Boolean)
 
+  // Pin every person's final cumulative total to the last data point
+  if (cumulativeLineData.length > 0) {
+    const lastRow = cumulativeLineData[cumulativeLineData.length - 1]
+    for (const person of allPeople) {
+      if (cumulativeByPerson[person] != null) {
+        lastRow[person] = parseFloat(cumulativeByPerson[person].toFixed(2))
+      }
+    }
+  }
+
   // Category breakdown always uses ALL receipts (unfiltered) — it's the overview
   const categoryTotals = {}
   for (const r of receipts) {
