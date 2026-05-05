@@ -618,38 +618,6 @@ export default function Stats() {
         )
       })()}
 
-      {/* Trip timeline */}
-      {tripTimeline.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Trip timeline</h2>
-          <div className="relative">
-            <div className="absolute left-[4.5rem] top-0 bottom-0 w-px bg-gray-200" />
-            <ul className="space-y-3">
-              {tripTimeline.map(trip => (
-                <li key={trip.id} className="flex items-start gap-4">
-                  <div className="w-16 shrink-0 text-right">
-                    <span className="text-xs text-gray-400 leading-5">
-                      {trip.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
-                  <div className="relative z-10 mt-1 w-3 h-3 rounded-full border-2 border-white shrink-0"
-                    style={{ background: trip.closed ? '#9ca3af' : '#6366f1' }} />
-                  <Link
-                    to={`/trip/${trip.id}`}
-                    className="flex-1 min-w-0 bg-white border border-gray-200 rounded-lg px-3 py-2 hover:border-accent-300 transition"
-                  >
-                    <div className="flex justify-between items-baseline gap-2">
-                      <span className="font-medium text-gray-800 truncate text-sm">{trip.name}</span>
-                      <span className="text-sm font-semibold text-gray-700 shrink-0">${trip.total.toFixed(2)}</span>
-                    </div>
-                    {trip.closed && <span className="text-xs text-gray-400">closed</span>}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      )}
 
       {/* Per-person summary cards */}
       {visibleCards.length > 0 && (
