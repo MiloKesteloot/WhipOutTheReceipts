@@ -143,7 +143,7 @@ export default function Home() {
       if (!rItems.length) continue
 
       // Skip until everyone on the receipt has checked in
-      const members = effectiveMembers(receipt).map(m => m.toLowerCase())
+      const members = (receipt.members || []).map(m => m.toLowerCase())
       if (members.length > 0) {
         const checkedIn = checkinsByReceipt[receipt.id] || new Set()
         if (!members.every(m => checkedIn.has(m))) continue
@@ -208,7 +208,7 @@ function toggleExpanded(person) {
     setSettling({ entry })
     await supabase.from('settlements').delete()
       .eq('receipt_id', entry.receiptId).eq('debtor', myName).eq('creditor', entry.creditor)
-    await supabase.from('settlements').insert({ receipt_id: entry.receiptId, debtor: myName, creditor: entry.creditor })
+    await supabase.from('settlements').insert({ receipt_id: entry.receiptId, debtor: myName, creditor: entry.creditor, amount: entry.amount })
     await fetchTrips()
     setSettling(null)
   }
@@ -216,8 +216,8 @@ function toggleExpanded(person) {
   async function markAllSettledWith(person, data) {
     setSettling({ person })
     const entries = [
-      ...data.iOweThem.map(e => ({ receipt_id: e.receiptId, debtor: myName, creditor: person })),
-      ...data.theyOweMe.map(e => ({ receipt_id: e.receiptId, debtor: person, creditor: myName })),
+      ...data.iOweThem.map(e => ({ receipt_id: e.receiptId, debtor: myName, creditor: person, amount: e.amount })),
+      ...data.theyOweMe.map(e => ({ receipt_id: e.receiptId, debtor: person, creditor: myName, amount: e.amount })),
     ]
     for (const s of entries) {
       await supabase.from('settlements').delete()

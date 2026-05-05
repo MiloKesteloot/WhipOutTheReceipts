@@ -162,14 +162,14 @@ export default function ReceiptDetail() {
     setIsDirty(false)
   }
 
-  async function markSettled(debtor, creditor) {
+  async function markSettled(debtor, creditor, amount) {
     setSettling(true)
     await supabase.from('settlements').delete()
       .eq('receipt_id', receiptId).eq('debtor', debtor).eq('creditor', creditor)
-    await supabase.from('settlements').insert({ receipt_id: receiptId, debtor, creditor })
+    await supabase.from('settlements').insert({ receipt_id: receiptId, debtor, creditor, amount })
     setSettlements(prev => [
       ...prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)),
-      { receipt_id: receiptId, debtor, creditor },
+      { receipt_id: receiptId, debtor, creditor, amount },
     ])
     setSettling(false)
   }
@@ -182,11 +182,20 @@ export default function ReceiptDetail() {
     setSettling(false)
   }
 
-  function isSettled(debtor, creditor) {
-    return settlements.some(
+  function getSettlement(debtor, creditor) {
+    return settlements.find(
       s => s.debtor.toLowerCase() === debtor.toLowerCase()
         && s.creditor.toLowerCase() === creditor.toLowerCase()
-    )
+    ) || null
+  }
+
+  function settlementState(currentDebt, settlement) {
+    if (!settlement) return { status: 'none', paid: 0, remaining: currentDebt }
+    const paid = settlement.amount ?? null
+    if (paid == null) return { status: 'full', paid: currentDebt, remaining: 0 }
+    const remaining = Math.round((currentDebt - paid) * 100) / 100
+    if (remaining <= 0.005) return { status: 'full', paid, remaining: 0 }
+    return { status: 'partial', paid, remaining }
   }
 
   async function handleBack() {
@@ -536,20 +545,27 @@ export default function ReceiptDetail() {
           <h3 className="font-semibold text-gray-800 mb-3">People who owe you</h3>
           <ul className="space-y-3">
             {debts.filter(d => d.creditor === myName).map((d, i) => {
-              const settled = isSettled(d.debtor, d.creditor)
+              const ss = settlementState(d.amount, getSettlement(d.debtor, d.creditor))
               const theirItems = (breakdown[d.debtor] || []).filter(e => e.payer === myName)
               return (
                 <li key={i}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-semibold ${settled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                      <span className={`text-sm font-semibold ${ss.status === 'full' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
                         {d.debtor}
                       </span>
-                      {settled
+                      {ss.status === 'full'
                         ? <span className="text-xs text-accent-600 font-medium">✓ Sent</span>
-                        : <span className="text-xs text-amber-500">awaiting</span>}
+                        : ss.status === 'partial'
+                          ? <span className="text-xs text-amber-500">partial</span>
+                          : <span className="text-xs text-amber-500">awaiting</span>}
                     </div>
-                    <span className="text-sm font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-gray-900">${d.amount.toFixed(2)}</p>
+                      {ss.status === 'partial' && (
+                        <p className="text-xs text-gray-400">${ss.remaining.toFixed(2)} still owed</p>
+                      )}
+                    </div>
                   </div>
                   {theirItems.length > 0 && (
                     <ul className="mt-1 space-y-0.5 pl-1">

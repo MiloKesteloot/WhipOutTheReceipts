@@ -77,7 +77,6 @@ export default function Payments() {
       let label = ''
       let date = null
       let linkTo = null
-      let sublabel = null
 
       if (s.receipt_id) {
         const receipt = receiptById[s.receipt_id]
@@ -100,14 +99,13 @@ export default function Payments() {
       } else if (s.trip_id) {
         const trip = tripById[s.trip_id]
         label = trip?.name || 'Trip'
-        sublabel = 'Trip'
         amount = s.amount ?? null
         linkTo = `/trip/${s.trip_id}`
       } else {
         continue
       }
 
-      const entry = { label, sublabel, date, amount, linkTo }
+      const entry = { label, date, amount, linkTo }
       if (iAmDebtor) byPersonKey[otherKey].sent.push(entry)
       else byPersonKey[otherKey].received.push(entry)
     }
@@ -248,10 +246,9 @@ export default function Payments() {
                           ) : (
                             <p className="text-sm font-medium text-gray-800 truncate">{entry.label}</p>
                           )}
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {entry.sublabel && <span className="mr-1.5">{entry.sublabel} ·</span>}
-                            {entry.date ? fmtDate(entry.date) : 'No date'}
-                          </p>
+                          {entry.date && (
+                            <p className="text-xs text-gray-400 mt-0.5">{fmtDate(entry.date)}</p>
+                          )}
                         </div>
                         <div className="shrink-0">
                           {entry.amount != null ? (
