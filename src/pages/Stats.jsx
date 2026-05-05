@@ -157,18 +157,11 @@ export default function Stats() {
         ...trips.flatMap(t => t.members || []).filter(m => typeof m === 'string'),
       ])]
 
-      // Query roster directly (no fallback) so only explicitly pinned members
-      // are the default selection — FALLBACK_MEMBERS are not used here.
-      const { data: rosterData } = await supabase
-        .from('app_settings').select('value').eq('key', 'apartment_members').single()
-      const pinnedLower = new Set(
-        (rosterData?.value || [])
-          .filter(m => m.isCore)
-          .map(m => m.name.toLowerCase())
-      )
+      // Default selection: explicitly pinned core members. If none are pinned,
+      // fall back to everyone so the page isn't blank on first visit.
+      const pinnedInData = allPeopleUnfiltered.filter(p => coreRoommatesLower.has(p.toLowerCase()))
       const defaultSelected = new Set(
-        allPeopleUnfiltered
-          .filter(p => pinnedLower.has(p.toLowerCase()))
+        (pinnedInData.length > 0 ? pinnedInData : allPeopleUnfiltered)
           .map(p => p.toLowerCase())
       )
 
@@ -184,7 +177,10 @@ export default function Stats() {
       const saved = localStorage.getItem('stats-selected-people')
       if (saved) {
         try {
-          setSelectedPeople(new Set(JSON.parse(saved)))
+          const restored = new Set(JSON.parse(saved))
+          // Add any default-selected people not in the saved set (e.g. newly pinned members)
+          for (const p of raw.defaultSelected) restored.add(p)
+          setSelectedPeople(restored)
         } catch {
           setSelectedPeople(raw.defaultSelected)
         }
@@ -260,13 +256,6 @@ export default function Stats() {
 
   const totalPaidAll = Object.values(totalPaid).reduce((s, v) => s + v, 0)
   const totalHousehold = Object.values(totalConsumed).reduce((s, v) => s + v, 0)
-
-  const fairShare = personCards.map(p => ({
-    name: toTitleCase(p.name),
-    nameLower: p.name.toLowerCase(),
-    'Paid %': totalPaidAll ? Math.round(p.paid / totalPaidAll * 100) : 0,
-    'Consumed %': totalHousehold ? Math.round(p.consumed / totalHousehold * 100) : 0,
-  }))
 
   const itemFreq = {}
   for (const item of filteredItems) {

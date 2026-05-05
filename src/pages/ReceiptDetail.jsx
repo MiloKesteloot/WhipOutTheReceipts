@@ -594,7 +594,7 @@ export default function ReceiptDetail() {
             ) : (
               <ul className="space-y-2">
                 {debts.map((d, i) => {
-                  const settled = isSettled(d.debtor, d.creditor)
+                  const settled = !!getSettlement(d.debtor, d.creditor)
                   return (
                     <li key={i} className="flex items-center justify-between text-sm gap-2">
                       <span className={`text-gray-700 ${settled ? 'line-through text-gray-400' : ''}`}>
