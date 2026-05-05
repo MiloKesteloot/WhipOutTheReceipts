@@ -303,7 +303,7 @@ export default function Stats() {
       const rItemIds = new Set(rItems.map(i => i.id))
       const rClaims = filteredClaims.filter(c => rItemIds.has(c.item_id))
       const rConsumed = computeConsumption([receipt], rItems, rClaims, rMeals)
-      if (!Object.keys(rConsumed).length) return null
+      if (!Object.keys(rConsumed).some(p => selected.has(p.toLowerCase()))) return null
       for (const [person, amt] of Object.entries(rConsumed)) {
         cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
       }
