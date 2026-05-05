@@ -310,7 +310,9 @@ export default function Stats() {
       const name = receipt.store_name || 'Receipt'
       const row = { tripName: name.length > CHART_TRIP_NAME_LENGTH ? name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : name }
       for (const person of allPeople) {
-        row[person] = parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
+        row[person] = rConsumed[person] != null
+          ? parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
+          : null
       }
       return row
     })
@@ -478,6 +480,7 @@ export default function Stats() {
                     strokeWidth={2}
                     dot={{ r: 3 }}
                     activeDot={{ r: 5 }}
+                    connectNulls
                   />
                 ))}
               </LineChart>
