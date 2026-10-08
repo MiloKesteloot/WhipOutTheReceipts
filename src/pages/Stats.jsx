@@ -8,7 +8,33 @@ import {
   Legend, LineChart, Line, PieChart, Pie, Cell,
 } from 'recharts'
 
-const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#f43f5e', '#3b82f6', '#8b5cf6', '#ec4899']
+const COLORS = [
+  '#6366f1', // indigo
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#f43f5e', // rose
+  '#3b82f6', // blue
+  '#8b5cf6', // violet
+  '#84cc16', // lime      ← was hot pink; moved pink far from rose
+  '#f97316', // orange    ← was teal; moved teal far from emerald
+  '#14b8a6', // teal      ← now at 8, 6 away from emerald at 2
+  '#06b6d4', // cyan
+  '#d946ef', // fuchsia
+  '#ec4899', // hot pink  ← now at 11, 8 away from rose at 3
+  '#eab308', // yellow
+  '#22c55e', // green
+  '#0284c7', // ocean blue
+  '#a855f7', // purple
+  '#dc2626', // dark red
+  '#0d9488', // dark teal
+  '#7c3aed', // deep violet
+  '#be185d', // dark pink
+]
+function colorFor(index) {
+  if (index < COLORS.length) return COLORS[index]
+  const hue = ((index * 0.618033988749895) % 1) * 360
+  return `hsl(${hue.toFixed(0)}, 65%, 52%)`
+}
 const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
 
 function computeConsumption(receipts, items, claims, meals) {
@@ -480,13 +506,13 @@ export default function Stats() {
                 <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
                 <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
                 <Tooltip content={<SortedLineTooltip />} />
-                <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                <Legend formatter={v => toTitleCase(v)} verticalAlign="top" wrapperStyle={{ fontSize: 12, paddingBottom: 12 }} />
                 {visiblePeople.map((person) => (
                   <Line
                     key={person}
                     type="monotone"
                     dataKey={person}
-                    stroke={COLORS[allPeople.indexOf(person) % COLORS.length]}
+                    stroke={colorFor(allPeople.indexOf(person))}
                     strokeWidth={2}
                     dot={{ r: 3 }}
                     activeDot={{ r: 5 }}
@@ -635,11 +661,11 @@ export default function Stats() {
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">By person</h2>
           <div className="grid grid-cols-2 gap-3">
             {visibleCards.map((p) => {
-              const colorIdx = allPeople.indexOf(p.name) % COLORS.length
+              const colorIdx = allPeople.indexOf(p.name)
               return (
                 <div key={p.name} className="bg-white border border-gray-200 rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: COLORS[colorIdx] }} />
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colorFor(colorIdx) }} />
                     <span className="font-semibold text-gray-900 truncate">{toTitleCase(p.name)}</span>
                   </div>
                   <div className="space-y-1.5 text-sm">
@@ -677,7 +703,7 @@ export default function Stats() {
                 <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
                 <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                 {visiblePayers.map((payer, i) => (
-                  <Bar key={payer} dataKey={payer} stackId="a" fill={COLORS[allPeople.indexOf(payer) % COLORS.length]} radius={i === visiblePayers.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
+                  <Bar key={payer} dataKey={payer} stackId="a" fill={colorFor(allPeople.indexOf(payer))} radius={i === visiblePayers.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
