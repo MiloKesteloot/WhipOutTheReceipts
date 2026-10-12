@@ -277,13 +277,13 @@ function toggleExpanded(person) {
 
       {/* View toolbar */}
       {view !== null && (
-      <div className="flex items-center justify-between mb-4 select-none">
-        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+      <div className="flex items-center justify-between gap-2 mb-4 select-none">
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 min-w-0">
           {[['todo', 'Todo'], ['calendar', 'Calendar'], ['days', 'Days'], ['receipts', 'Receipts']].map(([v, label]) => (
             <button
               key={v}
               onClick={() => { sessionStorage.setItem('home-view', v); if (v !== 'todo') localStorage.setItem('home-view', v); setView(v) }}
-              className={`relative px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              className={`relative px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors ${
                 view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -296,7 +296,7 @@ function toggleExpanded(person) {
             </button>
           ))}
         </div>
-        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 shrink-0">
           {[['mine', 'Mine'], ['all', 'All']].map(([v, label]) => (
             <button
               key={v}

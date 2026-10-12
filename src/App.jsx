@@ -16,59 +16,65 @@ function TopNav({ myName, onSignOut }) {
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50 select-none">
-      <div className="max-w-5xl mx-auto flex items-center px-4 h-14">
-        <Link to="/" className="font-bold text-gray-900 text-base mr-4 shrink-0">
+      <div className="max-w-5xl mx-auto flex items-center px-2 sm:px-4 h-14">
+        <Link to="/" className="font-bold text-gray-900 text-base mr-2 sm:mr-4 shrink-0">
           Receipts
         </Link>
         <Link
           to="/"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
+          aria-label="Home"
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 shrink-0 rounded-md text-sm font-medium transition-colors ${active('/') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/') ? 2.5 : 2}>
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/') ? 2.5 : 2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
           </svg>
-          Home
+          <span className="hidden sm:inline">Home</span>
         </Link>
 
         <Link
           to="/stats"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/stats') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
+          aria-label="Stats"
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 shrink-0 rounded-md text-sm font-medium transition-colors ${active('/stats') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/stats') ? 2.5 : 2}>
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/stats') ? 2.5 : 2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          Stats
+          <span className="hidden sm:inline">Stats</span>
         </Link>
 
         <Link
           to="/payments"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/payments') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
+          aria-label="Payments"
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 shrink-0 rounded-md text-sm font-medium transition-colors ${active('/payments') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/payments') ? 2.5 : 2}>
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/payments') ? 2.5 : 2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
           </svg>
-          Payments
+          <span className="hidden sm:inline">Payments</span>
         </Link>
 
         <Link
           to="/settings"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${active('/settings') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
+          aria-label="Settings"
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 shrink-0 rounded-md text-sm font-medium transition-colors ${active('/settings') ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/settings') ? 2.5 : 2}>
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active('/settings') ? 2.5 : 2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          Settings
+          <span className="hidden sm:inline">Settings</span>
         </Link>
 
         <button
           onClick={onSignOut}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors ml-auto"
+          aria-label="Sign out"
+          title="Sign out"
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 shrink-0 rounded-md text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors ml-auto"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
           </svg>
-          {myName}
+          <span className="hidden sm:inline">{myName}</span>
         </button>
       </div>
     </nav>
