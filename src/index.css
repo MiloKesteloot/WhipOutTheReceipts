@@ -31,3 +31,9 @@
   --accent-600:  22 163  74;
   --accent-700:  21 128  61;
 }
+
+/* Hide the browser's clear (✕) button on search inputs — SearchInput draws its own */
+input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}

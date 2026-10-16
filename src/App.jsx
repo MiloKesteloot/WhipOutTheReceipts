@@ -8,6 +8,8 @@ import Welcome from './pages/Welcome.jsx'
 import Stats from './pages/Stats.jsx'
 import Settings from './pages/Settings.jsx'
 import Payments from './pages/Payments.jsx'
+import Search from './pages/Search.jsx'
+import { NavSearch } from './lib/search.jsx'
 
 function TopNav({ myName, onSignOut }) {
   const { pathname } = useLocation()
@@ -30,6 +32,8 @@ function TopNav({ myName, onSignOut }) {
           </svg>
           <span className="hidden sm:inline">Home</span>
         </Link>
+
+        <NavSearch />
 
         <Link
           to="/stats"
@@ -115,6 +119,7 @@ export default function App() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/search" element={<Search />} />
       </Routes>
     </div>
   )
