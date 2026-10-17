@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase.js'
 import { calculateDebts } from '../lib/splitLogic.js'
 import { version as buildVersion } from '../buildVersion.json'
 import { useDialog } from '../lib/useDialog.jsx'
+import { useGroup } from '../lib/group.jsx'
+import { loadReceipts, loadItems, loadClaims, loadSettlements, loadMeals, loadCheckins, setSettlement } from '../lib/db.js'
 
 function effectiveMembers(receipt) {
   const members = receipt.members || []
@@ -30,7 +31,7 @@ export default function Home() {
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
   })
-  const myName = localStorage.getItem('global-name') || ''
+  const { group, myName, nameOf, idOf, memberIds } = useGroup()
   const navigate = useNavigate()
   const { DialogUI } = useDialog()
 
@@ -48,21 +49,14 @@ export default function Home() {
   }, [pickerDay])
 
   async function fetchTrips() {
-    const [receiptsRes, itemsRes, claimsRes, settlementsRes, mealsRes, checkinsRes] = await Promise.all([
-      supabase.from('receipts').select('id, paid_by, tip, tax, fees, receipt_date, members, store_name').not('receipt_date', 'is', null),
-      supabase.from('items').select('id, receipt_id, meal_id, price'),
-      supabase.from('claims').select('item_id, roommate'),
-      supabase.from('settlements').select('receipt_id, debtor, creditor'),
-      supabase.from('meals').select('id, receipt_id, fee'),
-      supabase.from('checkins').select('receipt_id, roommate'),
+    const [standalone, allItems, allClaims, settlements, allMeals, allCheckins] = await Promise.all([
+      loadReceipts(group.id, nameOf, 'id, paid_by_member, tip, tax, fees, receipt_date, member_ids, store_name', { datedOnly: true }),
+      loadItems(group.id, 'id, receipt_id, meal_id, price'),
+      loadClaims(memberIds, nameOf),
+      loadSettlements(group.id, nameOf),
+      loadMeals(group.id, 'id, receipt_id, fee'),
+      loadCheckins(memberIds, nameOf),
     ])
-
-    const standalone = receiptsRes.data || []
-    const allItems = itemsRes.data || []
-    const allClaims = claimsRes.data || []
-    const settlements = settlementsRes.data || []
-    const allMeals = mealsRes.data || []
-    const allCheckins = checkinsRes.data || []
 
     setStandaloneReceipts(standalone)
 
@@ -95,8 +89,8 @@ export default function Home() {
 
     const data = { allItems, allClaims, settlements, allMeals, standalone, allCheckins }
     setRawData(data)
-    const nameLc = (localStorage.getItem('global-name') || '').toLowerCase()
-    const byPerson = computeDebts(localStorage.getItem('global-name') || '', data)
+    const nameLc = myName.toLowerCase()
+    const byPerson = computeDebts(myName, data)
     // Smart routing: todo if unchecked receipts or unsettled debts, else calendar
     const hasUnchecked = nameLc && standalone.some(r => {
       const members = effectiveMembers(r).map(m => m.toLowerCase())
@@ -206,9 +200,10 @@ function toggleExpanded(person) {
 
     async function markSettled(entry) {
     setSettling({ entry })
-    await supabase.from('settlements').delete()
-      .eq('receipt_id', entry.receiptId).eq('debtor', myName).eq('creditor', entry.creditor)
-    await supabase.from('settlements').insert({ receipt_id: entry.receiptId, debtor: myName, creditor: entry.creditor, amount: entry.amount })
+    await setSettlement({
+      groupId: group.id, receiptId: entry.receiptId,
+      debtorId: idOf(myName), creditorId: idOf(entry.creditor), amount: entry.amount,
+    })
     await fetchTrips()
     setSettling(null)
   }
@@ -220,9 +215,10 @@ function toggleExpanded(person) {
       ...data.theyOweMe.map(e => ({ receipt_id: e.receiptId, debtor: person, creditor: myName, amount: e.amount })),
     ]
     for (const s of entries) {
-      await supabase.from('settlements').delete()
-        .eq('receipt_id', s.receipt_id).eq('debtor', s.debtor).eq('creditor', s.creditor)
-      await supabase.from('settlements').insert(s)
+      await setSettlement({
+        groupId: group.id, receiptId: s.receipt_id,
+        debtorId: idOf(s.debtor), creditorId: idOf(s.creditor), amount: s.amount,
+      })
     }
     await fetchTrips()
     setSettling(null)

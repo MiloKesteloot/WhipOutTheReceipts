@@ -1,231 +1,479 @@
-import { useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase.js'
-import { FALLBACK_MEMBERS } from '../config.js'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { supabase, appBaseUrl } from '../lib/supabase.js'
 import { useDialog } from '../lib/useDialog.jsx'
+import { useSession } from '../lib/session.jsx'
+import { useGroup } from '../lib/group.jsx'
 
-const FALLBACK_CORE = FALLBACK_MEMBERS
-const SETTINGS_KEY = 'apartment_members'
-const GEMINI_KEY_SETTING = 'gemini_api_key'
-
-// Async — used by Stats and Home on mount to get the current core list
-export async function fetchCoreRoommates() {
-  try {
-    const { data } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', SETTINGS_KEY)
-      .single()
-    if (data?.value) {
-      return data.value.filter(m => m.isCore).map(m => m.name)
-    }
-  } catch {}
-  return FALLBACK_CORE
-}
-
-// Async — used by AddReceipt to get the shared Gemini API key
+// Used by AddReceipt for receipt scanning: the signed-in user's own key
 export async function fetchGeminiKey() {
-  try {
-    const { data } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', GEMINI_KEY_SETTING)
-      .single()
-    return data?.value || ''
-  } catch {}
-  return ''
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return ''
+  const { data } = await supabase.from('user_secrets').select('gemini_api_key').eq('user_id', user.id).maybeSingle()
+  return data?.gemini_api_key || ''
 }
 
-export default function Settings() {
+const card = 'bg-white border border-gray-200 rounded-xl p-4'
+const smallInput = 'flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400'
+const smallButton = 'px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600 disabled:opacity-50'
+const primarySmall = 'px-3 py-1.5 text-sm font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700 transition disabled:opacity-50'
+const sectionTitle = 'text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3'
+
+function Badge({ children, tone = 'gray' }) {
+  const tones = {
+    gray: 'bg-gray-100 text-gray-500',
+    accent: 'bg-accent-50 text-accent-700',
+    amber: 'bg-amber-50 text-amber-700',
+  }
+  return <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${tones[tone]}`}>{children}</span>
+}
+
+// ── Group tab ────────────────────────────────────────────────
+
+function GroupInfo() {
+  const { group, isOwner, refreshMemberships } = useGroup()
   const { confirm, DialogUI } = useDialog()
-  const currentName = localStorage.getItem('global-name') || ''
-  const [nameInput, setNameInput] = useState(currentName)
+  const [name, setName] = useState(group.name)
+  const [copied, setCopied] = useState(false)
+  const inviteLink = `${appBaseUrl}#/join/${group.invite_code}`
 
-  // Apartment settings — loaded from DB, null = still loading
-  const [roster, setRoster] = useState(null)
-  const [newPersonInput, setNewPersonInput] = useState('')
-  const saveTimerRef = useRef(null)
+  async function rename() {
+    await supabase.from('groups').update({ name: name.trim() }).eq('id', group.id)
+    refreshMemberships()
+  }
 
-  // Name input dropdown
-  const [nameOpen, setNameOpen] = useState(false)
-  const nameInputRef = useRef(null)
+  async function newLink() {
+    if (!await confirm('Anyone with the current link or code will no longer be able to join.', {
+      title: 'Create a new invite link?', confirmLabel: 'New link',
+    })) return
+    await supabase.rpc('regenerate_invite', { p_group: group.id })
+    refreshMemberships()
+  }
 
-  // Merge tool
-  const [allKnownNames, setAllKnownNames] = useState([])
-  const [mergeFrom, setMergeFrom] = useState('')
-  const [mergeTo, setMergeTo] = useState('')
-  const [merging, setMerging] = useState(false)
-  const [mergeConfirm, setMergeConfirm] = useState(false)
-  const [mergeDone, setMergeDone] = useState(null)
+  function copy() {
+    navigator.clipboard.writeText(inviteLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
-  const [tab, setTab] = useState('group')
+  return (
+    <section>
+      {DialogUI}
+      <div className={`${card} space-y-4`}>
+        <div>
+          <p className="text-sm font-medium text-gray-700 mb-2">Group name</p>
+          {isOwner ? (
+            <div className="flex gap-2">
+              <input value={name} onChange={e => setName(e.target.value)} className={smallInput} />
+              <button onClick={rename} disabled={!name.trim() || name.trim() === group.name} className={primarySmall}>Save</button>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-800">{group.name}</p>
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-700 mb-0.5">Invite people</p>
+          <p className="text-xs text-gray-400 mb-2">Anyone with this link can join the group. Code: <span className="font-mono text-gray-600">{group.invite_code}</span></p>
+          <div className="flex gap-2">
+            <input readOnly value={inviteLink} onFocus={e => e.target.select()} className={`${smallInput} text-gray-500 bg-gray-50`} />
+            <button onClick={copy} className={primarySmall}>{copied ? 'Copied ✓' : 'Copy'}</button>
+          </div>
+          {isOwner && (
+            <button onClick={newLink} className="mt-2 text-xs text-gray-400 hover:text-gray-600">Replace with a new link…</button>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
 
-  // Personal settings — localStorage only
-  const [defaultShowAll, setDefaultShowAll] = useState(
-    localStorage.getItem('default-show-all-trips') === '1'
+function PersonRow({ m }) {
+  const { isOwner, myMember, refreshMembers } = useGroup()
+  const { confirm, showAlert, DialogUI } = useDialog()
+  const [editing, setEditing] = useState(false)
+  const [first, setFirst] = useState(m.first_name)
+  const [last, setLast] = useState(m.last_name)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const isMe = m.id === myMember?.id
+  const linked = !!m.user_id
+
+  async function run(fn, args, okMessage) {
+    setMenuOpen(false)
+    const { error } = await supabase.rpc(fn, args)
+    if (error) await showAlert(error.message, { title: 'Something went wrong' })
+    else if (okMessage) await showAlert(okMessage)
+    refreshMembers()
+  }
+
+  async function saveName() {
+    const { error } = await supabase.from('group_members').update({ first_name: first.trim(), last_name: last.trim() }).eq('id', m.id)
+    if (error) await showAlert(error.message)
+    setEditing(false)
+    refreshMembers()
+  }
+
+  async function toggleGuest() {
+    await supabase.from('group_members').update({ is_guest: !m.is_guest }).eq('id', m.id)
+    refreshMembers()
+  }
+
+  if (editing) {
+    return (
+      <li className="flex gap-2 py-2">
+        <input value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" className={smallInput} autoFocus />
+        <input value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" className={smallInput} />
+        <button onClick={saveName} disabled={!first.trim()} className={primarySmall}>Save</button>
+        <button onClick={() => setEditing(false)} className={smallButton}>Cancel</button>
+      </li>
+    )
+  }
+
+  const ownerActions = isOwner && !isMe ? [
+    m.active
+      ? ['Remove from group', () => confirm(`${m.displayName} will lose access (if they have an account). Their history stays.`, { title: `Remove ${m.displayName}?`, confirmLabel: 'Remove', danger: true })
+          .then(ok => ok && run('remove_member', { p_member: m.id }))]
+      : ['Add back to group', () => run('restore_member', { p_member: m.id })],
+    linked && m.active && ['Make owner', () => confirm(`${m.displayName} will become the owner. You'll stay in the group as a regular member.`, { title: 'Transfer ownership?', confirmLabel: 'Make owner' })
+      .then(ok => ok && run('transfer_ownership', { p_member: m.id }).then(() => window.location.reload()))],
+    linked && ['Unlink account', () => confirm(`${m.displayName}'s account will be disconnected from this person. Their history stays here, and they can rejoin with the invite link.`, { title: 'Unlink account?', confirmLabel: 'Unlink', danger: true })
+      .then(ok => ok && run('unlink_member', { p_member: m.id }))],
+  ].filter(Boolean) : []
+
+  return (
+    <li className={`flex items-center gap-3 py-2 ${m.active ? '' : 'opacity-50'}`}>
+      {DialogUI}
+      <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+        <span className="text-sm text-gray-800">{m.displayName}</span>
+        {m.last_name && m.displayName.split(' ').length === 1 && <span className="text-xs text-gray-400">{m.last_name}</span>}
+        {isMe && <Badge tone="accent">You</Badge>}
+        {m.role === 'owner' && <Badge tone="accent">Owner</Badge>}
+        {!m.active && <Badge>Left</Badge>}
+        {m.active && m.is_guest && <Badge tone="amber">Guest</Badge>}
+        {m.active && !linked && !m.is_guest && <Badge>No account yet</Badge>}
+      </div>
+      {!linked && m.active && (
+        <>
+          <button onClick={toggleGuest} className="text-xs text-gray-400 hover:text-gray-600 shrink-0" title="Guests aren't added to new receipts by default">
+            {m.is_guest ? 'Make regular' : 'Make guest'}
+          </button>
+          <button onClick={() => setEditing(true)} className="text-xs text-gray-400 hover:text-gray-600 shrink-0">Rename</button>
+        </>
+      )}
+      {ownerActions.length > 0 && (
+        <div className="relative shrink-0">
+          <button onClick={() => setMenuOpen(o => !o)} className="px-1.5 text-gray-400 hover:text-gray-600" aria-label="More actions">⋯</button>
+          {menuOpen && (
+            <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
+              {ownerActions.map(([label, action]) => (
+                <button key={label} onClick={() => { setMenuOpen(false); action() }} className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{label}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function People() {
+  const { group, members, refreshMembers } = useGroup()
+  const [first, setFirst] = useState('')
+  const [asGuest, setAsGuest] = useState(false)
+  const [showInactive, setShowInactive] = useState(false)
+  const active = members.filter(m => m.active)
+  const inactive = members.filter(m => !m.active)
+  const order = m => (m.user_id ? 0 : m.is_guest ? 2 : 1)
+  const sorted = [...active].sort((a, b) => order(a) - order(b) || a.displayName.localeCompare(b.displayName))
+
+  async function add(e) {
+    e.preventDefault()
+    const name = first.trim().replace(/\b\w/g, c => c.toUpperCase())
+    if (!name) return
+    await supabase.from('group_members').insert({ group_id: group.id, first_name: name, is_guest: asGuest })
+    setFirst('')
+    refreshMembers()
+  }
+
+  return (
+    <section>
+      <div className={card}>
+        <p className="text-sm font-medium text-gray-700 mb-0.5">People</p>
+        <p className="text-xs text-gray-400 mb-2">
+          Regular people are added to new receipts by default. Guests are for people who join occasionally.
+          People without an account can claim their name when they join with the invite link.
+        </p>
+        <ul className="divide-y divide-gray-100">
+          {sorted.map(m => <PersonRow key={m.id} m={m} />)}
+          {showInactive && inactive.map(m => <PersonRow key={m.id} m={m} />)}
+        </ul>
+        {inactive.length > 0 && (
+          <button onClick={() => setShowInactive(s => !s)} className="text-xs text-gray-400 hover:text-gray-600 mt-1">
+            {showInactive ? 'Hide' : 'Show'} {inactive.length} former member{inactive.length === 1 ? '' : 's'}
+          </button>
+        )}
+        <form onSubmit={add} className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+          <input value={first} onChange={e => setFirst(e.target.value)} placeholder="Add a person…" className={smallInput} />
+          <label className="flex items-center gap-1.5 text-xs text-gray-500 shrink-0">
+            <input type="checkbox" checked={asGuest} onChange={e => setAsGuest(e.target.checked)} className="accent-accent-600" />
+            Guest
+          </label>
+          <button type="submit" disabled={!first.trim()} className={smallButton}>Add</button>
+        </form>
+      </div>
+    </section>
+  )
+}
+
+function MergePeople() {
+  const { members, refreshMembers } = useGroup()
+  const { showAlert, DialogUI } = useDialog()
+  const [from, setFrom] = useState('')
+  const [into, setInto] = useState('')
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState('')
+  const byId = Object.fromEntries(members.map(m => [m.id, m]))
+  const options = [...members].sort((a, b) => a.displayName.localeCompare(b.displayName))
+
+  async function merge() {
+    setBusy(true)
+    const { error } = await supabase.rpc('merge_members', { p_from: from, p_into: into })
+    setBusy(false)
+    setConfirming(false)
+    if (error) { await showAlert(error.message, { title: 'Could not merge' }); return }
+    setDone(`Merged "${byId[from].displayName}" into "${byId[into].displayName}"`)
+    setFrom(''); setInto('')
+    refreshMembers()
+  }
+
+  const select = (value, onChange, placeholder, exclude) => (
+    <select
+      value={value}
+      onChange={e => { onChange(e.target.value); setConfirming(false); setDone('') }}
+      className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white"
+    >
+      <option value="">{placeholder}</option>
+      {options.filter(m => m.id !== exclude).map(m => <option key={m.id} value={m.id}>{m.displayName}{m.active ? '' : ' (left)'}</option>)}
+    </select>
   )
 
-  // Gemini key — stored globally in app_settings
-  const [geminiDbKey, setGeminiDbKey] = useState(null) // null = loading
-  const [replacingKey, setReplacingKey] = useState(false)
-  const [newKeyInput, setNewKeyInput] = useState('')
-  const [geminiSaving, setGeminiSaving] = useState(false)
+  return (
+    <section>
+      {DialogUI}
+      <div className={card}>
+        <p className="text-sm font-medium text-gray-700 mb-1">Merge duplicate people</p>
+        <p className="text-xs text-gray-400 mb-4">If the same person was added twice (e.g. a typo), move all their history onto one of them.</p>
+        <div className="flex items-center gap-2">
+          {select(from, setFrom, 'Merge this person…', into)}
+          <span className="text-sm text-gray-400 shrink-0">into</span>
+          {select(into, setInto, '…this person', from)}
+        </div>
+        {from && into && !confirming && (
+          <button onClick={() => setConfirming(true)} className="mt-3 w-full py-2 text-sm font-medium border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition">
+            Merge "{byId[from].displayName}" → "{byId[into].displayName}"
+          </button>
+        )}
+        {confirming && (
+          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-800 mb-3">All of {byId[from].displayName}'s claims, receipts and payments will move to {byId[into].displayName}. This is recorded in the history.</p>
+            <div className="flex gap-2">
+              <button onClick={merge} disabled={busy} className="flex-1 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50">
+                {busy ? 'Merging…' : 'Yes, merge'}
+              </button>
+              <button onClick={() => setConfirming(false)} className={smallButton}>Cancel</button>
+            </div>
+          </div>
+        )}
+        {done && <p className="mt-3 text-sm text-accent-600 font-medium">{done} ✓</p>}
+      </div>
+    </section>
+  )
+}
 
-  useEffect(() => { loadRoster(); loadAllKnownNames(); loadGeminiKey() }, [])
+function LeaveGroup() {
+  const { group, refreshMemberships } = useGroup()
+  const { confirm, showAlert, DialogUI } = useDialog()
+  const navigate = useNavigate()
 
-  useEffect(() => {
-    function handleClick(e) {
-      if (nameInputRef.current && !nameInputRef.current.contains(e.target)) {
-        setNameOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  async function loadAllKnownNames() {
-    const [tripsRes, claimsRes, receiptsRes, settlementsRes] = await Promise.all([
-      supabase.from('trips').select('members'),
-      supabase.from('claims').select('roommate'),
-      supabase.from('receipts').select('paid_by'),
-      supabase.from('settlements').select('debtor, creditor'),
-    ])
-    const names = new Set()
-    for (const t of tripsRes.data || []) (t.members || []).forEach(m => m && names.add(m))
-    for (const c of claimsRes.data || []) c.roommate && names.add(c.roommate)
-    for (const r of receiptsRes.data || []) r.paid_by && names.add(r.paid_by)
-    for (const s of settlementsRes.data || []) {
-      s.debtor && names.add(s.debtor)
-      s.creditor && names.add(s.creditor)
-    }
-    setAllKnownNames([...names].sort((a, b) => a.localeCompare(b)))
+  async function leave() {
+    if (!await confirm(`You'll lose access to ${group.name}. Your history stays, and you can rejoin with an invite link.`, {
+      title: `Leave ${group.name}?`, confirmLabel: 'Leave', danger: true,
+    })) return
+    const { error } = await supabase.rpc('leave_group', { p_group: group.id })
+    if (error) { await showAlert(error.message, { title: 'Could not leave' }); return }
+    await refreshMemberships()
+    navigate('/')
   }
 
-  async function mergeNames() {
-    if (!mergeFrom || !mergeTo || mergeFrom === mergeTo) return
-    setMerging(true)
+  return (
+    <section>
+      {DialogUI}
+      <button onClick={leave} className="w-full py-2 text-sm font-medium border border-red-200 text-red-500 rounded-xl hover:bg-red-50 transition">
+        Leave {group.name}
+      </button>
+    </section>
+  )
+}
 
-    await Promise.all([
-      supabase.from('claims').update({ roommate: mergeTo }).eq('roommate', mergeFrom),
-      supabase.from('receipts').update({ paid_by: mergeTo }).eq('paid_by', mergeFrom),
-      supabase.from('settlements').update({ debtor: mergeTo }).eq('debtor', mergeFrom),
-      supabase.from('settlements').update({ creditor: mergeTo }).eq('creditor', mergeFrom),
-    ])
+// ── Personal tab ─────────────────────────────────────────────
 
-    // trips.members is an array — fetch and patch each affected trip
-    const { data: trips } = await supabase.from('trips').select('id, members')
-    const toUpdate = (trips || []).filter(t => (t.members || []).includes(mergeFrom))
-    await Promise.all(
-      toUpdate.map(t =>
-        supabase.from('trips').update({
-          members: t.members.map(m => m === mergeFrom ? mergeTo : m),
-        }).eq('id', t.id)
-      )
-    )
+function YourName() {
+  const { profile, refreshProfile } = useSession()
+  const { refreshMembers } = useGroup()
+  const [first, setFirst] = useState(profile.first_name)
+  const [last, setLast] = useState(profile.last_name)
+  const [saved, setSaved] = useState(false)
+  const changed = first.trim() !== profile.first_name || last.trim() !== profile.last_name
 
-    // If mergeFrom was in the roster, remove it
-    if (roster) updateRoster(roster.filter(m => m.name !== mergeFrom))
-
-    setMergeDone(`Merged "${mergeFrom}" into "${mergeTo}"`)
-    setMergeFrom('')
-    setMergeTo('')
-    setMergeConfirm(false)
-    setMerging(false)
-    loadAllKnownNames()
+  async function save() {
+    await supabase.from('profiles').update({ first_name: first.trim(), last_name: last.trim() }).eq('id', profile.id)
+    await refreshProfile()
+    await refreshMembers()
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
-  async function loadRoster() {
-    const { data } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', SETTINGS_KEY)
-      .single()
-    if (data?.value) {
-      setRoster(data.value)
-    } else {
-      const initial = FALLBACK_CORE.map(name => ({ name, isCore: false }))
-      setRoster(initial)
-      await persistRoster(initial)
-    }
+  return (
+    <section>
+      <h2 className={sectionTitle}>Your name</h2>
+      <div className={card}>
+        <div className="flex gap-2">
+          <input value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" className={smallInput} />
+          <input value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" className={smallInput} />
+          <button onClick={save} disabled={!first.trim() || !changed} className={primarySmall}>{saved ? 'Saved ✓' : 'Save'}</button>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">Shown by first name. If two people in a group share a first name, a last initial is added.</p>
+      </div>
+    </section>
+  )
+}
+
+function Account() {
+  const { user, signOut } = useSession()
+  const [sent, setSent] = useState(false)
+
+  async function resetPassword() {
+    await supabase.auth.resetPasswordForEmail(user.email, { redirectTo: appBaseUrl })
+    setSent(true)
   }
 
-  async function persistRoster(r) {
-    await supabase.from('app_settings').upsert(
-      { key: SETTINGS_KEY, value: r },
-      { onConflict: 'key' }
-    )
+  return (
+    <section>
+      <h2 className={sectionTitle}>Account</h2>
+      <div className={`${card} space-y-3`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-gray-800 truncate">{user.email}</p>
+            <p className="text-xs text-gray-400">{user.app_metadata?.provider === 'google' ? 'Signed in with Google' : 'Email and password'}</p>
+          </div>
+          <button onClick={signOut} className={smallButton}>Sign out</button>
+        </div>
+        {user.app_metadata?.provider !== 'google' && (
+          <button onClick={resetPassword} disabled={sent} className="text-xs text-gray-400 hover:text-gray-600 disabled:text-accent-600">
+            {sent ? `Password reset link sent to ${user.email}` : 'Change password…'}
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function GeminiKey() {
+  const { user } = useSession()
+  const { confirm, DialogUI } = useDialog()
+  const [key, setKey] = useState(null) // null = loading
+  const [replacing, setReplacing] = useState(false)
+  const [input, setInput] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { fetchGeminiKey().then(setKey) }, [])
+
+  async function save() {
+    setSaving(true)
+    await supabase.from('user_secrets').upsert({ user_id: user.id, gemini_api_key: input.trim(), updated_at: new Date().toISOString() })
+    setKey(input.trim())
+    setInput(''); setReplacing(false); setSaving(false)
   }
 
-  function updateRoster(newRoster) {
-    setRoster(newRoster)
-    clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => persistRoster(newRoster), 400)
+  async function remove() {
+    if (!await confirm('Receipt scanning will stop working for you until you add a new key.', {
+      title: 'Delete your API key?', confirmLabel: 'Delete', danger: true,
+    })) return
+    await supabase.from('user_secrets').upsert({ user_id: user.id, gemini_api_key: null, updated_at: new Date().toISOString() })
+    setKey(''); setReplacing(false)
   }
 
-  function toggleCore(name) {
-    updateRoster(roster.map(m => m.name === name ? { ...m, isCore: !m.isCore } : m))
-  }
+  return (
+    <section>
+      {DialogUI}
+      <h2 className={sectionTitle}>Receipt scanning</h2>
+      <div className={card}>
+        <p className="text-sm font-medium text-gray-700 mb-0.5">Your Gemini API key</p>
+        <p className="text-xs text-gray-400 mb-3">
+          Scanning reads receipt photos with Google's Gemini AI, using your own free key. Only you can see it.
+          Get one at{' '}
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-accent-600 hover:underline">aistudio.google.com/apikey</a>.
+        </p>
+        {key === null ? (
+          <p className="text-sm text-gray-400">Loading…</p>
+        ) : key && !replacing ? (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm text-gray-400 tracking-widest select-none">••••••••••••{key.slice(-4)}</div>
+            <button onClick={() => { setReplacing(true); setInput('') }} className={smallButton}>Replace</button>
+            <button onClick={remove} className="px-3 py-1.5 text-sm border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition">Delete</button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && input.trim() && save()}
+              placeholder="Paste API key…"
+              autoComplete="off"
+              className={smallInput}
+            />
+            <button onClick={save} disabled={!input.trim() || saving} className={primarySmall}>{saving ? 'Saving…' : 'Save'}</button>
+            {replacing && <button onClick={() => setReplacing(false)} className={smallButton}>Cancel</button>}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
 
-  function deletePerson(name) {
-    updateRoster(roster.filter(m => m.name !== name))
-  }
-
-  function addNewPerson(e) {
-    e.preventDefault()
-    const name = newPersonInput.trim().replace(/\b\w/g, c => c.toUpperCase())
-    if (!name || roster.some(m => m.name.toLowerCase() === name.toLowerCase())) {
-      setNewPersonInput('')
-      return
-    }
-    updateRoster([...roster, { name, isCore: true }])
-    setNewPersonInput('')
-  }
-
-  async function loadGeminiKey() {
-    const key = await fetchGeminiKey()
-    setGeminiDbKey(key)
-  }
-
-  async function saveGeminiKey() {
-    const trimmed = newKeyInput.trim()
-    if (!trimmed) return
-    setGeminiSaving(true)
-    await supabase.from('app_settings').upsert(
-      { key: GEMINI_KEY_SETTING, value: trimmed },
-      { onConflict: 'key' }
-    )
-    setGeminiDbKey(trimmed)
-    setNewKeyInput('')
-    setReplacingKey(false)
-    setGeminiSaving(false)
-  }
-
-  async function deleteGeminiKey() {
-    const ok = await confirm('This will remove the API key for everyone. Receipt scanning will stop working until a new key is added.', {
-      title: 'Delete API key?',
-      confirmLabel: 'Delete',
-      danger: true,
-    })
-    if (!ok) return
-    await supabase.from('app_settings').delete().eq('key', GEMINI_KEY_SETTING)
-    setGeminiDbKey('')
-    setReplacingKey(false)
-    setNewKeyInput('')
-  }
-
-  function saveName() {
-    const normalized = nameInput.trim().replace(/\b\w/g, c => c.toUpperCase())
-    if (!normalized || normalized === currentName) return
-    localStorage.setItem('global-name', normalized)
-    window.location.reload()
-  }
-
+function Preferences() {
+  const [defaultShowAll, setDefaultShowAll] = useState(localStorage.getItem('default-show-all-trips') === '1')
   useEffect(() => {
     localStorage.setItem('default-show-all-trips', defaultShowAll ? '1' : '0')
   }, [defaultShowAll])
 
   return (
-    <>
-    {DialogUI}
+    <section>
+      <h2 className={`${sectionTitle} mb-1`}>Preferences</h2>
+      <p className="text-xs text-gray-400 mb-3">Saved on this device only.</p>
+      <div className={card}>
+        <label className="flex items-center justify-between cursor-pointer">
+          <div>
+            <p className="text-sm font-medium text-gray-800">Show all receipts by default</p>
+            <p className="text-xs text-gray-400 mt-0.5">When off, only receipts you're a member of are shown on the home page</p>
+          </div>
+          <button
+            onClick={() => setDefaultShowAll(v => !v)}
+            className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${defaultShowAll ? 'bg-accent-500' : 'bg-gray-200'}`}
+          >
+            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${defaultShowAll ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </label>
+      </div>
+    </section>
+  )
+}
+
+export default function Settings() {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'personal' ? 'personal' : 'group'
+
+  return (
     <div className="max-w-xl mx-auto p-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
@@ -233,7 +481,7 @@ export default function Settings() {
           {[['group', 'Group'], ['personal', 'Personal']].map(([v, label]) => (
             <button
               key={v}
-              onClick={() => setTab(v)}
+              onClick={() => setParams({ tab: v }, { replace: true })}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                 tab === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
@@ -244,287 +492,23 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="space-y-8">
-
-      {/* ── GROUP TAB ── */}
-      {tab === 'group' && <>
-
-      {/* Pinned people */}
-      <section>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-700 mb-1">Pinned people</p>
-          <p className="text-xs text-gray-400 mb-4">Pinned people appear by default in Stats and as quick-add options when creating a trip.</p>
-          {roster === null ? (
-            <p className="text-sm text-gray-400">Loading…</p>
-          ) : (
-            <div className="space-y-2">
-              {roster.map(({ name, isCore }) => (
-                <div key={name} className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id={`core-${name}`}
-                    checked={isCore}
-                    onChange={() => toggleCore(name)}
-                    className="h-4 w-4 rounded accent-accent-600 cursor-pointer"
-                  />
-                  <label htmlFor={`core-${name}`} className="flex-1 text-sm text-gray-800 cursor-pointer">
-                    {name}
-                  </label>
-                  <button
-                    onClick={() => deletePerson(name)}
-                    className="text-gray-300 hover:text-red-400 transition p-1 rounded"
-                    title={`Remove ${name}`}
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-              <form onSubmit={addNewPerson} className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
-                <input
-                  type="text"
-                  value={newPersonInput}
-                  onChange={e => setNewPersonInput(e.target.value)}
-                  placeholder="Add a person…"
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-                />
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600"
-                >
-                  Add
-                </button>
-              </form>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Merge people */}
-      <section>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-700 mb-1">Merge duplicate names</p>
-          <p className="text-xs text-gray-400 mb-4">
-            If someone's name was entered with a typo, merge all their history under the correct name.
-          </p>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-0">
-              <select
-                value={mergeFrom}
-                onChange={e => { setMergeFrom(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
-                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white"
-              >
-                <option value="">Merge this name…</option>
-                {allKnownNames.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-            <span className="text-sm text-gray-400 shrink-0">into</span>
-            <div className="relative flex-1 min-w-0">
-              <select
-                value={mergeTo}
-                onChange={e => { setMergeTo(e.target.value); setMergeConfirm(false); setMergeDone(null) }}
-                className="w-full appearance-none border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 bg-white"
-              >
-                <option value="">…the correct name</option>
-                {allKnownNames.filter(n => n !== mergeFrom).map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-          </div>
-
-          {mergeFrom && mergeTo && !mergeConfirm && (
-            <button
-              onClick={() => setMergeConfirm(true)}
-              className="mt-3 w-full py-2 text-sm font-medium border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition"
-            >
-              Merge "{mergeFrom}" → "{mergeTo}"
-            </button>
-          )}
-
-          {mergeConfirm && (
-            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-sm text-amber-800 mb-3">
-                This will update all claims, receipts, settlements, and trip memberships. This cannot be undone.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={mergeNames}
-                  disabled={merging}
-                  className="flex-1 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50"
-                >
-                  {merging ? 'Merging…' : 'Yes, merge'}
-                </button>
-                <button
-                  onClick={() => setMergeConfirm(false)}
-                  className="px-4 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {mergeDone && (
-            <p className="mt-3 text-sm text-accent-600 font-medium">{mergeDone} ✓</p>
-          )}
-        </div>
-      </section>
-
-      {/* Gemini API key — shared / apartment-wide */}
-      <section>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-700 mb-0.5">Gemini API key</p>
-          <p className="text-xs text-gray-400 mb-3">
-            Used to scan receipt photos. Shared for everyone in the apartment. Get a free key at{' '}
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-accent-500 hover:underline">aistudio.google.com</a>.
-          </p>
-          {geminiDbKey === null ? (
-            <p className="text-sm text-gray-400">Loading…</p>
-          ) : geminiDbKey && !replacingKey ? (
-            <div className="flex items-center gap-2">
-              <div className="flex-1 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-sm text-gray-400 tracking-widest select-none">••••••••••••••••</div>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  onClick={() => { setReplacingKey(true); setNewKeyInput('') }}
-                  className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Replace
-                </button>
-                <button
-                  onClick={deleteGeminiKey}
-                  className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newKeyInput}
-                onChange={e => setNewKeyInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && saveGeminiKey()}
-                placeholder="Paste API key…"
-                autoComplete="off"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-              <button
-                onClick={saveGeminiKey}
-                disabled={!newKeyInput.trim() || geminiSaving}
-                className="px-3 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
-              >
-                {geminiSaving ? 'Saving…' : 'Save'}
-              </button>
-              {replacingKey && (
-                <button
-                  onClick={() => { setReplacingKey(false); setNewKeyInput('') }}
-                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </section>
-
-      </> /* end group tab */}
-
-      {/* ── PERSONAL TAB ── */}
-      {tab === 'personal' && <>
-
-      {/* Your Name */}
-      <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Your name</h2>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex gap-2">
-            <div className="relative flex-1" ref={nameInputRef}>
-              <input
-                type="text"
-                value={nameInput}
-                onChange={e => { setNameInput(e.target.value); setNameOpen(true) }}
-                onClick={() => setNameOpen(true)}
-                onKeyDown={e => e.key === 'Enter' && saveName()}
-                autoComplete="off"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-              {nameOpen && (() => {
-                const coreNames = (roster || []).filter(m => m.isCore).map(m => m.name)
-                const coreSet = new Set(coreNames.map(n => n.toLowerCase()))
-                const otherNames = allKnownNames.filter(n => !coreSet.has(n.toLowerCase()))
-                const isExactMatch = [...coreNames, ...otherNames].some(n => n.toLowerCase() === nameInput.toLowerCase())
-                const matchCore = coreNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
-                const matchOther = otherNames.filter(n => nameInput === '' || isExactMatch || n.toLowerCase().includes(nameInput.toLowerCase()))
-                if (matchCore.length === 0 && matchOther.length === 0) return null
-                return (
-                  <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                    {matchCore.map(n => (
-                      <li key={n}>
-                        <button type="button" onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors flex items-center justify-between">
-                          {n}
-                          <span className="text-xs text-gray-300">pinned</span>
-                        </button>
-                      </li>
-                    ))}
-                    {matchCore.length > 0 && matchOther.length > 0 && <li className="border-t border-gray-100" />}
-                    {matchOther.map(n => (
-                      <li key={n}>
-                        <button type="button" onMouseDown={e => { e.preventDefault(); setNameInput(n); setNameOpen(false) }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors">
-                          {n}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              })()}
-            </div>
-            <button
-              onClick={saveName}
-              disabled={!nameInput.trim() || nameInput.trim().replace(/\b\w/g, c => c.toUpperCase()) === currentName}
-              className="px-4 py-2 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition disabled:opacity-50"
-            >
-              Save
-            </button>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">Changing your name will reload the page.</p>
-        </div>
-      </section>
-
-      {/* Personal preferences */}
-      <section>
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Preferences</h2>
-        <p className="text-xs text-gray-400 mb-3">Saved on this device only.</p>
-        <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-          <div className="p-4">
-            <label className="flex items-center justify-between cursor-pointer">
-              <div>
-                <p className="text-sm font-medium text-gray-800">Show all receipts by default</p>
-                <p className="text-xs text-gray-400 mt-0.5">When off, only receipts you're a member of are shown on the home page</p>
-              </div>
-              <button
-                onClick={() => setDefaultShowAll(v => !v)}
-                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${defaultShowAll ? 'bg-accent-500' : 'bg-gray-200'}`}
-              >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${defaultShowAll ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </label>
-          </div>
-        </div>
-      </section>
-
-      </> /* end personal tab */}
-
+      <div className="space-y-6">
+        {tab === 'group' ? (
+          <>
+            <GroupInfo />
+            <People />
+            <MergePeople />
+            <LeaveGroup />
+          </>
+        ) : (
+          <>
+            <YourName />
+            <Account />
+            <GeminiKey />
+            <Preferences />
+          </>
+        )}
       </div>
     </div>
-    </>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase.js'
+import { useGroup } from '../lib/group.jsx'
+import { loadSettlements, loadReceipts, loadItems, loadClaims, loadMeals, loadTrips } from '../lib/db.js'
 import { calculateDebts } from '../lib/splitLogic.js'
 
 const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
@@ -13,7 +14,7 @@ const fmtDate = dateStr => {
 }
 
 export default function Payments() {
-  const myName = localStorage.getItem('global-name') || ''
+  const { group, myName, nameOf, memberIds } = useGroup()
   const myNameLc = myName.toLowerCase()
 
   const [loading, setLoading] = useState(true)
@@ -27,21 +28,14 @@ export default function Payments() {
   }, [myName])
 
   async function loadData() {
-    const [settlementsRes, receiptsRes, itemsRes, claimsRes, mealsRes, tripsRes] = await Promise.all([
-      supabase.from('settlements').select('*'),
-      supabase.from('receipts').select('id, store_name, receipt_date, paid_by, tip, tax, fees'),
-      supabase.from('items').select('id, receipt_id, price, meal_id'),
-      supabase.from('claims').select('item_id, roommate'),
-      supabase.from('meals').select('id, receipt_id, fee'),
-      supabase.from('trips').select('id, name'),
+    const [allSettlements, allReceipts, allItems, allClaims, allMeals, allTrips] = await Promise.all([
+      loadSettlements(group.id, nameOf),
+      loadReceipts(group.id, nameOf, 'id, store_name, receipt_date, paid_by_member, tip, tax, fees'),
+      loadItems(group.id, 'id, receipt_id, price, meal_id'),
+      loadClaims(memberIds, nameOf),
+      loadMeals(group.id, 'id, receipt_id, fee'),
+      loadTrips(group.id, nameOf, 'id, name'),
     ])
-
-    const allSettlements = settlementsRes.data || []
-    const allReceipts = receiptsRes.data || []
-    const allItems = itemsRes.data || []
-    const allClaims = claimsRes.data || []
-    const allMeals = mealsRes.data || []
-    const allTrips = tripsRes.data || []
 
     const receiptById = Object.fromEntries(allReceipts.map(r => [r.id, r]))
     const tripById = Object.fromEntries(allTrips.map(t => [t.id, t]))

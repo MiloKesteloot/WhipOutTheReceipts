@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
-import { fetchCoreRoommates, fetchGeminiKey } from './Settings.jsx'
+import { useGroup } from '../lib/group.jsx'
+import { receiptFromDb, tripFromDb } from '../lib/db.js'
+import { fetchGeminiKey } from './Settings.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 
@@ -23,8 +25,8 @@ export default function AddReceipt() {
   const [trip, setTrip] = useState(null)
   const [storeName, setStoreName] = useState('')
   const [paidBy, setPaidBy] = useState('')
-  const [knownNames, setKnownNames] = useState([])
-  const [coreRoommates, setCoreRoommates] = useState([])
+  const { group, switchGroup, members, myName, coreNames: coreRoommates, nameOf, ensureMemberIds } = useGroup()
+  const knownNames = members.filter(m => m.active).map(m => m.displayName)
   const [paidByOpen, setPaidByOpen] = useState(false)
   const paidByRef = useRef(null)
   const [lineItems, setLineItems] = useState([newItem()])
@@ -53,20 +55,14 @@ export default function AddReceipt() {
 
   useEffect(() => {
     async function load() {
-      const core = await fetchCoreRoommates()
-      setCoreRoommates(core)
+      const core = coreRoommates
 
       if (isStandalone) {
-        // Standalone mode: no trip, load known paid_by names from all standalone receipts
-        const [{ data: standaloneReceipts }] = await Promise.all([
-          supabase.from('receipts').select('paid_by').not('receipt_date', 'is', null),
-        ])
-        const names = new Set((standaloneReceipts || []).map(r => r.paid_by))
-        setKnownNames([...names].filter(Boolean))
-
         if (isEditing) {
-          const { data: receipt } = await supabase
+          const { data: row } = await supabase
             .from('receipts').select('*').eq('id', receiptId).single()
+          if (row && row.group_id !== group.id) { switchGroup(row.group_id); return }
+          const receipt = row && receiptFromDb(row, nameOf)
           if (receipt) {
             setStoreName(receipt.store_name)
             setPaidBy(receipt.paid_by)
@@ -79,8 +75,8 @@ export default function AddReceipt() {
           }
 
           const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
-            supabase.from('items').select('*').eq('receipt_id', receiptId).order('created_at'),
-            supabase.from('meals').select('*').eq('receipt_id', receiptId).order('created_at'),
+            supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
+            supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
           ])
 
           const loadedMeals = (existingMeals || []).map(m => ({
@@ -105,31 +101,23 @@ export default function AddReceipt() {
           setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
           setLineItems([...loaded, newItem()])
         } else {
-          const savedName = localStorage.getItem('global-name')
-          if (savedName) setPaidBy(savedName)
-          // Default: only the logged-in user + explicitly pinned core members (isCore=true).
-          // Query roster directly to avoid the FALLBACK_CORE which marks everyone as core.
-          const { data: rosterData } = await supabase
-            .from('app_settings').select('value').eq('key', 'apartment_members').single()
-          const pinned = (rosterData?.value || []).filter(m => m.isCore).map(m => m.name)
-          const defaultMembers = [...new Set([...pinned, ...(savedName ? [savedName] : [])])]
-          setReceiptMembers(defaultMembers)
+          if (myName) setPaidBy(myName)
+          // Default: the group's regular (non-guest) people, plus me
+          setReceiptMembers([...new Set([...core, ...(myName ? [myName] : [])])])
         }
         loadComplete.current = true
         return
       }
 
       // Trip-linked mode (legacy)
-      const { data: tripData } = await supabase.from('trips').select('*').eq('id', tripId).single()
-      setTrip(tripData)
-
-      const { data: receipts } = await supabase.from('receipts').select('paid_by').eq('trip_id', tripId)
-      const names = new Set((receipts || []).map(r => r.paid_by))
-      setKnownNames([...names].filter(Boolean))
+      const { data: tripRow } = await supabase.from('trips').select('*').eq('id', tripId).single()
+      if (tripRow && tripRow.group_id !== group.id) { switchGroup(tripRow.group_id); return }
+      setTrip(tripRow && tripFromDb(tripRow, nameOf))
 
       if (isEditing) {
-        const { data: receipt } = await supabase
+        const { data: row } = await supabase
           .from('receipts').select('*').eq('id', receiptId).single()
+        const receipt = row && receiptFromDb(row, nameOf)
         if (receipt) {
           setStoreName(receipt.store_name)
           setPaidBy(receipt.paid_by)
@@ -140,8 +128,8 @@ export default function AddReceipt() {
         }
 
         const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
-          supabase.from('items').select('*').eq('receipt_id', receiptId).order('created_at'),
-          supabase.from('meals').select('*').eq('receipt_id', receiptId).order('created_at'),
+          supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
+          supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
         ])
 
         const loadedMeals = (existingMeals || []).map(m => ({
@@ -166,13 +154,12 @@ export default function AddReceipt() {
         setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
         setLineItems([...loaded, newItem()])
       } else {
-        const savedName = localStorage.getItem('global-name')
-        if (savedName) setPaidBy(savedName)
+        if (myName) setPaidBy(myName)
       }
       loadComplete.current = true
     }
     load()
-  }, [tripId, receiptId, isEditing, isStandalone])
+  }, [tripId, receiptId, isEditing, isStandalone, group.id])
 
   useEffect(() => {
     function handleClick(e) {
@@ -479,11 +466,19 @@ Rules:
 
     setSaving(true)
 
+    // Names -> people in the group (new names become guests)
+    let paidById, memberIds
+    try {
+      ;[paidById, ...memberIds] = await ensureMemberIds([paidBy, ...(isStandalone ? receiptMembers : [])])
+    } catch (err) {
+      await showAlert(err.message, { title: 'Error saving people' }); setSaving(false); return
+    }
+
     if (isEditing) {
-      const updatePayload = { store_name: storeName.trim(), paid_by: paidBy.trim(), category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 }
+      const updatePayload = { store_name: storeName.trim(), paid_by_member: paidById, category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 }
       if (isStandalone) {
         updatePayload.receipt_date = receiptDate || null
-        updatePayload.members = receiptMembers
+        updatePayload.member_ids = memberIds
       }
       const { error: updateErr } = await supabase
         .from('receipts')
@@ -497,7 +492,7 @@ Rules:
       const survivingMealDbIds = new Set(meals.filter(m => m.dbId).map(m => m.dbId))
       const mealsToDelete = [...originalMealDbIds].filter(id => !survivingMealDbIds.has(id))
       if (mealsToDelete.length > 0) {
-        await supabase.from('meals').delete().in('id', mealsToDelete)
+        await supabase.from('meals').update({ deleted_at: new Date().toISOString() }).in('id', mealsToDelete)
       }
 
       const filled = filledItems()
@@ -529,12 +524,13 @@ Rules:
       const survivingDbIds = new Set(toUpdate.map(i => i.dbId))
       const toDelete = [...originalDbIds].filter(id => !survivingDbIds.has(id))
       if (toDelete.length > 0) {
-        await supabase.from('items').delete().in('id', toDelete)
+        await supabase.from('items').update({ deleted_at: new Date().toISOString() }).in('id', toDelete)
       }
     } else {
       const insertPayload = {
+        group_id: group.id,
         store_name: storeName.trim(),
-        paid_by: paidBy.trim(),
+        paid_by_member: paidById,
         category,
         tip: parseFloat(tip) || 0,
         tax: parseFloat(tax) || 0,
@@ -542,7 +538,7 @@ Rules:
       }
       if (isStandalone) {
         insertPayload.receipt_date = receiptDate || null
-        insertPayload.members = receiptMembers
+        insertPayload.member_ids = memberIds
       } else {
         insertPayload.trip_id = tripId
       }
@@ -577,12 +573,12 @@ Rules:
   }
 
   async function handleDelete() {
-    if (!await confirm('All items and claims on this receipt will be removed. This cannot be undone.', {
+    if (!await confirm('It will be hidden for everyone. You can restore it later from the receipt page.', {
       title: 'Delete receipt?',
       confirmLabel: 'Delete',
       danger: true,
     })) return
-    await supabase.from('receipts').delete().eq('id', receiptId)
+    await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     if (isStandalone) navigate('/')
     else navigate(`/trip/${tripId}`)
   }

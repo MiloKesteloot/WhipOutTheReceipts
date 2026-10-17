@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase.js'
-import { fetchCoreRoommates } from './Settings.jsx'
+import { useGroup } from '../lib/group.jsx'
+import { loadTrips, loadReceipts, loadItems, loadClaims, loadMeals } from '../lib/db.js'
 import { CATEGORIES, CHART_TRIP_NAME_LENGTH } from '../config.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -139,7 +139,8 @@ function SortedLineTooltip({ active, payload, label }) {
 }
 
 export default function Stats() {
-  const myName = (localStorage.getItem('global-name') || '').toLowerCase()
+  const { group, nameOf, memberIds, coreNames, myName: myDisplayName } = useGroup()
+  const myName = myDisplayName.toLowerCase()
   const [loading, setLoading] = useState(true)
   const [raw, setRaw] = useState(null)
   const [selectedPeople, setSelectedPeople] = useState(null)
@@ -149,21 +150,16 @@ export default function Stats() {
 
   useEffect(() => {
     async function load() {
-      const [tripsRes, receiptsRes, itemsRes, claimsRes, mealsRes] = await Promise.all([
-        supabase.from('trips').select('*').order('created_at'),
-        supabase.from('receipts').select('*'),
-        supabase.from('items').select('id, receipt_id, meal_id, name, price'),
-        supabase.from('claims').select('item_id, roommate'),
-        supabase.from('meals').select('id, receipt_id, name, fee'),
+      const [allTrips, receipts, items, claims, meals] = await Promise.all([
+        loadTrips(group.id, nameOf),
+        loadReceipts(group.id, nameOf),
+        loadItems(group.id, 'id, receipt_id, meal_id, name, price'),
+        loadClaims(memberIds, nameOf),
+        loadMeals(group.id, 'id, receipt_id, name, fee'),
       ])
+      const trips = allTrips.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
 
-      const trips = tripsRes.data || []
-      const receipts = receiptsRes.data || []
-      const items = itemsRes.data || []
-      const claims = claimsRes.data || []
-      const meals = mealsRes.data || []
-
-      const coreList = await fetchCoreRoommates()
+      const coreList = coreNames
       const coreRoommatesLower = new Set(coreList.map(m => m.toLowerCase()))
       coreRoommatesLower.add(myName)
 

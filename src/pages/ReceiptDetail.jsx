@@ -5,7 +5,9 @@ import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, STORE_DOMAINS } from '../config.js'
-import { fetchCoreRoommates } from './Settings.jsx'
+import { useGroup } from '../lib/group.jsx'
+import { receiptFromDb, claimFromDb, checkinFromDb, settlementFromDb, syncMyClaims, ensureCheckin, setSettlement, clearSettlement } from '../lib/db.js'
+import ReceiptHistory from '../components/ReceiptHistory.jsx'
 
 function getStoreLogo(storeName) {
   if (!storeName) return null
@@ -23,7 +25,7 @@ export default function ReceiptDetail() {
   const [items, setItems] = useState([])
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
-  const myName = localStorage.getItem('global-name') || ''
+  const { group, switchGroup, myName, myMember, nameOf, idOf, coreNames: coreRoommates, ensureMemberIds } = useGroup()
   const [myClaims, setMyClaims] = useState(new Set())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -39,9 +41,8 @@ export default function ReceiptDetail() {
   const [editingMembers, setEditingMembers] = useState(false)
   const [membersEdit, setMembersEdit] = useState([])
   const [memberInput, setMemberInput] = useState('')
-  const [coreRoommates, setCoreRoommates] = useState([])
   const claimsLoadedRef = useRef(false)
-  const { confirm, DialogUI } = useDialog()
+  const { confirm, showAlert, DialogUI } = useDialog()
 
   const loadData = useCallback(async () => {
     const [receiptRes, settlementRes, checkinRes] = await Promise.all([
@@ -51,13 +52,15 @@ export default function ReceiptDetail() {
     ])
 
     if (receiptRes.error) { setError('Receipt not found.'); setLoading(false); return }
-    setReceipt(receiptRes.data)
-    setSettlements(settlementRes.data || [])
-    setCheckins(checkinRes.data || [])
+    // Shared link to a receipt in another of my groups: switch to that group
+    if (receiptRes.data.group_id !== group.id) { switchGroup(receiptRes.data.group_id); return }
+    setReceipt(receiptFromDb(receiptRes.data, nameOf))
+    setSettlements((settlementRes.data || []).map(x => settlementFromDb(x, nameOf)))
+    setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
 
     const [{ data: itemData }, { data: mealData }] = await Promise.all([
-      supabase.from('items').select('*').eq('receipt_id', receiptId).order('created_at'),
-      supabase.from('meals').select('*').eq('receipt_id', receiptId).order('created_at'),
+      supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
+      supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
     ])
     const allItems = itemData || []
     setItems(allItems)
@@ -66,24 +69,23 @@ export default function ReceiptDetail() {
     if (allItems.length > 0) {
       const { data: claimData } = await supabase
         .from('claims').select('*').in('item_id', allItems.map(i => i.id))
-      setClaims(claimData || [])
+      setClaims((claimData || []).map(c => claimFromDb(c, nameOf)))
     } else {
       setClaims([])
     }
 
     setLoading(false)
-  }, [receiptId])
+  }, [receiptId, nameOf, group.id])
 
   useEffect(() => {
     loadData()
-    fetchCoreRoommates().then(setCoreRoommates)
   }, [loadData])
 
   useEffect(() => {
     if (!myName || items.length === 0) return
     const mine = claims.filter(c => c.roommate === myName).map(c => c.item_id)
     const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
-    const hasEverSaved = !!localStorage.getItem(`claimed-receipt-${receiptId}-${myName}`)
+    const hasEverSaved = !!localStorage.getItem(`claimed-receipt-${receiptId}-${myMember?.id}`)
     if (mine.length > 0 || hasEverSaved) {
       setMyClaims(new Set([...mine, ...alwaysSplitIds]))
     } else {
@@ -140,22 +142,25 @@ export default function ReceiptDetail() {
     if (!myName) return
     setSaving(true)
     const itemIds = items.map(i => i.id)
-    await supabase.from('claims').delete().eq('roommate', myName).in('item_id', itemIds)
-    const newClaims = [...myClaims].map(item_id => ({ item_id, roommate: myName }))
-    if (newClaims.length > 0) await supabase.from('claims').insert(newClaims)
+    const currentMine = new Set(claims.filter(c => c.roommate === myName).map(c => c.item_id))
+    try {
+      await syncMyClaims(myMember.id, itemIds, currentMine, myClaims)
+      await ensureCheckin(myMember.id, { receiptId })
+    } catch (err) {
+      setSaving(false)
+      await showAlert(err.message, { title: 'Could not save claims' })
+      return
+    }
+    const newClaims = [...myClaims].map(item_id => ({ item_id, member_id: myMember.id, roommate: myName }))
 
-    // delete+insert for checkin (avoids upsert constraint issues with partial indexes)
-    await supabase.from('checkins').delete().eq('receipt_id', receiptId).eq('roommate', myName)
-    await supabase.from('checkins').insert({ receipt_id: receiptId, roommate: myName })
-
-    localStorage.setItem(`claimed-receipt-${receiptId}-${myName}`, '1')
+    localStorage.setItem(`claimed-receipt-${receiptId}-${myMember.id}`, '1')
     setClaims(prev => [
       ...prev.filter(c => !(c.roommate === myName && itemIds.includes(c.item_id))),
       ...newClaims,
     ])
     setCheckins(prev => [
       ...prev.filter(c => c.roommate !== myName),
-      { receipt_id: receiptId, roommate: myName },
+      { receipt_id: receiptId, member_id: myMember.id, roommate: myName },
     ])
     setSaving(false)
     setSaved(true)
@@ -164,9 +169,7 @@ export default function ReceiptDetail() {
 
   async function markSettled(debtor, creditor, amount) {
     setSettling(true)
-    await supabase.from('settlements').delete()
-      .eq('receipt_id', receiptId).eq('debtor', debtor).eq('creditor', creditor)
-    await supabase.from('settlements').insert({ receipt_id: receiptId, debtor, creditor, amount })
+    await setSettlement({ groupId: group.id, receiptId, debtorId: idOf(debtor), creditorId: idOf(creditor), amount })
     setSettlements(prev => [
       ...prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)),
       { receipt_id: receiptId, debtor, creditor, amount },
@@ -176,8 +179,7 @@ export default function ReceiptDetail() {
 
   async function unmarkSettled(debtor, creditor) {
     setSettling(true)
-    await supabase.from('settlements').delete()
-      .eq('receipt_id', receiptId).eq('debtor', debtor).eq('creditor', creditor)
+    await clearSettlement({ receiptId, debtorId: idOf(debtor), creditorId: idOf(creditor) })
     setSettlements(prev => prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)))
     setSettling(false)
   }
@@ -206,16 +208,23 @@ export default function ReceiptDetail() {
   }
 
   async function deleteReceipt() {
-    if (!await confirm('All items and claims will be permanently removed.', {
+    if (!await confirm('It will be hidden for everyone. You can restore it later from this page, and the change is recorded in its history.', {
       title: 'Delete receipt?', confirmLabel: 'Delete', danger: true,
     })) return
-    await supabase.from('receipts').delete().eq('id', receiptId)
+    await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     navigate('/')
   }
 
+  async function restoreReceipt() {
+    const { error } = await supabase.from('receipts').update({ deleted_at: null }).eq('id', receiptId)
+    if (error) { await showAlert(error.message, { title: 'Could not restore' }); return }
+    setReceipt(r => ({ ...r, deleted_at: null }))
+  }
+
   async function saveMembers(newMembers) {
-    await supabase.from('receipts').update({ members: newMembers }).eq('id', receiptId)
-    setReceipt(r => ({ ...r, members: newMembers }))
+    const ids = await ensureMemberIds(newMembers)
+    await supabase.from('receipts').update({ member_ids: ids }).eq('id', receiptId)
+    setReceipt(r => ({ ...r, member_ids: ids, members: ids.map(nameOf) }))
     setEditingMembers(false)
     setMemberInput('')
   }
@@ -368,6 +377,13 @@ export default function ReceiptDetail() {
           </button>
         </div>
       </div>
+
+      {receipt.deleted_at && (
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+          <span>This receipt was deleted on {new Date(receipt.deleted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.</span>
+          <button onClick={restoreReceipt} className="shrink-0 px-3 py-1 text-xs font-medium bg-white border border-red-200 rounded-lg hover:bg-red-100 transition">Restore</button>
+        </div>
+      )}
 
       {/* Members */}
       <div className="mt-3 mb-4">
@@ -657,6 +673,8 @@ export default function ReceiptDetail() {
           )}
         </div>
       )}
+
+      <ReceiptHistory receiptId={receiptId} key={`${saved}-${receipt.deleted_at}-${settlements.length}`} />
     </div>
     </>
   )

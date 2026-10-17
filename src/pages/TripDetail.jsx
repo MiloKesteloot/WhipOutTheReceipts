@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { useDialog } from '../lib/useDialog.jsx'
+import { useGroup } from '../lib/group.jsx'
+import { tripFromDb, receiptFromDb, claimFromDb, checkinFromDb, settlementFromDb, syncMyClaims, ensureCheckin, setSettlement, clearSettlement } from '../lib/db.js'
 import { CATEGORIES, STORE_DOMAINS } from '../config.js'
 
 function getStoreLogo(storeName) {
@@ -23,7 +25,7 @@ export default function TripDetail() {
   const [items, setItems] = useState([])
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
-  const myName = localStorage.getItem('global-name') || ''
+  const { group, switchGroup, myName, myMember, nameOf, idOf } = useGroup()
   const [myClaims, setMyClaims] = useState(new Set())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -38,29 +40,30 @@ export default function TripDetail() {
   const [checkins, setCheckins] = useState([])
   const [isDirty, setIsDirty] = useState(false)
   const claimsLoadedRef = useRef(false)
-  const { confirm, DialogUI } = useDialog()
+  const { confirm, showAlert, DialogUI } = useDialog()
 
   const loadData = useCallback(async () => {
     const [tripRes, receiptsRes, settlementRes, checkinRes] = await Promise.all([
       supabase.from('trips').select('*').eq('id', id).single(),
-      supabase.from('receipts').select('*').eq('trip_id', id).order('created_at'),
+      supabase.from('receipts').select('*').eq('trip_id', id).is('deleted_at', null).order('created_at'),
       supabase.from('settlements').select('*').eq('trip_id', id),
       supabase.from('checkins').select('*').eq('trip_id', id),
     ])
 
-    if (tripRes.error) { setError('Trip not found.'); setLoading(false); return }
-    setTrip(tripRes.data)
-    setSettlements(settlementRes.data || [])
-    setCheckins(checkinRes.data || [])
+    if (tripRes.error || tripRes.data.deleted_at) { setError('Trip not found.'); setLoading(false); return }
+    if (tripRes.data.group_id !== group.id) { switchGroup(tripRes.data.group_id); return }
+    setTrip(tripFromDb(tripRes.data, nameOf))
+    setSettlements((settlementRes.data || []).map(x => settlementFromDb(x, nameOf)))
+    setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
 
-    const receiptData = receiptsRes.data || []
+    const receiptData = (receiptsRes.data || []).map(r => receiptFromDb(r, nameOf))
     setReceipts(receiptData)
 
     if (receiptData.length > 0) {
       const receiptIds = receiptData.map(r => r.id)
       const [{ data: itemData }, { data: mealData }] = await Promise.all([
-        supabase.from('items').select('*').in('receipt_id', receiptIds).order('created_at'),
-        supabase.from('meals').select('*').in('receipt_id', receiptIds).order('created_at'),
+        supabase.from('items').select('*').in('receipt_id', receiptIds).is('deleted_at', null).order('created_at'),
+        supabase.from('meals').select('*').in('receipt_id', receiptIds).is('deleted_at', null).order('created_at'),
       ])
       const allItems = itemData || []
       setItems(allItems)
@@ -70,7 +73,7 @@ export default function TripDetail() {
         const itemIds = allItems.map(i => i.id)
         const { data: claimData } = await supabase
           .from('claims').select('*').in('item_id', itemIds)
-        setClaims(claimData || [])
+        setClaims((claimData || []).map(c => claimFromDb(c, nameOf)))
       } else {
         setClaims([])
       }
@@ -81,7 +84,7 @@ export default function TripDetail() {
     }
 
     setLoading(false)
-  }, [id])
+  }, [id, nameOf, group.id])
 
   useEffect(() => {
     loadData()
@@ -92,7 +95,7 @@ export default function TripDetail() {
     if (!myName || items.length === 0) return
     const mine = claims.filter(c => c.roommate === myName).map(c => c.item_id)
     const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
-    const hasEverSaved = !!localStorage.getItem(`claimed-${id}-${myName}`)
+    const hasEverSaved = !!localStorage.getItem(`claimed-${id}-${myMember?.id}`)
     if (mine.length > 0 || hasEverSaved) {
       setMyClaims(new Set([...mine, ...alwaysSplitIds]))
     } else {
@@ -155,20 +158,18 @@ export default function TripDetail() {
     setSaving(true)
 
     const itemIds = items.map(i => i.id)
-    await supabase.from('claims')
-      .delete()
-      .eq('roommate', myName)
-      .in('item_id', itemIds)
-
-    const newClaims = [...myClaims].map(item_id => ({ item_id, roommate: myName }))
-    if (newClaims.length > 0) {
-      await supabase.from('claims').insert(newClaims)
+    const currentMine = new Set(claims.filter(c => c.roommate === myName).map(c => c.item_id))
+    try {
+      await syncMyClaims(myMember.id, itemIds, currentMine, myClaims)
+      await ensureCheckin(myMember.id, { tripId: id })
+    } catch (err) {
+      setSaving(false)
+      await showAlert(err.message, { title: 'Could not save claims' })
+      return
     }
+    const newClaims = [...myClaims].map(item_id => ({ item_id, member_id: myMember.id, roommate: myName }))
 
-    await supabase.from('checkins')
-      .upsert({ trip_id: id, roommate: myName }, { onConflict: 'trip_id,roommate' })
-
-    localStorage.setItem(`claimed-${id}-${myName}`, '1')
+    localStorage.setItem(`claimed-${id}-${myMember.id}`, '1')
 
     // Update local state directly to avoid flicker from full reload
     setClaims(prev => [
@@ -187,10 +188,7 @@ export default function TripDetail() {
 
   async function markSettled(debtor, creditor, amount) {
     setSettling(true)
-    await supabase.from('settlements').upsert(
-      { trip_id: id, debtor, creditor, amount },
-      { onConflict: 'trip_id,debtor,creditor' }
-    )
+    await setSettlement({ groupId: group.id, tripId: id, debtorId: idOf(debtor), creditorId: idOf(creditor), amount })
     setSettlements(prev => [
       ...prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)),
       { trip_id: id, debtor, creditor, amount },
@@ -200,8 +198,7 @@ export default function TripDetail() {
 
   async function unmarkSettled(debtor, creditor) {
     setSettling(true)
-    await supabase.from('settlements').delete()
-      .eq('trip_id', id).eq('debtor', debtor).eq('creditor', creditor)
+    await clearSettlement({ tripId: id, debtorId: idOf(debtor), creditorId: idOf(creditor) })
     setSettlements(prev => prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)))
     setSettling(false)
   }
@@ -252,22 +249,22 @@ export default function TripDetail() {
   }
 
   async function deleteTrip() {
-    if (!await confirm(`All receipts, items, and claims will be permanently removed.`, {
+    if (!await confirm(`It will be hidden for everyone, and the change is recorded in the history.`, {
       title: `Delete "${trip.name}"?`,
       confirmLabel: 'Delete',
       danger: true,
     })) return
-    await supabase.from('trips').delete().eq('id', id)
+    await supabase.from('trips').update({ deleted_at: new Date().toISOString() }).eq('id', id)
     navigate('/')
   }
 
   async function deleteReceipt(receiptId, storeName) {
-    if (!await confirm(`All items and claims on the ${storeName} receipt will be removed.`, {
+    if (!await confirm(`The ${storeName} receipt will be hidden for everyone. You can restore it from its receipt page.`, {
       title: 'Delete receipt?',
       confirmLabel: 'Delete',
       danger: true,
     })) return
-    await supabase.from('receipts').delete().eq('id', receiptId)
+    await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     await loadData()
   }
 

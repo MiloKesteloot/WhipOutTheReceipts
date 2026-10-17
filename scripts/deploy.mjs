@@ -6,6 +6,21 @@ import { dirname, join } from 'path'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const versionFile = join(__dirname, '../src/buildVersion.json')
 
+// Safety check: this app needs the accounts/groups database migrations.
+// Refuse to deploy if the production database (from .env) doesn't have them yet,
+// otherwise the live site would break for everyone.
+const env = Object.fromEntries(readFileSync(join(__dirname, '../.env'), 'utf8')
+  .split(/\r?\n/).filter(l => l.includes('=')).map(l => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]))
+const check = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/groups?select=id&limit=1`, {
+  headers: { apikey: env.VITE_SUPABASE_ANON_KEY },
+})
+const body = await check.json().catch(() => ({}))
+if (check.status === 404 || ['PGRST205', '42P01'].includes(body?.code)) {
+  console.error('\n✗ Not deploying: the production database has not been migrated to accounts + groups yet.')
+  console.error('  Run the cutover steps first (see supabase/CUTOVER.md).\n')
+  process.exit(1)
+}
+
 const data = JSON.parse(readFileSync(versionFile, 'utf8'))
 data.version += 1
 writeFileSync(versionFile, JSON.stringify(data, null, 2) + '\n')

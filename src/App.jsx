@@ -1,17 +1,20 @@
-import { useState, useEffect } from 'react'
-import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import Home from './pages/Home.jsx'
 import TripDetail from './pages/TripDetail.jsx'
 import ReceiptDetail from './pages/ReceiptDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
-import Welcome from './pages/Welcome.jsx'
+import Auth, { SetNewPassword, CompleteProfile } from './pages/Auth.jsx'
+import Onboarding, { Join } from './pages/Onboarding.jsx'
 import Stats from './pages/Stats.jsx'
 import Settings from './pages/Settings.jsx'
 import Payments from './pages/Payments.jsx'
 import Search from './pages/Search.jsx'
 import { NavSearch } from './lib/search.jsx'
+import { SessionProvider, useSession } from './lib/session.jsx'
+import { GroupProvider, useGroup } from './lib/group.jsx'
 
-function TopNav({ myName, onSignOut }) {
+function TopNav() {
   const { pathname } = useLocation()
   const active = path => pathname === path
   useEffect(() => { window.getSelection()?.removeAllRanges() }, [pathname])
@@ -69,46 +72,105 @@ function TopNav({ myName, onSignOut }) {
           <span className="hidden sm:inline">Settings</span>
         </Link>
 
-        <button
-          onClick={onSignOut}
-          aria-label="Sign out"
-          title="Sign out"
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 shrink-0 rounded-md text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors ml-auto"
-        >
-          <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
-          </svg>
-          <span className="hidden sm:inline">{myName}</span>
-        </button>
+        <UserMenu />
       </div>
     </nav>
   )
 }
 
-export default function App() {
-  const [myName, setMyName] = useState(() => localStorage.getItem('global-name') || '')
+// Account + group menu: switch groups, add a group, settings, sign out
+function UserMenu() {
+  const { signOut } = useSession()
+  const { memberships, group, switchGroup, myName } = useGroup()
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+
+  useEffect(() => { setOpen(false) }, [pathname])
+  useEffect(() => {
+    if (!open) return
+    const onClick = e => { if (!ref.current?.contains(e.target)) setOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    window.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onClick); window.removeEventListener('keydown', onKey) }
+  }, [open])
+
+  return (
+    <div className="relative ml-auto shrink-0" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        aria-label="Account menu"
+        className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+      >
+        <span className="w-7 h-7 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center text-xs font-bold">
+          {(myName || '?').slice(0, 1).toUpperCase()}
+        </span>
+        <span className="hidden sm:flex flex-col items-start leading-tight">
+          <span className="text-gray-800">{myName}</span>
+          <span className="text-[11px] text-gray-400 max-w-[140px] truncate">{group?.name}</span>
+        </span>
+        <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50">
+          <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Groups</p>
+          {memberships.map(m => (
+            <button
+              key={m.group_id}
+              onClick={() => { switchGroup(m.group_id); setOpen(false); navigate('/') }}
+              className="w-full flex items-center justify-between px-4 py-2 text-sm text-left hover:bg-gray-50"
+            >
+              <span className={`truncate ${m.group_id === group?.id ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>{m.groups.name}</span>
+              {m.group_id === group?.id && <span className="text-accent-600 shrink-0 ml-2">✓</span>}
+            </button>
+          ))}
+          <Link to="/groups/new" className="block px-4 py-2 text-sm text-accent-600 hover:bg-gray-50">+ Create or join a group</Link>
+          <div className="border-t border-gray-100 my-1" />
+          <Link to="/settings" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Settings</Link>
+          <button onClick={signOut} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Sign out</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FullPageLoading() {
+  return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-sm text-gray-400">Loading…</div>
+}
+
+// Invite links opened while signed out are remembered until after sign-in
+// (localStorage, so it survives the email-confirmation tab).
+const PENDING_INVITE = 'pending-invite'
+
+function SignedInApp() {
+  const { loading, memberships, group } = useGroup()
+  const { user } = useSession()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
 
-  function handleNameSet(name) {
-    const normalized = name.trim().replace(/\b\w/g, c => c.toUpperCase())
-    localStorage.setItem('global-name', normalized)
-    setMyName(normalized)
-    navigate('/')
-  }
+  useEffect(() => {
+    const code = localStorage.getItem(PENDING_INVITE) || user.user_metadata?.pending_invite
+    if (code) {
+      localStorage.removeItem(PENDING_INVITE)
+      navigate(`/join/${code}`)
+    }
+  }, [])
 
-  function handleSignOut() {
-    localStorage.removeItem('global-name')
-    setMyName('')
+  if (pathname.startsWith('/join/')) {
+    return <Routes><Route path="/join/:code" element={<Join />} /></Routes>
   }
-
-  if (!myName) {
-    return <Welcome onNameSet={handleNameSet} />
-  }
+  if (loading) return <FullPageLoading />
+  if (memberships.length === 0 || pathname === '/groups/new') return <Onboarding />
 
   return (
     <div className="min-h-screen bg-gray-50 pt-14">
-      <TopNav myName={myName} onSignOut={handleSignOut} />
-      <Routes>
+      <TopNav />
+      {/* Keyed by group so every page reloads its data when switching groups */}
+      <Routes key={group?.id}>
         <Route path="/" element={<Home />} />
         <Route path="/receipt/new" element={<AddReceipt />} />
         <Route path="/receipt/:receiptId" element={<ReceiptDetail />} />
@@ -120,7 +182,35 @@ export default function App() {
         <Route path="/payments" element={<Payments />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/search" element={<Search />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
+  )
+}
+
+function Gate() {
+  const { session, loading, profile, refreshProfile, recovering, finishRecovery } = useSession()
+  const { pathname } = useLocation()
+
+  if (loading) return <FullPageLoading />
+  if (recovering) return <SetNewPassword onDone={finishRecovery} />
+  if (!session) {
+    const invite = pathname.match(/^\/join\/([A-Za-z0-9]+)/)
+    if (invite) localStorage.setItem(PENDING_INVITE, invite[1])
+    return <Auth />
+  }
+  if (!profile?.first_name?.trim()) return <CompleteProfile profile={profile} onDone={refreshProfile} />
+  return (
+    <GroupProvider>
+      <SignedInApp />
+    </GroupProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <SessionProvider>
+      <Gate />
+    </SessionProvider>
   )
 }

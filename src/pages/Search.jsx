@@ -4,6 +4,7 @@ import {
   useSearchData, searchAll, addRecentSearch, receiptLink, MIN_QUERY_LENGTH,
   RecentSearches, ItemRow, ReceiptRow, ResultSection, SearchInput,
 } from '../lib/search.jsx'
+import { useGroup } from '../lib/group.jsx'
 
 const PAGE_SIZE = 30
 
@@ -23,7 +24,7 @@ export default function Search() {
   const [receiptLimit, setReceiptLimit] = useState(PAGE_SIZE)
   const data = useSearchData()
   const navigate = useNavigate()
-  const myName = localStorage.getItem('global-name') || ''
+  const { myName } = useGroup()
   const query = params.get('q') || ''
 
   // Keep input in sync when the URL changes (e.g. nav dropdown "See all")

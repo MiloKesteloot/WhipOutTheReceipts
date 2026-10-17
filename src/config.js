@@ -31,10 +31,6 @@ export const CATEGORIES = [
 
 export const DEFAULT_CATEGORY = 'Groceries'
 
-// ── Fallback core roommates ───────────────────────────────────
-// Used if the apartment roster hasn't been set up in Settings yet.
-export const FALLBACK_MEMBERS = ['Alex', 'Clouey', 'Milo', 'Niko']
-
 // ── Stats chart settings ──────────────────────────────────────
 // Maximum characters to show for a trip name in bar/line charts.
 export const CHART_TRIP_NAME_LENGTH = 14

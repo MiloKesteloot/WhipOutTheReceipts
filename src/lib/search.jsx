@@ -1,59 +1,46 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { supabase } from './supabase.js'
+import { useGroup } from './group.jsx'
+import { loadReceipts, loadItems, loadClaims, loadMeals, loadTrips } from './db.js'
 import { getItemEmoji } from './itemEmoji.js'
 import { STORE_DOMAINS } from '../config.js'
 
 export const MIN_QUERY_LENGTH = 1
 
 // ── Data ─────────────────────────────────────────────────────
-// Cached for the session so the nav dropdown and search page share one fetch.
-// Every mount still refetches in the background so results stay fresh.
-let cache = null
+// Cached per group for the session so the nav dropdown and search page
+// share one fetch. Every mount still refetches in the background.
+const cache = new Map()
 
-// Supabase caps responses at 1000 rows, so page through large tables
-async function selectAll(table, columns, orderBy) {
-  const PAGE = 1000
-  const rows = []
-  for (let from = 0; ; from += PAGE) {
-    let q = supabase.from(table).select(columns)
-    for (const col of orderBy) q = q.order(col)
-    const { data, error } = await q.range(from, from + PAGE - 1)
-    if (error) return { data: rows, error }
-    rows.push(...data)
-    if (data.length < PAGE) return { data: rows }
-  }
-}
-
-async function fetchSearchData() {
-  const [receiptsRes, itemsRes, claimsRes, mealsRes, tripsRes] = await Promise.all([
-    selectAll('receipts', 'id, store_name, receipt_date, created_at, paid_by, members, tip, tax, fees, trip_id', ['id']),
-    selectAll('items', 'id, receipt_id, meal_id, name, price, always_split, created_at', ['id']),
-    selectAll('claims', 'item_id, roommate', ['item_id', 'roommate']),
-    selectAll('meals', 'id, receipt_id, name, fee', ['id']),
-    supabase.from('trips').select('id, name'),
+async function fetchSearchData(groupId, nameOf, memberIds) {
+  const [rawReceipts, rawItems, claims, meals, trips] = await Promise.all([
+    loadReceipts(groupId, nameOf, 'id, store_name, receipt_date, created_at, paid_by_member, member_ids, tip, tax, fees, trip_id'),
+    loadItems(groupId, 'id, receipt_id, meal_id, name, price, always_split, created_at'),
+    loadClaims(memberIds, nameOf),
+    loadMeals(groupId, 'id, receipt_id, name, fee'),
+    loadTrips(groupId, nameOf, 'id, name'),
   ])
 
   const tripsById = {}
-  for (const t of tripsRes.data || []) tripsById[t.id] = t
+  for (const t of trips) tripsById[t.id] = t
   const mealsById = {}
   const mealFeesByReceipt = {}
-  for (const m of mealsRes.data || []) {
+  for (const m of meals) {
     mealsById[m.id] = m
     mealFeesByReceipt[m.receipt_id] = (mealFeesByReceipt[m.receipt_id] || 0) + Number(m.fee || 0)
   }
   const claimersByItem = {}
-  for (const c of claimsRes.data || []) {
+  for (const c of claims) {
     if (!claimersByItem[c.item_id]) claimersByItem[c.item_id] = []
     claimersByItem[c.item_id].push(c.roommate)
   }
   const itemTotalByReceipt = {}
-  for (const i of itemsRes.data || []) {
+  for (const i of rawItems) {
     itemTotalByReceipt[i.receipt_id] = (itemTotalByReceipt[i.receipt_id] || 0) + Number(i.price || 0)
   }
 
   const receiptsById = {}
-  const receipts = (receiptsRes.data || []).map(r => {
+  const receipts = rawReceipts.map(r => {
     const receipt = {
       ...r,
       // Trip receipts have no receipt_date — fall back to when they were entered
@@ -67,7 +54,7 @@ async function fetchSearchData() {
     return receipt
   })
 
-  const items = (itemsRes.data || [])
+  const items = rawItems
     .filter(i => receiptsById[i.receipt_id])
     .map(i => ({
       ...i,
@@ -101,15 +88,16 @@ function dedupeNames(names) {
 }
 
 export function useSearchData() {
-  const [data, setData] = useState(cache)
+  const { group, nameOf, memberIds } = useGroup()
+  const [data, setData] = useState(() => cache.get(group.id) || null)
   useEffect(() => {
     let cancelled = false
-    fetchSearchData().then(d => {
-      cache = d
+    fetchSearchData(group.id, nameOf, memberIds).then(d => {
+      cache.set(group.id, d)
       if (!cancelled) setData(d)
     })
     return () => { cancelled = true }
-  }, [])
+  }, [group.id])
   return data
 }
 
@@ -362,7 +350,7 @@ function NavSearchPanel({ onClose }) {
   const [query, setQuery] = useState('')
   const data = useSearchData()
   const navigate = useNavigate()
-  const myName = localStorage.getItem('global-name') || ''
+  const { myName } = useGroup()
   const { items, receipts, terms } = searchAll(data, query)
   const searching = query.trim().length >= MIN_QUERY_LENGTH
 
