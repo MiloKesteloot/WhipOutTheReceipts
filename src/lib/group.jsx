@@ -149,3 +149,10 @@ export function GroupProvider({ children }) {
 export function useGroup() {
   return useContext(GroupContext)
 }
+
+// "Waiting on you, Alex": my own name becomes "you", listed first
+export function formatWaitingOn(names, myName) {
+  const me = (myName || '').toLowerCase()
+  const others = names.filter(n => n.toLowerCase() !== me)
+  return [...(others.length < names.length ? ['you'] : []), ...others].join(', ')
+}

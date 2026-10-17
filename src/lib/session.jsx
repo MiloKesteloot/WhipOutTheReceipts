@@ -21,6 +21,8 @@ export function SessionProvider({ children }) {
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      // The initial session is handled below, after checking it's still valid
+      if (event === 'INITIAL_SESSION') return
       if (event === 'PASSWORD_RECOVERY') setRecovering(true)
       setSession(s)
     })
@@ -39,7 +41,19 @@ export function SessionProvider({ children }) {
         setVerifying(false)
       })
     } else {
-      supabase.auth.getSession().then(({ data }) => setSession(data.session))
+      supabase.auth.getSession().then(async ({ data }) => {
+        // A remembered login can outlive its account (deleted user, reset
+        // database). Confirm it with the server; if it's gone, sign out.
+        if (data.session) {
+          const { error } = await supabase.auth.getUser()
+          if (error && (error.status === 401 || error.status === 403 || /does not exist|not found/i.test(error.message))) {
+            await supabase.auth.signOut({ scope: 'local' })
+            setSession(null)
+            return
+          }
+        }
+        setSession(data.session)
+      })
     }
     return () => sub.subscription.unsubscribe()
   }, [])

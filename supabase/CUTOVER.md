@@ -82,3 +82,35 @@ npx supabase@2.121.0 db push --db-url "$SUPABASE_DB_URL"
 - Reset the database password (Project Settings → Database). It was shared in chat.
 - Delete the old shared Gemini key in Google AI Studio. It was publicly
   readable. Everyone now adds their own key in Settings → Personal.
+
+---
+
+# Migration 2: remove trips, payments as amounts
+
+Deploy and migrate together: the previous app version reads `trips` and
+writes `settlements`, which stop working at step 2.
+
+1. **Fresh full backup:**
+   ```sh
+   set -a; . ./.env.local; set +a
+   D=backups/$(date +%F)-pre-payments-live; mkdir -p $D
+   docker run --rm -v "$(pwd -W)/$D:/out" postgres:17-alpine pg_dump "$SUPABASE_DB_URL" -Fc -f /out/full.dump
+   ```
+2. **Apply the migrations** `20261017010000_remove_trips` and `20261017020000_payments`:
+   ```sh
+   npx supabase@2.121.0 db push --db-url "$SUPABASE_DB_URL"
+   ```
+3. **Convert old settlements into payments.** Do a dry run first: it prints
+   every pair's balance before and after.
+   ```sh
+   node scripts/migrate-settlements-to-payments.mjs "$SUPABASE_DB_URL"
+   node scripts/migrate-settlements-to-payments.mjs "$SUPABASE_DB_URL" --apply
+   ```
+4. `npm run deploy`
+
+Tested on a copy of production on 2026-10-16:
+- 192 settlements became 109 payments.
+- Every pair's balance matched the old app to the cent, except two debts of
+  the guest Alicia from the March trips that had never been settled
+  (Alex $12.32, Niko $2.18).
+- 54 security checks passed.

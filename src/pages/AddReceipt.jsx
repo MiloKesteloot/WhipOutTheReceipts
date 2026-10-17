@@ -2,10 +2,11 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { useGroup } from '../lib/group.jsx'
-import { receiptFromDb, tripFromDb } from '../lib/db.js'
+import { receiptFromDb } from '../lib/db.js'
 import { fetchGeminiKey } from './Settings.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
+import BackButton from '../components/BackButton.jsx'
 
 function newItem(dbId = null) {
   return { id: crypto.randomUUID(), dbId, name: '', price: '', always_split: false, meal_local_id: null }
@@ -16,13 +17,11 @@ function newMeal(dbId = null) {
 }
 
 export default function AddReceipt() {
-  const { id: tripId, receiptId } = useParams()
+  const { receiptId } = useParams()
   const isEditing = !!receiptId
-  const isStandalone = !tripId
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  const [trip, setTrip] = useState(null)
   const [storeName, setStoreName] = useState('')
   const [paidBy, setPaidBy] = useState('')
   const { group, switchGroup, members, myName, coreNames: coreRoommates, nameOf, ensureMemberIds } = useGroup()
@@ -35,7 +34,7 @@ export default function AddReceipt() {
   const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
   const [category, setCategory] = useState('Groceries')
   const [receiptDate, setReceiptDate] = useState(() => {
-    if (!tripId && !receiptId) return searchParams.get('date') || new Date().toISOString().slice(0, 10)
+    if (!receiptId) return searchParams.get('date') || new Date().toISOString().slice(0, 10)
     return ''
   })
   const [receiptMembers, setReceiptMembers] = useState([])
@@ -57,66 +56,10 @@ export default function AddReceipt() {
     async function load() {
       const core = coreRoommates
 
-      if (isStandalone) {
-        if (isEditing) {
-          const { data: row } = await supabase
-            .from('receipts').select('*').eq('id', receiptId).single()
-          if (row && row.group_id !== group.id) { switchGroup(row.group_id); return }
-          const receipt = row && receiptFromDb(row, nameOf)
-          if (receipt) {
-            setStoreName(receipt.store_name)
-            setPaidBy(receipt.paid_by)
-            setCategory(receipt.category || 'Groceries')
-            setTip(receipt.tip ? String(receipt.tip) : '')
-            setTax(receipt.tax ? String(receipt.tax) : '')
-            setFees(receipt.fees ? String(receipt.fees) : '')
-            if (receipt.receipt_date) setReceiptDate(receipt.receipt_date)
-            setReceiptMembers(receipt.members || core)
-          }
-
-          const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
-            supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
-            supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
-          ])
-
-          const loadedMeals = (existingMeals || []).map(m => ({
-            local_id: crypto.randomUUID(),
-            dbId: m.id,
-            name: m.name,
-            fee: m.fee ? String(m.fee) : '',
-          }))
-          setMeals(loadedMeals)
-          setOriginalMealDbIds(new Set(loadedMeals.map(m => m.dbId)))
-
-          const dbIdToLocalId = new Map(loadedMeals.map(m => [m.dbId, m.local_id]))
-
-          const loaded = (existingItems || []).map(item => ({
-            id: crypto.randomUUID(),
-            dbId: item.id,
-            name: item.name,
-            price: String(item.price),
-            always_split: item.always_split || false,
-            meal_local_id: item.meal_id ? (dbIdToLocalId.get(item.meal_id) || null) : null,
-          }))
-          setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
-          setLineItems([...loaded, newItem()])
-        } else {
-          if (myName) setPaidBy(myName)
-          // Default: the group's regular (non-guest) people, plus me
-          setReceiptMembers([...new Set([...core, ...(myName ? [myName] : [])])])
-        }
-        loadComplete.current = true
-        return
-      }
-
-      // Trip-linked mode (legacy)
-      const { data: tripRow } = await supabase.from('trips').select('*').eq('id', tripId).single()
-      if (tripRow && tripRow.group_id !== group.id) { switchGroup(tripRow.group_id); return }
-      setTrip(tripRow && tripFromDb(tripRow, nameOf))
-
       if (isEditing) {
         const { data: row } = await supabase
           .from('receipts').select('*').eq('id', receiptId).single()
+        if (row && row.group_id !== group.id) { switchGroup(row.group_id); return }
         const receipt = row && receiptFromDb(row, nameOf)
         if (receipt) {
           setStoreName(receipt.store_name)
@@ -125,6 +68,8 @@ export default function AddReceipt() {
           setTip(receipt.tip ? String(receipt.tip) : '')
           setTax(receipt.tax ? String(receipt.tax) : '')
           setFees(receipt.fees ? String(receipt.fees) : '')
+          if (receipt.receipt_date) setReceiptDate(receipt.receipt_date)
+          setReceiptMembers(receipt.members || core)
         }
 
         const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
@@ -155,11 +100,13 @@ export default function AddReceipt() {
         setLineItems([...loaded, newItem()])
       } else {
         if (myName) setPaidBy(myName)
+        // Default: the group's regular (non-guest) people, plus me
+        setReceiptMembers([...new Set([...core, ...(myName ? [myName] : [])])])
       }
       loadComplete.current = true
     }
     load()
-  }, [tripId, receiptId, isEditing, isStandalone, group.id])
+  }, [receiptId, isEditing, group.id])
 
   useEffect(() => {
     function handleClick(e) {
@@ -328,12 +275,8 @@ Rules:
       confirmLabel: 'Leave',
       danger: true,
     })) return
-    if (isStandalone) {
-      if (isEditing) navigate(`/receipt/${receiptId}`)
-      else navigate('/')
-    } else {
-      navigate(`/trip/${tripId}`)
-    }
+    if (isEditing) navigate(`/receipt/${receiptId}`)
+    else navigate('/')
   }
 
   function updateItem(itemId, field, value) {
@@ -469,16 +412,16 @@ Rules:
     // Names -> people in the group (new names become guests)
     let paidById, memberIds
     try {
-      ;[paidById, ...memberIds] = await ensureMemberIds([paidBy, ...(isStandalone ? receiptMembers : [])])
+      ;[paidById, ...memberIds] = await ensureMemberIds([paidBy, ...receiptMembers])
     } catch (err) {
       await showAlert(err.message, { title: 'Error saving people' }); setSaving(false); return
     }
 
     if (isEditing) {
-      const updatePayload = { store_name: storeName.trim(), paid_by_member: paidById, category, tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0 }
-      if (isStandalone) {
-        updatePayload.receipt_date = receiptDate || null
-        updatePayload.member_ids = memberIds
+      const updatePayload = {
+        store_name: storeName.trim(), paid_by_member: paidById, category,
+        tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0,
+        receipt_date: receiptDate || null, member_ids: memberIds,
       }
       const { error: updateErr } = await supabase
         .from('receipts')
@@ -535,12 +478,8 @@ Rules:
         tip: parseFloat(tip) || 0,
         tax: parseFloat(tax) || 0,
         fees: parseFloat(fees) || 0,
-      }
-      if (isStandalone) {
-        insertPayload.receipt_date = receiptDate || null
-        insertPayload.member_ids = memberIds
-      } else {
-        insertPayload.trip_id = tripId
+        receipt_date: receiptDate || null,
+        member_ids: memberIds,
       }
       const { data: receipt, error: receiptErr } = await supabase
         .from('receipts')
@@ -562,14 +501,11 @@ Rules:
       )
       if (itemsErr) { await showAlert(itemsErr.message, { title: 'Error saving items' }); setSaving(false); return }
 
-      if (isStandalone) { navigate(`/receipt/${receipt.id}`); return }
+      navigate(`/receipt/${receipt.id}`)
+      return
     }
 
-    if (isStandalone) {
-      navigate(`/receipt/${receiptId}`)
-    } else {
-      navigate(`/trip/${tripId}`)
-    }
+    navigate(`/receipt/${receiptId}`)
   }
 
   async function handleDelete() {
@@ -579,17 +515,7 @@ Rules:
       danger: true,
     })) return
     await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
-    if (isStandalone) navigate('/')
-    else navigate(`/trip/${tripId}`)
-  }
-
-  if (!isStandalone && trip?.closed) {
-    return (
-      <div className="max-w-xl mx-auto p-8 text-center text-gray-500">
-        This trip is closed.{' '}
-        <button onClick={handleBack} className="text-gray-600 underline">Go back</button>
-      </div>
-    )
+    navigate('/')
   }
 
   const ungroupedItems = lineItems.filter(i => !i.meal_local_id)
@@ -663,9 +589,7 @@ Rules:
     <>
     {DialogUI}
     <div className="max-w-xl mx-auto p-4 py-8">
-      <button onClick={handleBack} className="text-sm text-gray-500 hover:text-gray-700 hover:underline mb-2 inline-block">
-        {isStandalone ? '← Back' : '← Back to trip'}
-      </button>
+      <BackButton onClick={handleBack} className="mb-2" />
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
           {isEditing ? 'Edit Receipt' : 'Add Receipt'}
@@ -711,75 +635,71 @@ Rules:
       )}
 
       <form onSubmit={handleSave} className="space-y-5">
-        {/* Date (standalone only) */}
-        {isStandalone && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-            <input
-              type="date"
-              value={receiptDate}
-              onChange={e => { markDirty(); setReceiptDate(e.target.value) }}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400"
-            />
-          </div>
-        )}
+        {/* Date */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+          <input
+            type="date"
+            value={receiptDate}
+            onChange={e => { markDirty(); setReceiptDate(e.target.value) }}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400"
+          />
+        </div>
 
-        {/* Members (standalone only) */}
-        {isStandalone && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this receipt?</label>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {[...new Set([...coreRoommates, ...receiptMembers])].map(name => {
-                const selected = receiptMembers.includes(name)
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => {
-                      markDirty()
-                      setReceiptMembers(prev =>
-                        prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]
-                      )
-                    }}
-                    className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
-                      selected ? 'bg-accent-600 text-white border-accent-600' : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
-                    }`}
-                  >
-                    {name}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={memberInput}
-                onChange={e => setMemberInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    const name = memberInput.trim()
-                    if (name && !receiptMembers.includes(name)) { markDirty(); setReceiptMembers(prev => [...prev, name]) }
-                    setMemberInput('')
-                  }
-                }}
-                placeholder="Add someone…"
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-              <button
-                type="button"
-                onClick={() => {
+        {/* Members */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Who's on this receipt?</label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {[...new Set([...coreRoommates, ...receiptMembers])].map(name => {
+              const selected = receiptMembers.includes(name)
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => {
+                    markDirty()
+                    setReceiptMembers(prev =>
+                      prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]
+                    )
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
+                    selected ? 'bg-accent-600 text-white border-accent-600' : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
+                  }`}
+                >
+                  {name}
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={memberInput}
+              onChange={e => setMemberInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
                   const name = memberInput.trim()
                   if (name && !receiptMembers.includes(name)) { markDirty(); setReceiptMembers(prev => [...prev, name]) }
                   setMemberInput('')
-                }}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600"
-              >
-                Add
-              </button>
-            </div>
+                }
+              }}
+              placeholder="Add someone…"
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const name = memberInput.trim()
+                if (name && !receiptMembers.includes(name)) { markDirty(); setReceiptMembers(prev => [...prev, name]) }
+                setMemberInput('')
+              }}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600"
+            >
+              Add
+            </button>
           </div>
-        )}
+        </div>
 
         {/* Store name */}
         <div>

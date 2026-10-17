@@ -56,6 +56,13 @@ function describe(e, { nameOf, itemName, mealName }) {
       if (e.action === 'delete') return `unmarked a payment (${who})`
       return `marked ${row.amount != null ? money(row.amount) : 'a payment'} as sent (${who})`
     }
+    case 'payments': {
+      const who = `${nameOf(n.from_member || o.from_member)} → ${nameOf(n.to_member || o.to_member)}`
+      if (e.action === 'insert') return `recorded a payment of ${money(n.amount)} (${who})`
+      if (changed('deleted_at') && n.deleted_at) return `removed a payment of ${money(o.amount)} (${who})`
+      if (changed('amount')) return `changed a payment from ${money(o.amount)} to ${money(n.amount)} (${who})`
+      return null
+    }
     case 'claims': {
       const row = e.action === 'delete' ? o : n
       return { claim: true, verb: e.action === 'delete' ? 'unchecked' : 'checked', item: itemName(row.item_id), forMember: row.member_id }

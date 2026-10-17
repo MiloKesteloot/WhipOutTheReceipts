@@ -1,0 +1,25 @@
+{
+  "outDir": "../../MiloTheMiloPorfolio/project-assets/receipts",
+  "timezone": "America/Los_Angeles",
+  "port": 5199,
+  "devices": {
+    "phone":   { "width": 390,  "height": 844, "scale": 3, "mobile": true },
+    "desktop": { "width": 1280, "height": 800, "scale": 2 }
+  },
+  "shots": [
+    { "name": "desktop-calendar", "device": "desktop", "path": "/", "sessionStorage": { "home-view": "calendar" } },
+    { "name": "desktop-stats",    "device": "desktop", "path": "/stats", "steps": [{ "scrollTo": "text=Cumulative food spending" }, { "scrollBy": -80 }], "settle": 3000 },
+
+    { "name": "phone-todo",       "device": "phone", "path": "/", "sessionStorage": { "home-view": "todo" } },
+    { "name": "phone-claim",      "device": "phone", "path": "/receipt/{tj}", "steps": [{ "click": "text=Bananas" }, { "click": "text=Avocados (4 pack)" }, { "click": "text=Oat Milk" }, { "click": "text=Frozen Mandarin Orange Chicken" }] },
+    { "name": "phone-split",      "device": "phone", "path": "/receipt/{thai}", "steps": [{ "scrollTo": "text=Who owes what" }, { "scrollBy": -100 }] },
+
+    { "name": "phone-add",        "device": "phone", "path": "/receipt/{costco}/edit" },
+    { "name": "phone-dining",     "device": "phone", "path": "/receipt/{thai}" },
+    { "name": "phone-days",       "device": "phone", "path": "/", "sessionStorage": { "home-view": "days" }, "localStorage": { "default-show-all-trips": "1" } },
+
+    { "name": "phone-stats",      "device": "phone", "path": "/stats", "steps": [{ "scrollTo": "text=By person" }, { "scrollBy": -80 }], "settle": 2500 },
+    { "name": "phone-payments",   "device": "phone", "path": "/payments" },
+    { "name": "phone-search",     "device": "phone", "path": "/search?q=chicken" }
+  ]
+}

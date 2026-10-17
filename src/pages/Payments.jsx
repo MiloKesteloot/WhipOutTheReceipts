@@ -1,134 +1,50 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useGroup } from '../lib/group.jsx'
-import { loadSettlements, loadReceipts, loadItems, loadClaims, loadMeals, loadTrips } from '../lib/db.js'
-import { calculateDebts } from '../lib/splitLogic.js'
+import { useBalances } from '../lib/useBalances.js'
+import { deletePayment } from '../lib/db.js'
+import { useDialog } from '../lib/useDialog.jsx'
 
-const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
-
-const fmtDate = dateStr => {
-  if (!dateStr) return null
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
+const fmtDate = ts => {
+  if (!ts) return null
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 export default function Payments() {
-  const { group, myName, nameOf, memberIds } = useGroup()
-  const myNameLc = myName.toLowerCase()
-
-  const [loading, setLoading] = useState(true)
+  const { myName } = useGroup()
+  const { loading, data, reload } = useBalances()
+  const { confirm, DialogUI } = useDialog()
   const [tab, setTab] = useState('sent')
   const [expanded, setExpanded] = useState(new Set())
-  const [sentList, setSentList] = useState([])
-  const [receivedList, setReceivedList] = useState([])
 
-  useEffect(() => {
-    if (myName) loadData()
-  }, [myName])
+  if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
 
-  async function loadData() {
-    const [allSettlements, allReceipts, allItems, allClaims, allMeals, allTrips] = await Promise.all([
-      loadSettlements(group.id, nameOf),
-      loadReceipts(group.id, nameOf, 'id, store_name, receipt_date, paid_by_member, tip, tax, fees'),
-      loadItems(group.id, 'id, receipt_id, price, meal_id'),
-      loadClaims(memberIds, nameOf),
-      loadMeals(group.id, 'id, receipt_id, fee'),
-      loadTrips(group.id, nameOf, 'id, name'),
-    ])
+  const me = myName.toLowerCase()
+  const receiptLabel = Object.fromEntries(data.receipts.map(r => [r.id, r.store_name || 'Receipt']))
 
-    const receiptById = Object.fromEntries(allReceipts.map(r => [r.id, r]))
-    const tripById = Object.fromEntries(allTrips.map(t => [t.id, t]))
-
-    const itemsByReceipt = {}
-    for (const item of allItems) {
-      if (!itemsByReceipt[item.receipt_id]) itemsByReceipt[item.receipt_id] = []
-      itemsByReceipt[item.receipt_id].push(item)
+  // Group my payments by the other person, newest first
+  function build(direction) {
+    const byPerson = {}
+    for (const p of data.payments) {
+      const sent = p.from.toLowerCase() === me
+      const received = p.to.toLowerCase() === me
+      if (direction === 'sent' ? !sent : !received) continue
+      const other = sent ? p.to : p.from
+      ;(byPerson[other] ||= []).push(p)
     }
-
-    const mealsByReceipt = {}
-    for (const m of allMeals) {
-      if (!mealsByReceipt[m.receipt_id]) mealsByReceipt[m.receipt_id] = []
-      mealsByReceipt[m.receipt_id].push(m)
-    }
-
-    const mySettlements = allSettlements.filter(s =>
-      s.debtor?.toLowerCase() === myNameLc || s.creditor?.toLowerCase() === myNameLc
-    )
-
-    // Group by other person
-    const byPersonKey = {}
-
-    for (const s of mySettlements) {
-      const iAmDebtor = s.debtor?.toLowerCase() === myNameLc
-      const otherRaw = iAmDebtor ? s.creditor : s.debtor
-      if (!otherRaw) continue
-      const otherKey = otherRaw.toLowerCase()
-
-      if (!byPersonKey[otherKey]) byPersonKey[otherKey] = { name: toTitleCase(otherRaw), sent: [], received: [] }
-
-      let amount = null
-      let label = ''
-      let date = null
-      let linkTo = null
-
-      if (s.receipt_id) {
-        const receipt = receiptById[s.receipt_id]
-        if (!receipt) continue
-        label = receipt.store_name || 'Receipt'
-        date = receipt.receipt_date
-        linkTo = `/receipt/${s.receipt_id}`
-
-        // Compute the debt between these two people for this receipt
-        const rItems = itemsByReceipt[receipt.id] || []
-        const itemIds = new Set(rItems.map(i => i.id))
-        const rClaims = allClaims.filter(c => itemIds.has(c.item_id))
-        const rMeals = mealsByReceipt[receipt.id] || []
-        const debts = calculateDebts([receipt], rItems, rClaims, rMeals)
-        const debt = debts.find(d =>
-          d.debtor.toLowerCase() === s.debtor.toLowerCase() &&
-          d.creditor.toLowerCase() === s.creditor.toLowerCase()
-        )
-        amount = debt?.amount ?? null
-      } else if (s.trip_id) {
-        const trip = tripById[s.trip_id]
-        label = trip?.name || 'Trip'
-        amount = s.amount ?? null
-        linkTo = `/trip/${s.trip_id}`
-      } else {
-        continue
-      }
-
-      const entry = { label, date, amount, linkTo }
-      if (iAmDebtor) byPersonKey[otherKey].sent.push(entry)
-      else byPersonKey[otherKey].received.push(entry)
-    }
-
-    const sortByDate = arr => [...arr].sort((a, b) => {
-      if (!a.date && !b.date) return 0
-      if (!a.date) return 1
-      if (!b.date) return -1
-      return b.date.localeCompare(a.date)
-    })
-
-    const built = { sent: [], received: [] }
-    for (const { name, sent, received } of Object.values(byPersonKey)) {
-      if (sent.length > 0) {
-        const entries = sortByDate(sent)
-        built.sent.push({ name, total: entries.reduce((s, e) => s + (e.amount || 0), 0), entries })
-      }
-      if (received.length > 0) {
-        const entries = sortByDate(received)
-        built.received.push({ name, total: entries.reduce((s, e) => s + (e.amount || 0), 0), entries })
-      }
-    }
-
-    built.sent.sort((a, b) => b.total - a.total)
-    built.received.sort((a, b) => b.total - a.total)
-    setSentList(built.sent)
-    setReceivedList(built.received)
-    setLoading(false)
+    return Object.entries(byPerson)
+      .map(([name, entries]) => ({
+        name,
+        entries: entries.sort((a, b) => (b.paidAt || '').localeCompare(a.paidAt || '')),
+        total: entries.reduce((s, p) => s + Number(p.amount), 0),
+      }))
+      .sort((a, b) => b.total - a.total)
   }
+  const sentList = build('sent')
+  const receivedList = build('received')
+  const activeList = tab === 'sent' ? sentList : receivedList
+  const sentTotal = sentList.reduce((s, e) => s + e.total, 0)
+  const receivedTotal = receivedList.reduce((s, e) => s + e.total, 0)
 
   function toggleExpanded(key) {
     setExpanded(prev => {
@@ -138,14 +54,17 @@ export default function Payments() {
     })
   }
 
-  const activeList = tab === 'sent' ? sentList : receivedList
-  const sentTotal = sentList.reduce((s, e) => s + e.total, 0)
-  const receivedTotal = receivedList.reduce((s, e) => s + e.total, 0)
-
-  if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
+  async function remove(p) {
+    if (!await confirm(`$${Number(p.amount).toFixed(2)} from ${p.from} to ${p.to} will be removed and the balance goes back up. This is recorded in the history.`, {
+      title: 'Remove this payment?', confirmLabel: 'Remove', danger: true,
+    })) return
+    await deletePayment(p.id)
+    reload()
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
+      {DialogUI}
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Payment History</h1>
 
       {/* Summary */}
@@ -153,25 +72,18 @@ export default function Payments() {
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">You sent</p>
           <p className="text-2xl font-bold text-gray-900">${sentTotal.toFixed(2)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            to {sentList.length} {sentList.length === 1 ? 'person' : 'people'}
-          </p>
+          <p className="text-xs text-gray-400 mt-0.5">to {sentList.length} {sentList.length === 1 ? 'person' : 'people'}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">You received</p>
           <p className="text-2xl font-bold text-accent-600">${receivedTotal.toFixed(2)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            from {receivedList.length} {receivedList.length === 1 ? 'person' : 'people'}
-          </p>
+          <p className="text-xs text-gray-400 mt-0.5">from {receivedList.length} {receivedList.length === 1 ? 'person' : 'people'}</p>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 mb-4 w-fit">
-        {[
-          ['sent', `Sent (${sentList.length})`],
-          ['received', `Received (${receivedList.length})`],
-        ].map(([v, label]) => (
+        {[['sent', `Sent (${sentList.length})`], ['received', `Received (${receivedList.length})`]].map(([v, label]) => (
           <button
             key={v}
             onClick={() => setTab(v)}
@@ -194,7 +106,6 @@ export default function Payments() {
           {activeList.map(({ name, total, entries }) => {
             const key = `${tab}-${name}`
             const open = expanded.has(key)
-            const hasUnknown = entries.some(e => e.amount == null)
             return (
               <li key={key} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <button
@@ -209,16 +120,11 @@ export default function Payments() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900">{name}</p>
-                      <p className="text-xs text-gray-400">
-                        {entries.length} {entries.length === 1 ? 'payment' : 'payments'}
-                        {hasUnknown && ' · some amounts unknown'}
-                      </p>
+                      <p className="text-xs text-gray-400">{entries.length} {entries.length === 1 ? 'payment' : 'payments'}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5 shrink-0">
-                    <span className={`font-bold text-lg ${tab === 'sent' ? 'text-gray-900' : 'text-accent-600'}`}>
-                      ${total.toFixed(2)}
-                    </span>
+                    <span className={`font-bold text-lg ${tab === 'sent' ? 'text-gray-900' : 'text-accent-600'}`}>${total.toFixed(2)}</span>
                     <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d={open ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
                     </svg>
@@ -227,31 +133,28 @@ export default function Payments() {
 
                 {open && (
                   <div className="border-t border-gray-100 divide-y divide-gray-50">
-                    {entries.map((entry, i) => (
-                      <div key={i} className="flex items-center justify-between px-4 py-3 gap-4">
+                    {entries.map(p => (
+                      <div key={p.id} className="flex items-center justify-between px-4 py-3 gap-4">
                         <div className="min-w-0 flex-1">
-                          {entry.linkTo ? (
-                            <Link
-                              to={entry.linkTo}
-                              className="text-sm font-medium text-gray-800 hover:text-accent-600 hover:underline truncate block"
-                            >
-                              {entry.label}
+                          {p.receiptId && receiptLabel[p.receiptId] ? (
+                            <Link to={`/receipt/${p.receiptId}`} className="text-sm font-medium text-gray-800 hover:text-accent-600 hover:underline truncate block">
+                              {receiptLabel[p.receiptId]}
                             </Link>
                           ) : (
-                            <p className="text-sm font-medium text-gray-800 truncate">{entry.label}</p>
+                            <p className="text-sm font-medium text-gray-800 truncate">{p.note && !p.imported_from_settlement ? p.note : 'Payment'}</p>
                           )}
-                          {entry.date && (
-                            <p className="text-xs text-gray-400 mt-0.5">{fmtDate(entry.date)}</p>
-                          )}
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {fmtDate(p.paidAt)}
+                            {p.note && p.receiptId && !p.imported_from_settlement && <> · {p.note}</>}
+                          </p>
                         </div>
-                        <div className="shrink-0">
-                          {entry.amount != null ? (
-                            <span className="text-sm font-semibold text-gray-900">
-                              ${entry.amount.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">unknown</span>
-                          )}
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-sm font-semibold text-gray-900">${Number(p.amount).toFixed(2)}</span>
+                          <button onClick={() => remove(p)} className="text-gray-300 hover:text-red-400 transition" title="Remove this payment" aria-label="Remove this payment">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
                         </div>
                       </div>
                     ))}

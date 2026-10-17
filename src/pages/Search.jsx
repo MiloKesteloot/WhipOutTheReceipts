@@ -55,7 +55,7 @@ export default function Search() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       <SearchInput
         value={input}
         onChange={setInput}

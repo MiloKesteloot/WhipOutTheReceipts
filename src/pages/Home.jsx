@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { calculateDebts } from '../lib/splitLogic.js'
 import { version as buildVersion } from '../buildVersion.json'
 import { useDialog } from '../lib/useDialog.jsx'
-import { useGroup } from '../lib/group.jsx'
-import { loadReceipts, loadItems, loadClaims, loadSettlements, loadMeals, loadCheckins, setSettlement } from '../lib/db.js'
+import { useGroup, formatWaitingOn } from '../lib/group.jsx'
+import { loadReceipts, loadItems, loadClaims, loadPayments, loadMeals, loadCheckins, recordPayment } from '../lib/db.js'
+import { receiptDebts, computeBalances } from '../lib/balances.js'
+import SettleUpDialog from '../components/SettleUpDialog.jsx'
 
 function effectiveMembers(receipt) {
   const members = receipt.members || []
@@ -14,14 +15,81 @@ function effectiveMembers(receipt) {
   return [...members, payer]
 }
 
+// "3 receipts ▾" under a person's name, so it's clear the row expands
+function ReceiptCountToggle({ count, expanded }) {
+  return (
+    <p className="flex items-center gap-0.5 text-xs text-gray-500 mt-0.5">
+      {expanded ? 'Hide receipts' : `${count} receipt${count === 1 ? '' : 's'}`}
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+      </svg>
+    </p>
+  )
+}
+
+const fmtShort = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
+
+// One person's balance with you: name, total, and (expanded) the receipts
+// still unpaid. Open amounts always add up to the total.
+function PersonBalance({ entry, expanded, onToggle, onSettle, onMarkReceipt, busy }) {
+  const count = entry.open.length + (entry.fromPayments > 0 ? 1 : 0)
+  return (
+    <li className="border border-gray-100 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition cursor-pointer" onClick={onToggle}>
+        <div className="min-w-0">
+          <p className="font-medium text-gray-900">{entry.person}</p>
+          <ReceiptCountToggle count={count} expanded={expanded} />
+        </div>
+        <div className="flex items-center gap-2.5">
+          <span className={`font-semibold ${entry.iOwe ? 'text-amber-600' : 'text-gray-900'}`}>${entry.amount.toFixed(2)}</span>
+          <button
+            onClick={e => { e.stopPropagation(); onSettle() }}
+            disabled={busy}
+            className={`text-xs px-2 py-0.5 rounded-md transition disabled:opacity-50 font-medium ${entry.iOwe
+              ? 'bg-accent-600 text-white hover:bg-accent-700'
+              : 'border border-accent-200 text-accent-600 hover:bg-accent-50'}`}
+          >
+            {entry.iOwe ? 'Mark sent' : 'Mark received'}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+          {entry.open.map(o => (
+            <div key={o.receiptId} className="flex items-center justify-between text-sm gap-2">
+              <div className="min-w-0">
+                <Link to={`/receipt/${o.receiptId}`} className="text-gray-700 hover:underline">{o.label}</Link>
+                <span className="text-gray-400 text-xs ml-1.5">{fmtShort(o.date)}</span>
+                {o.remaining < o.cents && <span className="text-gray-400 text-xs ml-1.5">(${(o.cents / 100).toFixed(2)} total, partly paid)</span>}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-gray-900">${(o.remaining / 100).toFixed(2)}</span>
+                {entry.iOwe && (
+                  <button onClick={() => onMarkReceipt(o)} disabled={busy} className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">Mark sent</button>
+                )}
+              </div>
+            </div>
+          ))}
+          {entry.fromPayments > 0 && (
+            <div className="flex items-center justify-between text-sm gap-2">
+              <span className="text-gray-700">Overpaid earlier <span className="text-gray-400 text-xs">(from payments, not a receipt)</span></span>
+              <span className="text-gray-900 shrink-0">${entry.fromPayments.toFixed(2)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
 export default function Home() {
   const [standaloneReceipts, setStandaloneReceipts] = useState([])
   const [claimersByReceipt, setClaimersByReceipt] = useState({})
-  // person -> { net, theyOweMe: [...], iOweThem: [...] }
-  const [netByPerson, setNetByPerson] = useState({})
+  const [balances, setBalances] = useState(null)
   const [rawData, setRawData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [settling, setSettling] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [settle, setSettle] = useState(null) // { from, to, amount, title }
   const [pickerDay, setPickerDay] = useState(null) // { date, items } for 2+ receipts on a day
   const [receiptTotals, setReceiptTotals] = useState({})
   const [expandedPeople, setExpandedPeople] = useState(new Set())
@@ -33,12 +101,11 @@ export default function Home() {
   })
   const { group, myName, nameOf, idOf, memberIds } = useGroup()
   const navigate = useNavigate()
-  const { DialogUI } = useDialog()
+  const { showAlert, DialogUI } = useDialog()
 
   useEffect(() => {
-    fetchTrips()
+    fetchData()
   }, [])
-  useEffect(() => { if (rawData) computeDebts(myName, rawData) }, [rawData])
   useEffect(() => { window.getSelection()?.removeAllRanges() }, [view])
 
   useEffect(() => {
@@ -48,19 +115,19 @@ export default function Home() {
     return () => window.removeEventListener('keydown', onKey)
   }, [pickerDay])
 
-  async function fetchTrips() {
-    const [standalone, allItems, allClaims, settlements, allMeals, allCheckins] = await Promise.all([
+  async function fetchData() {
+    const [standalone, allItems, allClaims, payments, allMeals, allCheckins] = await Promise.all([
       loadReceipts(group.id, nameOf, 'id, paid_by_member, tip, tax, fees, receipt_date, member_ids, store_name', { datedOnly: true }),
       loadItems(group.id, 'id, receipt_id, meal_id, price'),
       loadClaims(memberIds, nameOf),
-      loadSettlements(group.id, nameOf),
+      loadPayments(group.id, nameOf),
       loadMeals(group.id, 'id, receipt_id, fee'),
       loadCheckins(memberIds, nameOf),
     ])
 
     setStandaloneReceipts(standalone)
 
-    // Build claimersByReceipt
+    // Who has claimed or checked in on each receipt
     const itemIdToReceiptId = {}
     for (const item of allItems) itemIdToReceiptId[item.id] = item.receipt_id
     const receiptMap = {}
@@ -71,13 +138,12 @@ export default function Home() {
       receiptMap[receiptId].add(claim.roommate.toLowerCase())
     }
     for (const checkin of allCheckins) {
-      if (!checkin.receipt_id) continue
       if (!receiptMap[checkin.receipt_id]) receiptMap[checkin.receipt_id] = new Set()
       receiptMap[checkin.receipt_id].add(checkin.roommate.toLowerCase())
     }
     setClaimersByReceipt(receiptMap)
 
-    // Compute total spend per receipt
+    // Total spend per receipt
     const receiptTotalsMap = {}
     for (const receipt of standalone) {
       const rItems = allItems.filter(i => i.receipt_id === receipt.id)
@@ -87,22 +153,20 @@ export default function Home() {
     }
     setReceiptTotals(receiptTotalsMap)
 
-    const data = { allItems, allClaims, settlements, allMeals, standalone, allCheckins }
-    setRawData(data)
+    const debts = receiptDebts({ receipts: standalone, items: allItems, claims: allClaims, meals: allMeals, checkins: allCheckins })
+    const b = computeBalances(debts, payments)
+    setBalances(b)
+    setRawData({ allItems })
+
+    // Smart routing: todo if unchecked receipts or money owed, else calendar
     const nameLc = myName.toLowerCase()
-    const byPerson = computeDebts(myName, data)
-    // Smart routing: todo if unchecked receipts or unsettled debts, else calendar
     const hasUnchecked = nameLc && standalone.some(r => {
       const members = effectiveMembers(r).map(m => m.toLowerCase())
       return members.includes(nameLc)
         && allItems.some(i => i.receipt_id === r.id)
         && !(receiptMap[r.id]?.has(nameLc))
     })
-    const hasDebts = nameLc && Object.values(byPerson || {}).some(d => {
-      const owe = d.iOweThem.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
-             - d.theyOweMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
-      return owe > 0.005
-    })
+    const hasDebts = nameLc && b.forPerson(myName).some(e => e.iOwe)
     const sessionSaved = sessionStorage.getItem('home-view')
     let resolvedView
     if (sessionSaved) {
@@ -117,80 +181,15 @@ export default function Home() {
     setLoading(false)
   }
 
-  function computeDebts(name, { allItems, allClaims, settlements, allMeals = [], standalone = [], allCheckins = [] }) {
-    if (!name) { setNetByPerson({}); return }
-
-    const nameLc = name.toLowerCase()
-    const byPerson = {}
-
-    // Build checkin set per receipt
-    const checkinsByReceipt = {}
-    for (const c of allCheckins) {
-      if (!c.receipt_id) continue
-      if (!checkinsByReceipt[c.receipt_id]) checkinsByReceipt[c.receipt_id] = new Set()
-      checkinsByReceipt[c.receipt_id].add(c.roommate.toLowerCase())
-    }
-
-    // Receipt debts
-    for (const receipt of standalone) {
-      const rItems = allItems.filter(i => i.receipt_id === receipt.id)
-      if (!rItems.length) continue
-
-      // Skip until everyone on the receipt has checked in
-      const members = (receipt.members || []).map(m => m.toLowerCase())
-      if (members.length > 0) {
-        const checkedIn = checkinsByReceipt[receipt.id] || new Set()
-        if (!members.every(m => checkedIn.has(m))) continue
-      }
-      const itemIds = new Set(rItems.map(i => i.id))
-      const rClaims = allClaims.filter(c => itemIds.has(c.item_id))
-      const rMeals = allMeals.filter(m => m.receipt_id === receipt.id)
-
-      for (const debt of calculateDebts([receipt], rItems, rClaims, rMeals)) {
-        const settled = settlements.some(
-          s => s.receipt_id === receipt.id
-            && s.debtor.toLowerCase() === debt.debtor.toLowerCase()
-            && s.creditor.toLowerCase() === debt.creditor.toLowerCase()
-        )
-        const label = receipt.store_name || 'Receipt'
-        if (debt.creditor.toLowerCase() === nameLc) {
-          const person = debt.debtor.toLowerCase()
-          if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
-          byPerson[person].theyOweMe.push({ ...debt, label, receiptId: receipt.id, settled })
-          byPerson[person].net += debt.amount
-        }
-        if (debt.debtor.toLowerCase() === nameLc) {
-          const person = debt.creditor.toLowerCase()
-          if (!byPerson[person]) byPerson[person] = { net: 0, theyOweMe: [], iOweThem: [] }
-          byPerson[person].iOweThem.push({ ...debt, label, receiptId: receipt.id, settled })
-          byPerson[person].net -= debt.amount
-        }
-      }
-    }
-
-    setNetByPerson(byPerson)
-    return byPerson
-  }
-
-  const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
   const fmtDate = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
 
-  // Unsettled net amounts — used for filtering and display
-  function unsettledOwedToMe(data) {
-    return data.theyOweMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
-         - data.iOweThem.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
-  }
-  function unsettledIOwe(data) {
-    return data.iOweThem.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
-         - data.theyOweMe.filter(e => !e.settled).reduce((s, e) => s + e.amount, 0)
-  }
+  const myBalances = balances && myName ? balances.forPerson(myName).sort((a, b) => b.amount - a.amount) : []
+  const iOweEntries = myBalances.filter(e => e.iOwe)
+  const owedToMeEntries = myBalances.filter(e => !e.iOwe)
+  const iOweTotal = iOweEntries.reduce((s, e) => s + e.amount, 0)
+  const pendingTotal = owedToMeEntries.reduce((s, e) => s + e.amount, 0)
 
-  const owedToMeEntries = Object.entries(netByPerson).filter(([, d]) => unsettledOwedToMe(d) > 0.005)
-  const iOweEntries = Object.entries(netByPerson).filter(([, d]) => unsettledIOwe(d) > 0.005)
-
-  const pendingTotal = owedToMeEntries.reduce((s, [, d]) => s + unsettledOwedToMe(d), 0)
-
-function toggleExpanded(person) {
+  function toggleExpanded(person) {
     setExpandedPeople(prev => {
       const next = new Set(prev)
       next.has(person) ? next.delete(person) : next.add(person)
@@ -198,33 +197,27 @@ function toggleExpanded(person) {
     })
   }
 
-    async function markSettled(entry) {
-    setSettling({ entry })
-    await setSettlement({
-      groupId: group.id, receiptId: entry.receiptId,
-      debtorId: idOf(myName), creditorId: idOf(entry.creditor), amount: entry.amount,
-    })
-    await fetchTrips()
-    setSettling(null)
+  async function savePayment({ from, to, amount, receiptId = null, note = null }) {
+    await recordPayment({ groupId: group.id, fromId: idOf(from), toId: idOf(to), amount, receiptId, note })
+    await fetchData()
   }
 
-  async function markAllSettledWith(person, data) {
-    setSettling({ person })
-    const entries = [
-      ...data.iOweThem.map(e => ({ receipt_id: e.receiptId, debtor: myName, creditor: person, amount: e.amount })),
-      ...data.theyOweMe.map(e => ({ receipt_id: e.receiptId, debtor: person, creditor: myName, amount: e.amount })),
-    ]
-    for (const s of entries) {
-      await setSettlement({
-        groupId: group.id, receiptId: s.receipt_id,
-        debtorId: idOf(s.debtor), creditorId: idOf(s.creditor), amount: s.amount,
-      })
+  // "Mark sent" on one receipt: pay what's left on it
+  async function markReceiptPaid(entry, open) {
+    setBusy(true)
+    try {
+      await savePayment({ from: myName, to: entry.person, amount: open.remaining / 100, receiptId: open.receiptId })
+    } catch (err) {
+      await showAlert(err.message, { title: 'Could not save payment' })
     }
-    await fetchTrips()
-    setSettling(null)
+    setBusy(false)
   }
 
-  const iOweTotal = iOweEntries.reduce((s, [, d]) => s + unsettledIOwe(d), 0)
+  function openSettle(entry) {
+    setSettle(entry.iOwe
+      ? { from: myName, to: entry.person, amount: entry.amount, title: `Mark sent to ${entry.person}` }
+      : { from: entry.person, to: myName, amount: entry.amount, title: `Mark received from ${entry.person}` })
+  }
 
   const myNameLc = myName.toLowerCase()
   const uncheckedReceipts = myName ? standaloneReceipts.filter(r => {
@@ -238,6 +231,13 @@ function toggleExpanded(person) {
   return (
     <>
     {DialogUI}
+    {settle && (
+      <SettleUpDialog
+        {...settle}
+        onClose={() => setSettle(null)}
+        onSave={async ({ amount, note }) => { await savePayment({ ...settle, amount, note }); setSettle(null) }}
+      />
+    )}
 
     {/* Picker modal — opens when 2+ receipts on a day */}
     {pickerDay && (
@@ -347,132 +347,46 @@ function toggleExpanded(person) {
           )}
 
           {/* People you owe */}
-          {myName && iOweEntries.length > 0 && (
+          {iOweEntries.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-semibold text-gray-800">People you owe</h2>
                 <span className="text-sm font-semibold text-amber-600">${iOweTotal.toFixed(2)}</span>
               </div>
               <ul className="space-y-1.5 select-none">
-                {iOweEntries.map(([person, data]) => {
-                  const netOwed = unsettledIOwe(data)
-                  const expanded = expandedPeople.has(`owe-${person}`)
-                  const hasOffset = data.theyOweMe.some(e => !e.settled)
-                  return (
-                    <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
-                      <div
-                        className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition cursor-pointer"
-                        onClick={() => toggleExpanded(`owe-${person}`)}
-                      >
-                        <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
-                        <div className="flex items-center gap-2.5">
-                          {hasOffset && <span className="text-xs text-gray-400">net</span>}
-                          <span className="font-semibold text-amber-600">${netOwed.toFixed(2)}</span>
-                          {data.iOweThem.some(e => !e.settled) && (
-                            <button
-                              onClick={e => { e.stopPropagation(); markAllSettledWith(person, data) }}
-                              disabled={!!settling}
-                              className="text-xs px-2 py-0.5 bg-accent-600 text-white rounded-md hover:bg-accent-700 transition disabled:opacity-50 font-medium"
-                            >
-                              {settling?.person === person ? '…' : 'Mark sent'}
-                            </button>
-                          )}
-                          <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-                          </svg>
-                        </div>
-                      </div>
-                      {expanded && (
-                        <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
-                          {data.iOweThem.every(e => e.settled) && data.theyOweMe.every(e => e.settled) && (
-                            <p className="text-xs text-accent-600 font-medium py-1">All settled ✓</p>
-                          )}
-                          {data.iOweThem.map((entry, i) => (
-                            <div key={i} className="flex items-center justify-between text-sm gap-2">
-                              <div className="min-w-0">
-                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
-                                <span className="text-gray-400 text-xs ml-1.5">you owe</span>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
-                                {entry.settled ? (
-                                  <span className="text-xs text-accent-600 font-medium">✓ sent</span>
-                                ) : (
-                                  <button onClick={() => markSettled({ ...entry, creditor: person })} disabled={!!settling} className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">Mark sent</button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                          {data.theyOweMe.filter(e => !e.settled).map((entry, i) => (
-                            <div key={i} className="flex items-center justify-between text-sm gap-2">
-                              <div className="min-w-0">
-                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
-                                <span className="text-gray-400 text-xs ml-1.5">offset</span>
-                              </div>
-                              <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
+                {iOweEntries.map(entry => (
+                  <PersonBalance
+                    key={entry.person}
+                    entry={entry}
+                    expanded={expandedPeople.has(`owe-${entry.person}`)}
+                    onToggle={() => toggleExpanded(`owe-${entry.person}`)}
+                    onSettle={() => openSettle(entry)}
+                    onMarkReceipt={open => markReceiptPaid(entry, open)}
+                    busy={busy}
+                  />
+                ))}
               </ul>
             </div>
           )}
 
           {/* People who owe you */}
-          {myName && owedToMeEntries.length > 0 && (
+          {owedToMeEntries.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="font-semibold text-gray-800">People who owe you</h2>
                 <span className="text-sm font-semibold text-accent-600">${pendingTotal.toFixed(2)}</span>
               </div>
               <ul className="space-y-1.5 select-none">
-                {owedToMeEntries.map(([person, data]) => {
-                  const expanded = expandedPeople.has(person)
-                  const netAmt = unsettledOwedToMe(data)
-                  const hasOffset = data.iOweThem.some(e => !e.settled)
-                  return (
-                    <li key={person} className="border border-gray-100 rounded-lg overflow-hidden">
-                      <button onClick={() => toggleExpanded(person)} className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition text-left">
-                        <span className="font-medium text-gray-900">{toTitleCase(person)}</span>
-                        <div className="flex items-center gap-2.5">
-                          {hasOffset && <span className="text-xs text-gray-400">net</span>}
-                          <span className="font-semibold text-gray-900">${netAmt.toFixed(2)}</span>
-                          <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
-                          </svg>
-                        </div>
-                      </button>
-                      {expanded && (
-                        <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
-                          {data.theyOweMe.map((entry, i) => (
-                            <div key={i} className="flex items-center justify-between text-sm gap-2">
-                              <div className="min-w-0">
-                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
-                                <span className="text-gray-400 text-xs ml-1.5">owes you</span>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-gray-900">${entry.amount.toFixed(2)}</span>
-                                {entry.settled ? <span className="text-xs text-accent-600 font-medium">✓ sent</span> : <span className="text-xs text-amber-500">awaiting</span>}
-                              </div>
-                            </div>
-                          ))}
-                          {data.iOweThem.filter(e => !e.settled).map((entry, i) => (
-                            <div key={i} className="flex items-center justify-between text-sm gap-2">
-                              <div className="min-w-0">
-                                <Link to={`/receipt/${entry.receiptId}`} className="text-gray-700 hover:underline" onClick={e => e.stopPropagation()}>{entry.label}</Link>
-                                <span className="text-gray-400 text-xs ml-1.5">offset</span>
-                              </div>
-                              <span className="text-gray-400 shrink-0">−${entry.amount.toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </li>
-                  )
-                })}
+                {owedToMeEntries.map(entry => (
+                  <PersonBalance
+                    key={entry.person}
+                    entry={entry}
+                    expanded={expandedPeople.has(entry.person)}
+                    onToggle={() => toggleExpanded(entry.person)}
+                    onSettle={() => openSettle(entry)}
+                    busy={busy}
+                  />
+                ))}
               </ul>
             </div>
           )}
@@ -684,7 +598,7 @@ function toggleExpanded(person) {
                             <div className="min-w-0">
                               <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
                               {waitingOn.length > 0 && (
-                                <p className="text-xs text-amber-600">Waiting on {waitingOn.join(', ')}</p>
+                                <p className="text-xs text-amber-600">Waiting on {formatWaitingOn(waitingOn, myName)}</p>
                               )}
                             </div>
                           </div>
@@ -734,7 +648,7 @@ function toggleExpanded(person) {
                       <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
                       <p className="text-xs text-gray-400">
                         {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {waitingOn.length > 0 && <span className="text-amber-600 ml-2">· Waiting on {waitingOn.join(', ')}</span>}
+                        {waitingOn.length > 0 && <span className="text-amber-600 ml-2">· Waiting on {formatWaitingOn(waitingOn, myName)}</span>}
                       </p>
                     </div>
                   </div>

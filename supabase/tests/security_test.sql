@@ -42,7 +42,10 @@ select pg_temp.check((select first_name || ' ' || last_name from profiles where 
 select pg_temp.check((select first_name || '|' || last_name from profiles where id = '00000000-0000-0000-0000-00000000000b') = 'Sam|Stranger',
   'Google-style full_name is split into first/last');
 
-select invite_code as code, id as gid from groups limit 1 \gset
+-- Local copies may have test accounts linked; start from unclaimed people
+update group_members set user_id = null where user_id is not null;
+select invite_code as code, id as gid from groups order by created_at limit 1 \gset
+select count(*) as receipt_count from receipts where group_id = :'gid' \gset
 select id as milo_member from group_members where first_name = 'Milo' \gset
 
 -- ── Signed-out visitor ───────────────────────────────────────
@@ -62,7 +65,7 @@ select pg_temp.check((select user_id from group_members where id = :'milo_member
   'Milo is linked to the migrated person');
 select pg_temp.check((select role from group_members where id = :'milo_member') = 'owner', 'Milo is the owner');
 select pg_temp.check((select last_name from group_members where id = :'milo_member') = 'Kesteloot', 'claiming fills in last name from profile');
-select pg_temp.check(count(*) = 40, 'Milo now sees all 40 migrated receipts') from receipts;
+select pg_temp.check(count(*) = :receipt_count, 'Milo now sees all the group''s receipts') from receipts;
 select pg_temp.check(count(*) = 8, 'Milo sees all 8 people') from group_members;
 
 -- ── Stranger: isolated, own group ────────────────────────────
@@ -130,10 +133,31 @@ select pg_temp.expect_error(format($$insert into claims (item_id, member_id) val
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select pg_temp.expect_error(format($$select join_group(%L, %L)$$, :'code', :'milo_member'), 'cannot claim an already-claimed person');
 select pg_temp.check(join_group(:'code') = :'gid', 'stranger joins Milo''s group with the code');
-select pg_temp.check(count(*) = 40, 'after joining, stranger sees the group''s receipts')
+select pg_temp.check(count(*) = :receipt_count, 'after joining, stranger sees the group''s receipts')
   from receipts where group_id = :'gid';
 select pg_temp.check(count(*) = 1, 'Milo''s profile is now visible to the stranger')
   from profiles where id = '00000000-0000-0000-0000-00000000000a';
+
+-- ── Payments ─────────────────────────────────────────────────
+select id as alex_member from group_members where group_id = :'gid' and first_name = 'Alex' \gset
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+insert into payments (group_id, from_member, to_member, amount) values (:'gid', :'milo_member', :'alex_member', 12.34) returning id as pay_id \gset
+select pg_temp.check(count(*) = 1, 'payment insert was logged') from audit_log where table_name = 'payments' and row_id = :'pay_id';
+select pg_temp.expect_error(format($$delete from payments where id = %L$$, :'pay_id'), 'payments cannot be hard-deleted');
+update payments set deleted_at = now() where id = :'pay_id';
+select pg_temp.check(count(*) = 1, 'payment soft delete is logged')
+  from audit_log where table_name = 'payments' and row_id = :'pay_id' and action = 'update';
+select pg_temp.expect_error(format($$insert into payments (group_id, from_member, to_member, amount, imported_from_settlement) values (%L, %L, %L, 1, gen_random_uuid())$$, :'gid', :'milo_member', :'alex_member'),
+  'cannot fake an imported payment');
+select pg_temp.expect_error(format($$insert into payments (group_id, from_member, to_member, amount) values (%L, %L, %L, 1)$$, :'gid', :'milo_member', :'milo_member'),
+  'cannot pay yourself');
+select pg_temp.expect_error(format($$insert into payments (group_id, from_member, to_member, amount) values (%L, %L, %L, -5)$$, :'gid', :'milo_member', :'alex_member'),
+  'payment amount must be positive');
+select pg_temp.expect_error($$insert into settlements (group_id, debtor_member, creditor_member) select group_id, debtor_member, creditor_member from settlements limit 1$$,
+  'old settlements are read-only');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select pg_temp.expect_error(format($$insert into payments (group_id, from_member, to_member, amount) values (%L, %L, %L, 5)$$, :'gid', :'stranger_member', :'alex_member'),
+  'a payment cannot involve someone from another group');
 
 -- ── Owner rules ──────────────────────────────────────────────
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');

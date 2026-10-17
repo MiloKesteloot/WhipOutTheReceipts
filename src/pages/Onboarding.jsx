@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { useGroup } from '../lib/group.jsx'
 import { useSession } from '../lib/session.jsx'
 import { AuthShell, inputClass, primaryButton } from './Auth.jsx'
+import BackButton from '../components/BackButton.jsx'
 
 // Accepts a bare code or a full invite link (…#/join/ABCD2345)
 function parseInviteCode(input) {
@@ -31,7 +32,7 @@ export default function Onboarding() {
     if (error) { setError(error.message); setBusy(false); return }
     await refreshMemberships()
     switchGroup(data)
-    navigate('/settings?tab=group')
+    navigate('/group')
   }
 
   function join(e) {
@@ -66,7 +67,7 @@ export default function Onboarding() {
 
       <div className="mt-5 text-center text-sm">
         {hasGroups
-          ? <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600">← Back</button>
+          ? <BackButton onClick={() => navigate('/')} />
           : <button onClick={signOut} className="text-gray-400 hover:text-gray-600">Sign out</button>}
       </div>
     </AuthShell>

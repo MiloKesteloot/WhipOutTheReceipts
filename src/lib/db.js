@@ -12,12 +12,6 @@ export function receiptFromDb(r, nameOf) {
   return out
 }
 
-export function tripFromDb(t, nameOf) {
-  const out = { ...t }
-  if ('member_ids' in t) out.members = (t.member_ids || []).map(nameOf)
-  return out
-}
-
 export function claimFromDb(c, nameOf) {
   return { ...c, roommate: nameOf(c.member_id) }
 }
@@ -26,8 +20,8 @@ export function checkinFromDb(c, nameOf) {
   return { ...c, roommate: nameOf(c.member_id) }
 }
 
-export function settlementFromDb(s, nameOf) {
-  return { ...s, debtor: nameOf(s.debtor_member), creditor: nameOf(s.creditor_member) }
+export function paymentFromDb(p, nameOf) {
+  return { ...p, from: nameOf(p.from_member), to: nameOf(p.to_member), receiptId: p.receipt_id, paidAt: p.paid_at }
 }
 
 // ── Paging ───────────────────────────────────────────────────
@@ -54,12 +48,6 @@ export async function loadReceipts(groupId, nameOf, columns = '*', { datedOnly =
     return q
   })
   return rows.map(r => receiptFromDb(r, nameOf))
-}
-
-export async function loadTrips(groupId, nameOf, columns = '*') {
-  const rows = await selectAll(() =>
-    supabase.from('trips').select(columns).eq('group_id', groupId).is('deleted_at', null))
-  return rows.map(t => tripFromDb(t, nameOf))
 }
 
 // Items (and meals) belong to a group through their receipt
@@ -90,13 +78,14 @@ export async function loadClaims(memberIds, nameOf) {
 export async function loadCheckins(memberIds, nameOf) {
   if (!memberIds.length) return []
   const rows = await selectAll(() =>
-    supabase.from('checkins').select('id, receipt_id, trip_id, member_id').in('member_id', memberIds))
+    supabase.from('checkins').select('id, receipt_id, member_id').in('member_id', memberIds))
   return rows.map(c => checkinFromDb(c, nameOf))
 }
 
-export async function loadSettlements(groupId, nameOf) {
-  const rows = await selectAll(() => supabase.from('settlements').select('*').eq('group_id', groupId))
-  return rows.map(s => settlementFromDb(s, nameOf))
+export async function loadPayments(groupId, nameOf) {
+  const rows = await selectAll(() =>
+    supabase.from('payments').select('*').eq('group_id', groupId).is('deleted_at', null))
+  return rows.map(p => paymentFromDb(p, nameOf))
 }
 
 // ── Writes ───────────────────────────────────────────────────
@@ -116,41 +105,25 @@ export async function syncMyClaims(memberId, itemIds, currentMine, wanted) {
   }
 }
 
-// Record that a person has checked in on a receipt or trip (no-op if already)
-export async function ensureCheckin(memberId, { receiptId = null, tripId = null }) {
-  let q = supabase.from('checkins').select('id').eq('member_id', memberId)
-  q = receiptId ? q.eq('receipt_id', receiptId) : q.is('receipt_id', null)
-  q = tripId ? q.eq('trip_id', tripId) : q.is('trip_id', null)
-  const { data } = await q.limit(1)
+// Record that a person has checked in on a receipt (no-op if already)
+export async function ensureCheckin(memberId, receiptId) {
+  const { data } = await supabase.from('checkins').select('id').eq('member_id', memberId).eq('receipt_id', receiptId).limit(1)
   if (data?.length) return
-  const { error } = await supabase.from('checkins').insert({ member_id: memberId, receipt_id: receiptId, trip_id: tripId })
+  const { error } = await supabase.from('checkins').insert({ member_id: memberId, receipt_id: receiptId })
   if (error) throw error
 }
 
-// Mark a debt as sent: one settlement row per (receipt|trip, debtor, creditor)
-export async function setSettlement({ groupId, receiptId = null, tripId = null, debtorId, creditorId, amount }) {
-  let q = supabase.from('settlements').select('id').eq('debtor_member', debtorId).eq('creditor_member', creditorId)
-  q = receiptId ? q.eq('receipt_id', receiptId) : q.is('receipt_id', null)
-  q = tripId ? q.eq('trip_id', tripId) : q.is('trip_id', null)
-  const { data: existing } = await q
-  if (existing?.length) {
-    const [keep, ...dupes] = existing
-    if (dupes.length) await supabase.from('settlements').delete().in('id', dupes.map(d => d.id))
-    const { error } = await supabase.from('settlements').update({ amount, settled_at: new Date().toISOString() }).eq('id', keep.id)
-    if (error) throw error
-    return
-  }
-  const { error } = await supabase.from('settlements').insert({
-    group_id: groupId, receipt_id: receiptId, trip_id: tripId,
-    debtor_member: debtorId, creditor_member: creditorId, amount,
+// Record that `fromId` paid `toId` (optionally for a specific receipt)
+export async function recordPayment({ groupId, fromId, toId, amount, receiptId = null, note = null }) {
+  const { error } = await supabase.from('payments').insert({
+    group_id: groupId, from_member: fromId, to_member: toId,
+    amount: Math.round(Number(amount) * 100) / 100, receipt_id: receiptId, note: note || null,
   })
   if (error) throw error
 }
 
-export async function clearSettlement({ receiptId = null, tripId = null, debtorId, creditorId }) {
-  let q = supabase.from('settlements').delete().eq('debtor_member', debtorId).eq('creditor_member', creditorId)
-  q = receiptId ? q.eq('receipt_id', receiptId) : q.is('receipt_id', null)
-  q = tripId ? q.eq('trip_id', tripId) : q.is('trip_id', null)
-  const { error } = await q
+// Payments are never hard-deleted; this hides one (kept in the history log)
+export async function deletePayment(paymentId) {
+  const { error } = await supabase.from('payments').update({ deleted_at: new Date().toISOString() }).eq('id', paymentId)
   if (error) throw error
 }

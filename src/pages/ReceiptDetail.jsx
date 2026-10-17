@@ -5,9 +5,11 @@ import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, STORE_DOMAINS } from '../config.js'
-import { useGroup } from '../lib/group.jsx'
-import { receiptFromDb, claimFromDb, checkinFromDb, settlementFromDb, syncMyClaims, ensureCheckin, setSettlement, clearSettlement } from '../lib/db.js'
+import { useGroup, formatWaitingOn } from '../lib/group.jsx'
+import { receiptFromDb, claimFromDb, checkinFromDb, syncMyClaims, ensureCheckin, recordPayment, deletePayment } from '../lib/db.js'
+import { useBalances } from '../lib/useBalances.js'
 import ReceiptHistory from '../components/ReceiptHistory.jsx'
+import BackButton from '../components/BackButton.jsx'
 
 function getStoreLogo(storeName) {
   if (!storeName) return null
@@ -34,7 +36,6 @@ export default function ReceiptDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedMeals, setExpandedMeals] = useState(new Set())
-  const [settlements, setSettlements] = useState([])
   const [settling, setSettling] = useState(false)
   const [checkins, setCheckins] = useState([])
   const [isDirty, setIsDirty] = useState(false)
@@ -43,11 +44,11 @@ export default function ReceiptDetail() {
   const [memberInput, setMemberInput] = useState('')
   const claimsLoadedRef = useRef(false)
   const { confirm, showAlert, DialogUI } = useDialog()
+  const bal = useBalances()
 
   const loadData = useCallback(async () => {
-    const [receiptRes, settlementRes, checkinRes] = await Promise.all([
+    const [receiptRes, checkinRes] = await Promise.all([
       supabase.from('receipts').select('*').eq('id', receiptId).single(),
-      supabase.from('settlements').select('*').eq('receipt_id', receiptId),
       supabase.from('checkins').select('*').eq('receipt_id', receiptId),
     ])
 
@@ -55,7 +56,6 @@ export default function ReceiptDetail() {
     // Shared link to a receipt in another of my groups: switch to that group
     if (receiptRes.data.group_id !== group.id) { switchGroup(receiptRes.data.group_id); return }
     setReceipt(receiptFromDb(receiptRes.data, nameOf))
-    setSettlements((settlementRes.data || []).map(x => settlementFromDb(x, nameOf)))
     setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
 
     const [{ data: itemData }, { data: mealData }] = await Promise.all([
@@ -145,7 +145,8 @@ export default function ReceiptDetail() {
     const currentMine = new Set(claims.filter(c => c.roommate === myName).map(c => c.item_id))
     try {
       await syncMyClaims(myMember.id, itemIds, currentMine, myClaims)
-      await ensureCheckin(myMember.id, { receiptId })
+      await ensureCheckin(myMember.id, receiptId)
+      bal.reload()
     } catch (err) {
       setSaving(false)
       await showAlert(err.message, { title: 'Could not save claims' })
@@ -167,37 +168,40 @@ export default function ReceiptDetail() {
     setIsDirty(false)
   }
 
-  async function markSettled(debtor, creditor, amount) {
+  // How much of one debt on this receipt is still unpaid. Once everyone has
+  // checked in, this comes from the group-wide balances (payments apply to
+  // this receipt if they named it, otherwise oldest receipts first); before
+  // that, only payments made for this receipt count.
+  function debtState(d) {
+    const linked = (bal.data?.payments || [])
+      .filter(p => p.receiptId === receiptId && p.from === d.debtor && p.to === d.creditor)
+    let remaining = receiptComplete && bal.balances
+      ? bal.balances.remainingFor(receiptId, d.debtor, d.creditor)
+      : Math.max(0, d.amount - linked.reduce((sum, p) => sum + Number(p.amount), 0))
+    remaining = Math.round(remaining * 100) / 100
+    const status = remaining <= 0.005 ? 'full' : remaining < d.amount - 0.005 ? 'partial' : 'none'
+    return { status, remaining, linked }
+  }
+
+  async function markSent(d, amount) {
     setSettling(true)
-    await setSettlement({ groupId: group.id, receiptId, debtorId: idOf(debtor), creditorId: idOf(creditor), amount })
-    setSettlements(prev => [
-      ...prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)),
-      { receipt_id: receiptId, debtor, creditor, amount },
-    ])
+    try {
+      await recordPayment({ groupId: group.id, fromId: idOf(d.debtor), toId: idOf(d.creditor), amount, receiptId })
+      await bal.reload()
+    } catch (err) {
+      await showAlert(err.message, { title: 'Could not save payment' })
+    }
     setSettling(false)
   }
 
-  async function unmarkSettled(debtor, creditor) {
+  // Undo: remove the most recent payment made for this receipt
+  async function undoSent(linked) {
+    const last = [...linked].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0]
+    if (!last) return
     setSettling(true)
-    await clearSettlement({ receiptId, debtorId: idOf(debtor), creditorId: idOf(creditor) })
-    setSettlements(prev => prev.filter(s => !(s.debtor === debtor && s.creditor === creditor)))
+    await deletePayment(last.id)
+    await bal.reload()
     setSettling(false)
-  }
-
-  function getSettlement(debtor, creditor) {
-    return settlements.find(
-      s => s.debtor.toLowerCase() === debtor.toLowerCase()
-        && s.creditor.toLowerCase() === creditor.toLowerCase()
-    ) || null
-  }
-
-  function settlementState(currentDebt, settlement) {
-    if (!settlement) return { status: 'none', paid: 0, remaining: currentDebt }
-    const paid = settlement.amount ?? null
-    if (paid == null) return { status: 'full', paid: currentDebt, remaining: 0 }
-    const remaining = Math.round((currentDebt - paid) * 100) / 100
-    if (remaining <= 0.005) return { status: 'full', paid, remaining: 0 }
-    return { status: 'partial', paid, remaining }
   }
 
   async function handleBack() {
@@ -250,6 +254,7 @@ export default function ReceiptDetail() {
 
   const checkinNames = new Set(checkins.map(c => c.roommate.toLowerCase()))
   const claimerNames = new Set(claims.map(c => c.roommate.toLowerCase()))
+  const receiptComplete = (receipt?.members || []).every(m => checkinNames.has(m.toLowerCase()))
   const receiptMembers = (() => {
     const base = receipt?.members || []
     const payer = receipt?.paid_by
@@ -313,12 +318,7 @@ export default function ReceiptDetail() {
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
         <div className="min-w-0 flex-1 mr-3">
-          <button
-            onClick={handleBack}
-            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 hover:bg-gray-50 px-2.5 py-1 rounded-lg transition mb-2"
-          >
-            ← Back
-          </button>
+          <BackButton onClick={handleBack} className="mb-2" />
           <div className="flex items-center gap-2 flex-wrap">
             {getStoreLogo(receipt.store_name) && (
               <img src={getStoreLogo(receipt.store_name)} alt="" className="w-6 h-6 rounded" />
@@ -450,7 +450,7 @@ export default function ReceiptDetail() {
       {waitingOn.length > 0 && items.length > 0 && (
         <div className="mb-4 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
           <span className="shrink-0">Still waiting on:</span>
-          <span className="font-medium">{waitingOn.join(', ')}</span>
+          <span className="font-medium">{formatWaitingOn(waitingOn, myName)}</span>
         </div>
       )}
 
@@ -561,7 +561,7 @@ export default function ReceiptDetail() {
           <h3 className="font-semibold text-gray-800 mb-3">People who owe you</h3>
           <ul className="space-y-3">
             {debts.filter(d => d.creditor === myName).map((d, i) => {
-              const ss = settlementState(d.amount, getSettlement(d.debtor, d.creditor))
+              const ss = debtState(d)
               const theirItems = (breakdown[d.debtor] || []).filter(e => e.payer === myName)
               return (
                 <li key={i}>
@@ -610,29 +610,34 @@ export default function ReceiptDetail() {
             ) : (
               <ul className="space-y-2">
                 {debts.map((d, i) => {
-                  const settled = !!getSettlement(d.debtor, d.creditor)
+                  const st = debtState(d)
+                  const settled = st.status === 'full'
                   return (
                     <li key={i} className="flex items-center justify-between text-sm gap-2">
                       <span className={`text-gray-700 ${settled ? 'line-through text-gray-400' : ''}`}>
                         <strong>{d.debtor}</strong> owes <strong>{d.creditor}</strong>
+                        {st.status === 'partial' && <span className="text-xs text-amber-600 ml-1.5">${st.remaining.toFixed(2)} left</span>}
                       </span>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-semibold text-gray-900">${d.amount.toFixed(2)}</span>
                         {settled ? (
-                          myName === d.debtor ? (
-                            <button onClick={() => unmarkSettled(d.debtor, d.creditor)} disabled={settling}
-                              className="text-xs text-accent-600 font-medium hover:text-gray-400 transition disabled:opacity-50" title="Click to undo">
+                          myName === d.debtor && st.linked.length > 0 ? (
+                            <button onClick={() => undoSent(st.linked)} disabled={settling}
+                              className="text-xs text-accent-600 font-medium hover:text-gray-400 transition disabled:opacity-50" title="Undo your payment for this receipt">
                               ✓ Sent
                             </button>
-                          ) : <span className="text-xs text-accent-600 font-medium">✓ Sent</span>
-                        ) : (
-                          myName === d.debtor ? (
-                            <button onClick={() => markSettled(d.debtor, d.creditor)} disabled={settling}
-                              className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">
-                              Mark sent
-                            </button>
-                          ) : <span className="text-xs text-amber-500">awaiting</span>
-                        )}
+                          ) : <span className="text-xs text-accent-600 font-medium">✓ Paid</span>
+                        ) : myName === d.debtor ? (
+                          <button onClick={() => markSent(d, st.remaining)} disabled={settling}
+                            className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">
+                            Mark sent
+                          </button>
+                        ) : myName === d.creditor ? (
+                          <button onClick={() => markSent(d, st.remaining)} disabled={settling}
+                            className="text-xs px-2 py-0.5 border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 transition disabled:opacity-50">
+                            Mark received
+                          </button>
+                        ) : <span className="text-xs text-amber-500">awaiting</span>}
                       </div>
                     </li>
                   )
@@ -674,7 +679,7 @@ export default function ReceiptDetail() {
         </div>
       )}
 
-      <ReceiptHistory receiptId={receiptId} key={`${saved}-${receipt.deleted_at}-${settlements.length}`} />
+      <ReceiptHistory receiptId={receiptId} key={`${saved}-${receipt.deleted_at}-${bal.data?.payments?.length}`} />
     </div>
     </>
   )

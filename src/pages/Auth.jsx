@@ -3,11 +3,14 @@ import { supabase, appBaseUrl } from '../lib/supabase.js'
 import { APP_NAME, APP_TAGLINE } from '../config.js'
 import { useSession } from '../lib/session.jsx'
 import { version as buildVersion } from '../buildVersion.json'
+import DevTestLogin from '../components/DevTestLogin.jsx'
 
 const inputClass = 'w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-accent-400 text-gray-900'
 const primaryButton = 'w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50'
 
 export function AuthShell({ title, subtitle, children }) {
+  // Double-click the version (npm run dev only) to show test-account sign-in
+  const [showTestLogin, setShowTestLogin] = useState(false)
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -20,7 +23,13 @@ export function AuthShell({ title, subtitle, children }) {
           {subtitle && <p className="text-sm text-gray-400 mb-4">{subtitle}</p>}
           {children}
         </div>
-        <p className="mt-6 text-center text-xs text-gray-300">v{buildVersion}</p>
+        {import.meta.env.DEV && showTestLogin && <DevTestLogin />}
+        <p
+          className="mt-6 text-center text-xs text-gray-300 select-none"
+          onDoubleClick={import.meta.env.DEV ? () => setShowTestLogin(s => !s) : undefined}
+        >
+          v{buildVersion}
+        </p>
       </div>
     </div>
   )
@@ -250,15 +259,18 @@ export function SetNewPassword({ onDone }) {
 
 // Google accounts without a name (or old profiles) fill this in once
 export function CompleteProfile({ profile, onDone }) {
+  const { signOut } = useSession()
   const [firstName, setFirstName] = useState(profile?.first_name || '')
   const [lastName, setLastName] = useState(profile?.last_name || '')
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
 
   async function submit(e) {
     e.preventDefault()
-    setBusy(true)
-    await supabase.from('profiles').update({ first_name: firstName.trim(), last_name: lastName.trim() }).eq('id', profile.id)
+    setBusy(true); setError('')
+    const { error } = await supabase.from('profiles').update({ first_name: firstName.trim(), last_name: lastName.trim() }).eq('id', profile.id)
     setBusy(false)
+    if (error) { setError(error.message); return }
     onDone()
   }
 
@@ -270,7 +282,11 @@ export function CompleteProfile({ profile, onDone }) {
           <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" required className={inputClass} />
         </div>
         <button type="submit" disabled={busy || !firstName.trim()} className={primaryButton}>{busy ? '…' : 'Continue'}</button>
+        {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
+      <div className="mt-4 text-center text-sm">
+        <button onClick={signOut} className="text-gray-400 hover:text-gray-600">Sign out</button>
+      </div>
     </AuthShell>
   )
 }

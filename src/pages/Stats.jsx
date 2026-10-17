@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useGroup } from '../lib/group.jsx'
-import { loadTrips, loadReceipts, loadItems, loadClaims, loadMeals } from '../lib/db.js'
+import { loadReceipts, loadItems, loadClaims, loadMeals } from '../lib/db.js'
 import { CATEGORIES, CHART_TRIP_NAME_LENGTH } from '../config.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -150,14 +150,12 @@ export default function Stats() {
 
   useEffect(() => {
     async function load() {
-      const [allTrips, receipts, items, claims, meals] = await Promise.all([
-        loadTrips(group.id, nameOf),
+      const [receipts, items, claims, meals] = await Promise.all([
         loadReceipts(group.id, nameOf),
         loadItems(group.id, 'id, receipt_id, meal_id, name, price'),
         loadClaims(memberIds, nameOf),
         loadMeals(group.id, 'id, receipt_id, name, fee'),
       ])
-      const trips = allTrips.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
 
       const coreList = coreNames
       const coreRoommatesLower = new Set(coreList.map(m => m.toLowerCase()))
@@ -176,7 +174,6 @@ export default function Stats() {
       const allPeopleUnfiltered = [...new Set([
         ...receipts.map(r => r.paid_by).filter(Boolean),
         ...Object.keys(computeConsumption(receipts, items, claims, meals)),
-        ...trips.flatMap(t => t.members || []).filter(m => typeof m === 'string'),
       ])]
 
       // Default selection: explicitly pinned core members. If none are pinned,
@@ -187,7 +184,7 @@ export default function Stats() {
           .map(p => p.toLowerCase())
       )
 
-      setRaw({ trips, receipts, items, claims, meals, coreRoommatesLower, defaultSelected, allPeopleUnfiltered, availableCategories })
+      setRaw({ receipts, items, claims, meals, coreRoommatesLower, defaultSelected, allPeopleUnfiltered, availableCategories })
       setLoading(false)
     }
     load()
@@ -216,7 +213,7 @@ export default function Stats() {
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
   if (!raw) return null
 
-  const { trips, receipts, items, claims, meals, coreRoommatesLower, allPeopleUnfiltered, availableCategories } = raw
+  const { receipts, items, claims, meals, coreRoommatesLower, allPeopleUnfiltered, availableCategories } = raw
   const selected = selectedPeople || raw.defaultSelected
   const selCats = selectedCategories || new Set(availableCategories)
 
@@ -363,25 +360,6 @@ export default function Stats() {
   const spendingByCategory = Object.entries(categoryTotals)
     .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
     .sort((a, b) => b.value - a.value)
-
-  // Trip timeline (unfiltered)
-  const tripTimeline = trips.map(trip => {
-    const tripReceipts = receipts.filter(r => r.trip_id === trip.id)
-    const itemsTotal = items
-      .filter(i => tripReceipts.some(r => r.id === i.receipt_id))
-      .reduce((s, i) => s + i.price, 0)
-    const extras = tripReceipts.reduce((s, r) => s + (r.tip || 0) + (r.tax || 0) + (r.fees || 0), 0)
-    const mealFees = meals
-      .filter(m => tripReceipts.some(r => r.id === m.receipt_id))
-      .reduce((s, m) => s + (m.fee || 0), 0)
-    return {
-      id: trip.id,
-      name: trip.name,
-      date: new Date(trip.created_at),
-      total: itemsTotal + extras + mealFees,
-      closed: trip.closed,
-    }
-  }).filter(t => t.total > 0)
 
   // --- People visibility ---
   const visiblePeople = allPeople.filter(p => selected.has(p.toLowerCase()))

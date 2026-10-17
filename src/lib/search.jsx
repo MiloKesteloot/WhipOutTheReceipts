@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useGroup } from './group.jsx'
-import { loadReceipts, loadItems, loadClaims, loadMeals, loadTrips } from './db.js'
+import { loadReceipts, loadItems, loadClaims, loadMeals } from './db.js'
 import { getItemEmoji } from './itemEmoji.js'
 import { STORE_DOMAINS } from '../config.js'
 
@@ -13,16 +13,13 @@ export const MIN_QUERY_LENGTH = 1
 const cache = new Map()
 
 async function fetchSearchData(groupId, nameOf, memberIds) {
-  const [rawReceipts, rawItems, claims, meals, trips] = await Promise.all([
-    loadReceipts(groupId, nameOf, 'id, store_name, receipt_date, created_at, paid_by_member, member_ids, tip, tax, fees, trip_id'),
+  const [rawReceipts, rawItems, claims, meals] = await Promise.all([
+    loadReceipts(groupId, nameOf, 'id, store_name, receipt_date, created_at, paid_by_member, member_ids, tip, tax, fees'),
     loadItems(groupId, 'id, receipt_id, meal_id, name, price, always_split, created_at'),
     loadClaims(memberIds, nameOf),
     loadMeals(groupId, 'id, receipt_id, name, fee'),
-    loadTrips(groupId, nameOf, 'id, name'),
   ])
 
-  const tripsById = {}
-  for (const t of trips) tripsById[t.id] = t
   const mealsById = {}
   const mealFeesByReceipt = {}
   for (const m of meals) {
@@ -43,9 +40,7 @@ async function fetchSearchData(groupId, nameOf, memberIds) {
   const receipts = rawReceipts.map(r => {
     const receipt = {
       ...r,
-      // Trip receipts have no receipt_date — fall back to when they were entered
       date: r.receipt_date || r.created_at?.slice(0, 10) || '',
-      trip: r.trip_id ? tripsById[r.trip_id] : null,
       members: effectiveMembers(r),
       total: (itemTotalByReceipt[r.id] || 0) + Number(r.tip || 0) + Number(r.tax || 0)
         + Number(r.fees || 0) + (mealFeesByReceipt[r.id] || 0),
@@ -186,7 +181,7 @@ export function RecentSearches({ onPick }) {
 // ── Display ──────────────────────────────────────────────────
 
 export function receiptLink(receipt) {
-  return receipt.receipt_date || !receipt.trip_id ? `/receipt/${receipt.id}` : `/trip/${receipt.trip_id}`
+  return `/receipt/${receipt.id}`
 }
 
 function formatDate(dateStr) {
@@ -267,7 +262,6 @@ export function ReceiptRow({ receipt, terms, onClick }) {
       <div className="min-w-0 flex-1">
         <p className="text-gray-700 truncate">
           <Highlight text={receipt.store_name || 'Receipt'} terms={terms} />
-          {receipt.trip && <span className="ml-2 text-xs text-gray-400">{receipt.trip.name}</span>}
         </p>
         <p className="text-xs text-gray-400 truncate mt-0.5">
           {formatDate(receipt.date)}
