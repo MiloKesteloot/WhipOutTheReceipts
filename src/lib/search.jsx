@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
 import { useGroup } from './group.jsx'
 import { loadReceipts, loadItems, loadClaims, loadMeals } from './db.js'
 import { getItemEmoji } from './itemEmoji.js'
@@ -8,8 +7,8 @@ import { STORE_DOMAINS } from '../config.js'
 export const MIN_QUERY_LENGTH = 1
 
 // ── Data ─────────────────────────────────────────────────────
-// Cached per group for the session so the nav dropdown and search page
-// share one fetch. Every mount still refetches in the background.
+// Cached per group for the session so revisiting the Receipts tab
+// shows results right away. Every mount still refetches in the background.
 const cache = new Map()
 
 async function fetchSearchData(groupId, nameOf, memberIds) {
@@ -303,7 +302,7 @@ export function ResultSection({ title, count, children, footer }) {
 
 // ── Search input ─────────────────────────────────────────────
 // Native search-input clear button is hidden in index.css; this draws our own.
-export function SearchInput({ value, onChange, onKeyDown, autoFocus }) {
+export function SearchInput({ value, onChange, onKeyDown, onFocus, onBlur, autoFocus }) {
   return (
     <div className="relative">
       <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -315,6 +314,8 @@ export function SearchInput({ value, onChange, onKeyDown, autoFocus }) {
         value={value}
         onChange={e => onChange(e.target.value)}
         onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        onBlur={onBlur}
         placeholder="Search items or stores"
         className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-accent-400"
       />
@@ -332,100 +333,5 @@ export function SearchInput({ value, onChange, onKeyDown, autoFocus }) {
         </button>
       )}
     </div>
-  )
-}
-
-// ── Nav quick search ─────────────────────────────────────────
-// A dropdown preview of the top results; "See all" opens the full /search page.
-const PREVIEW_ITEMS = 5
-const PREVIEW_RECEIPTS = 3
-
-function NavSearchPanel({ onClose }) {
-  const [query, setQuery] = useState('')
-  const data = useSearchData()
-  const navigate = useNavigate()
-  const { myName } = useGroup()
-  const { items, receipts, terms } = searchAll(data, query)
-  const searching = query.trim().length >= MIN_QUERY_LENGTH
-
-  function go(path) {
-    addRecentSearch(query)
-    onClose()
-    navigate(path)
-  }
-  const seeAll = () => go(`/search?q=${encodeURIComponent(query.trim())}`)
-
-  const seeAllRow = (remaining) => remaining > 0 && (
-    <button onClick={seeAll} className="w-full px-4 py-2.5 text-sm font-medium text-accent-600 hover:bg-gray-50 transition">
-      See all ({remaining} more)
-    </button>
-  )
-
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
-      <div className="fixed top-14 left-0 right-0 z-50 px-2 sm:px-4 pt-2 pointer-events-none">
-        <div className="max-w-2xl mx-auto bg-gray-50 border border-gray-200 rounded-2xl shadow-lg p-3 space-y-4 max-h-[75vh] overflow-y-auto pointer-events-auto">
-          <SearchInput
-            autoFocus
-            value={query}
-            onChange={setQuery}
-            onKeyDown={e => { if (e.key === 'Enter' && searching) seeAll() }}
-          />
-          {!searching ? (
-            <RecentSearches onPick={setQuery} />
-          ) : !data ? (
-            <p className="text-center py-6 text-sm text-gray-400">Loading…</p>
-          ) : items.length === 0 && receipts.length === 0 ? (
-            <p className="text-center py-6 text-sm text-gray-400">Nothing matching "{query.trim()}"</p>
-          ) : (
-            <>
-              <ResultSection title="Items" count={items.length} footer={seeAllRow(items.length - PREVIEW_ITEMS)}>
-                {items.slice(0, PREVIEW_ITEMS).map(item => (
-                  <ItemRow key={item.id} item={item} terms={terms} myName={myName} onClick={() => go(receiptLink(item.receipt))} />
-                ))}
-              </ResultSection>
-              <ResultSection title="Receipts" count={receipts.length} footer={seeAllRow(receipts.length - PREVIEW_RECEIPTS)}>
-                {receipts.slice(0, PREVIEW_RECEIPTS).map(r => (
-                  <ReceiptRow key={r.id} receipt={r} terms={terms} onClick={() => go(receiptLink(r))} />
-                ))}
-              </ResultSection>
-            </>
-          )}
-        </div>
-      </div>
-    </>
-  )
-}
-
-export function NavSearch() {
-  const [open, setOpen] = useState(false)
-  const { pathname } = useLocation()
-  const navigate = useNavigate()
-  const onSearchPage = pathname === '/search'
-
-  useEffect(() => { setOpen(false) }, [pathname])
-  useEffect(() => {
-    if (!open) return
-    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
-
-  const highlighted = open || onSearchPage
-  return (
-    <>
-      <button
-        onClick={() => onSearchPage ? navigate('/search') : setOpen(o => !o)}
-        aria-label="Search"
-        className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 shrink-0 rounded-md text-sm font-medium transition-colors ${highlighted ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
-      >
-        <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={highlighted ? 2.5 : 2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
-        </svg>
-        <span className="hidden sm:inline">Search</span>
-      </button>
-      {open && <NavSearchPanel onClose={() => setOpen(false)} />}
-    </>
   )
 }

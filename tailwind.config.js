@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  // liquid-glass-react styles its layers with Tailwind classes
+  content: ['./index.html', './src/**/*.{js,jsx}', './node_modules/liquid-glass-react/dist/index.esm.js'],
   theme: {
     extend: {
       colors: {

@@ -3,6 +3,7 @@ import { supabase, appBaseUrl } from '../lib/supabase.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import { useSession } from '../lib/session.jsx'
 import { useGroup } from '../lib/group.jsx'
+import { useIphoneMock, setIphoneMock } from '../lib/iphoneMock.js'
 
 // Used by AddReceipt for receipt scanning: the signed-in user's own key
 export async function fetchGeminiKey() {
@@ -145,6 +146,7 @@ function GeminiKey() {
 }
 
 function Preferences() {
+  const iphoneMock = useIphoneMock()
   const [defaultShowAll, setDefaultShowAll] = useState(localStorage.getItem('default-show-all-trips') === '1')
   useEffect(() => {
     localStorage.setItem('default-show-all-trips', defaultShowAll ? '1' : '0')
@@ -165,6 +167,18 @@ function Preferences() {
             className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${defaultShowAll ? 'bg-accent-500' : 'bg-gray-200'}`}
           >
             <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${defaultShowAll ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </label>
+        <label className="flex items-center justify-between cursor-pointer border-t border-gray-100 mt-4 pt-4">
+          <div>
+            <p className="text-sm font-medium text-gray-800">iPhone screenshot mode</p>
+            <p className="text-xs text-gray-400 mt-0.5">Fake iOS status bar and Liquid Glass tab bar, for screenshots at phone width</p>
+          </div>
+          <button
+            onClick={() => setIphoneMock(!iphoneMock)}
+            className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ml-4 ${iphoneMock ? 'bg-accent-600' : 'bg-gray-200'}`}
+          >
+            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${iphoneMock ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
         </label>
       </div>

@@ -538,7 +538,7 @@ export default function ReceiptDetail() {
 
       {/* Running total + save */}
       {myName && items.length > 0 && (
-        <div className="sticky bottom-4">
+        <div className="sticky bottom-above-tabbar sm:bottom-4">
           <div className="bg-white border border-gray-200 shadow-lg rounded-2xl px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-400">Your running total</p>
