@@ -12,8 +12,7 @@ import Receipts from './pages/Receipts.jsx'
 import Balances from './pages/Balances.jsx'
 import { SessionProvider, useSession } from './lib/session.jsx'
 import { GroupProvider, useGroup } from './lib/group.jsx'
-import { useIphoneMock } from './lib/iphoneMock.js'
-import { IphoneStatusBar, GlassTabBar } from './components/IphoneChrome.jsx'
+import GlassTabBar from './components/GlassTabBar.jsx'
 
 // Main sections. Receipt pages count as "Receipts"; the add form has no tab.
 const TABS = [
@@ -79,7 +78,7 @@ function TopNav() {
             )
           })}
         </div>
-        <div className="ml-auto flex items-center gap-2 min-w-0">
+        <div className="ml-auto flex flex-1 justify-end items-center gap-2 min-w-0">
           <Link
             to="/receipt/new"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-600 text-white text-sm font-semibold hover:bg-accent-700 transition shrink-0"
@@ -89,48 +88,6 @@ function TopNav() {
           </Link>
           <UserMenu />
         </div>
-      </div>
-    </nav>
-  )
-}
-
-// Phone-only bottom tab bar; the middle "+" adds a receipt
-function BottomTabs() {
-  const { pathname } = useLocation()
-  const iphoneMock = useIphoneMock()
-  const tab = t => {
-    const active = t.match(pathname)
-    return (
-      <Link
-        key={t.to}
-        to={t.to}
-        className={`flex flex-col items-center justify-center gap-0.5 h-full text-[11px] font-medium transition-colors ${active ? 'text-accent-600' : 'text-gray-400'}`}
-      >
-        <TabIcon d={t.icon} active={active} className="w-6 h-6" />
-        {t.label}
-      </Link>
-    )
-  }
-
-  if (iphoneMock) return <GlassTabBar tabs={TABS} TabIcon={TabIcon} PlusIcon={PlusIcon} />
-
-  return (
-    <nav
-      className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 select-none"
-      style={{ paddingBottom: 'var(--safe-bottom)' }}
-    >
-      <div className="grid grid-cols-5 h-16">
-        {TABS.slice(0, 2).map(tab)}
-        <div className="flex items-center justify-center">
-          <Link
-            to="/receipt/new"
-            aria-label="New receipt"
-            className="w-14 h-14 -mt-4 rounded-full bg-accent-600 text-white shadow-lg ring-4 ring-white flex items-center justify-center hover:bg-accent-700 active:scale-95 transition"
-          >
-            <PlusIcon className="w-7 h-7" />
-          </Link>
-        </div>
-        {TABS.slice(2).map(tab)}
       </div>
     </nav>
   )
@@ -163,7 +120,7 @@ function UserMenu() {
         className="flex items-center gap-2 max-w-full -mr-1.5 sm:mr-0 pl-2 pr-1.5 sm:px-3 py-1.5 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
       >
         {/* Phones: current group next to the circle */}
-        <span className="sm:hidden text-gray-600 truncate max-w-[45vw]">{group?.name}</span>
+        <span className="sm:hidden text-gray-600 truncate min-w-0">{group?.name}</span>
         <span className="w-7 h-7 shrink-0 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center text-xs font-bold">
           {(myName || '?').slice(0, 1).toUpperCase()}
         </span>
@@ -209,7 +166,6 @@ function SignedInApp() {
   const { user } = useSession()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const iphoneMock = useIphoneMock()
 
   useEffect(() => {
     const code = localStorage.getItem(PENDING_INVITE) || user.user_metadata?.pending_invite
@@ -230,7 +186,6 @@ function SignedInApp() {
 
   return (
     <div className={`min-h-screen bg-gray-50 pt-topnav sm:pb-12 ${showTabs ? 'pb-tabbar' : 'pb-12'}`}>
-      {iphoneMock && <IphoneStatusBar />}
       <TopNav />
       {/* Keyed by group so every page reloads its data when switching groups */}
       <Routes key={group?.id}>
@@ -248,7 +203,7 @@ function SignedInApp() {
         <Route path="/payments" element={<Redirect to="/balances" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {showTabs && <BottomTabs />}
+      {showTabs && <GlassTabBar tabs={TABS} TabIcon={TabIcon} PlusIcon={PlusIcon} />}
     </div>
   )
 }

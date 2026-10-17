@@ -38,22 +38,16 @@ input[type="search"]::-webkit-search-cancel-button {
   appearance: none;
 }
 
-/* Safe areas, overridable by iPhone screenshot mode (src/lib/iphoneMock.js),
-   which fakes an iPhone 16 Pro's status bar and home indicator insets */
+/* Safe areas (iOS notch / home indicator) */
 :root {
   --safe-top: env(safe-area-inset-top);
   --safe-bottom: env(safe-area-inset-bottom);
 }
-:root.iphone-mock {
-  --safe-top: 54px;
-  --safe-bottom: 34px;
-}
 
-/* Room for the phone bottom tab bar (h-16) + iOS home indicator */
+/* Room for the floating phone tab bar + iOS home indicator */
 @layer utilities {
   .pt-topnav { padding-top: calc(3.5rem + var(--safe-top)); }
   .pb-tabbar { padding-bottom: calc(5.5rem + var(--safe-bottom)); }
   .bottom-above-tabbar { bottom: calc(5rem + var(--safe-bottom)); }
 }
 
-.ios-font { font-family: -apple-system, "SF Pro Text", "SF Pro", system-ui, sans-serif; }
