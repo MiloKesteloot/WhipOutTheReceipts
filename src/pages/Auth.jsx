@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase, appBaseUrl } from '../lib/supabase.js'
 import { APP_NAME, APP_TAGLINE } from '../config.js'
 import { useSession } from '../lib/session.jsx'
+import { version as buildVersion } from '../buildVersion.json'
 
 const inputClass = 'w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-accent-400 text-gray-900'
 const primaryButton = 'w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50'
@@ -19,6 +20,7 @@ export function AuthShell({ title, subtitle, children }) {
           {subtitle && <p className="text-sm text-gray-400 mb-4">{subtitle}</p>}
           {children}
         </div>
+        <p className="mt-6 text-center text-xs text-gray-300">v{buildVersion}</p>
       </div>
     </div>
   )
