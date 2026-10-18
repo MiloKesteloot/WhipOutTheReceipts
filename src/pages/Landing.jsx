@@ -92,8 +92,8 @@ const FEATURES = [
   },
   {
     shot: 'phone-split', alt: 'Who owes what on a receipt, with an itemized breakdown per person',
-    title: 'Tax and tip, split properly',
-    body: "If you bought more, you pay more of the tax and tip. Everything is worked out to the cent, and leftover pennies are handed out so the totals add up to the receipt.",
+    title: 'Tax and tip',
+    body: "If you bought more, you pay more of the tax and tip.",
   },
   {
     shot: 'phone-dining', alt: 'A restaurant receipt grouped into one meal per person',

@@ -462,7 +462,8 @@ export default function Stats() {
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending by category</h2>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <div className="flex items-center gap-6">
+            {/* Phones: list under the chart (side by side doesn't fit) */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
               <div className="shrink-0">
                 <ResponsiveContainer width={160} height={160}>
                   <PieChart>
@@ -483,7 +484,7 @@ export default function Stats() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex-1 space-y-3">
+              <div className="w-full sm:flex-1 min-w-0 space-y-3">
                 {spendingByCategory.map(({ name, value }) => {
                   const total = spendingByCategory.reduce((s, c) => s + c.value, 0)
                   const pct = total > 0 ? (value / total) * 100 : 0
@@ -491,11 +492,11 @@ export default function Stats() {
                   return (
                     <div key={name}>
                       <div className="flex justify-between text-sm mb-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
-                          <span className="text-gray-700 font-medium">{name}</span>
+                          <span className="text-gray-700 font-medium truncate">{name}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-gray-500">
+                        <div className="flex items-center gap-2 text-gray-500 shrink-0">
                           <span>${value.toFixed(2)}</span>
                           <span className="text-xs text-gray-400">{pct.toFixed(0)}%</span>
                         </div>
