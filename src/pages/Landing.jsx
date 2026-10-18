@@ -65,20 +65,20 @@ function HeroVideo() {
 }
 
 const STEPS = [
-  ['Whoever pays adds the receipt', 'Type it in, or snap a photo and let AI read the items, prices, tax and tip.'],
-  ['Everyone checks off what they had', "Each person goes through it on their own phone. Shared things like paper towels split with everyone."],
-  ['Receipts does the math', 'Tax and tip are split in proportion to what each person bought, and the cents always add up.'],
+  ['Add the receipt', 'Whoever paid types it in or takes a photo, and the photo gets read into items and prices.'],
+  ['Check off what you had', 'Everyone goes through the list on their own phone. Things like paper towels can be set to split between everyone.'],
+  ['See what you owe', 'Each item is split between the people who checked it, and tax and tip are split by how much each person spent.'],
 ]
 
 // Kept true to how the app works: see receiptDebts (balances.js) for check-ins
 // and the row-level security policies for who can read a group's data
 const FAQ = [
-  ['Is it free?', 'Yes. There are no ads and nothing to pay for.'],
+  ['Is it free?', "Yes, it's free, and there are no ads."],
   ['Do my roommates need accounts?',
     "Roommates make a free account (Google or email) and join your group with its invite link. For someone who only joins now and then, anyone in the group can send them a guest link instead: they check off what they had without making an account."],
   ['Who can see our receipts?', "Only the people in your group. Nobody else can see your receipts, items or payments."],
   ['What if someone never checks in?',
-    "Nobody owes anything on a receipt until everyone on it has checked in. The receipt and the home page show who it's still waiting on, so you know who to nudge."],
+    "Nobody owes anything on a receipt until everyone on it has checked in. The receipt and the home page show who it's still waiting on, so you know who to remind."],
   ['How does scanning a receipt work?',
     "Take a photo and Google's Gemini AI reads the store, items, prices, tax and tip into the form, for you to check before saving. It uses your own free API key from Google AI Studio, which you add once in Settings. You can always type a receipt in instead."],
   ['Does it work on my phone?', 'Yes, in any browser. Add it to your home screen and it opens like an app.'],
@@ -87,23 +87,23 @@ const FAQ = [
 const FEATURES = [
   {
     shot: 'phone-claim', alt: "A Trader Joe's receipt with items checked off and a running total",
-    title: 'Only pay for what you actually had',
-    body: "Splitting a grocery run evenly never feels fair, because nobody eats the same things. With Receipts, everyone checks off their own items and sees their total add up as they go.",
+    title: 'Everyone checks off their own items',
+    body: "Splitting a grocery run evenly doesn't really work, because nobody buys the same things. Each person checks off what's theirs and sees their total update as they go.",
   },
   {
     shot: 'phone-split', alt: 'Who owes what on a receipt, with an itemized breakdown per person',
-    title: 'Tax, tip and the last penny',
-    body: "Each item is split between the people who had it. Tax and tip are spread out by what each person bought, and leftover cents are handed out so every total adds up exactly.",
+    title: 'Tax and tip, split properly',
+    body: "If you bought more, you pay more of the tax and tip. Everything is worked out to the cent, and leftover pennies are handed out so the totals add up to the receipt.",
   },
   {
     shot: 'phone-dining', alt: 'A restaurant receipt grouped into one meal per person',
-    title: 'Dinners out, too',
-    body: 'Group a restaurant bill into meals, so each person grabs their whole order in one tap, with their share of the tip.',
+    title: 'Restaurant bills',
+    body: 'Group a dinner bill by person, so everyone can check off their whole order at once, along with their part of the tip.',
   },
   {
     shot: 'phone-payments', alt: 'Balances: who you owe, who owes you, and payment history',
-    title: 'Settle up without the awkward texts',
-    body: 'See who owes who at a glance. Debts in opposite directions cancel out, so you only ever pay the difference. Mark a payment as sent and it shows up for both of you.',
+    title: 'Paying each other back',
+    body: "Your balances show who you owe and who owes you across every receipt. If two people owe each other, it cancels out and only the difference is left. When you pay someone, mark it as sent and it updates for both of you.",
   },
 ]
 
@@ -125,15 +125,14 @@ export default function Landing() {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-16 sm:pt-16 sm:pb-24 grid md:grid-cols-[1.1fr_0.9fr] gap-10 md:gap-8 items-center">
-          <div className="text-center md:text-left">
+          <div className="relative z-10 text-center md:text-left">
             <h1 className="font-extrabold tracking-tight">
-              <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.75rem)] leading-[1.08]">Split the groceries.</span>
-              <span className="block text-[clamp(1.75rem,8.4vw,3.75rem)] leading-[1.08]"><span className="text-accent-600">Fairly</span>, to the cent.</span>
-              <span className="block mt-3 text-base sm:text-lg font-semibold tracking-normal text-gray-500">The receipt splitter for roommates</span>
+              <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08]">Split grocery receipts</span>
+              <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08] text-accent-600">with your roommates</span>
             </h1>
             <p className="mt-4 sm:mt-6 text-lg sm:text-xl text-gray-600 max-w-xl mx-auto md:mx-0">
-              Whoever pays adds the receipt. Everyone checks off what they had.
-              Receipts works out who owes who, so nobody has to do receipt math again.
+              One person pays and adds the receipt. Everyone else checks off what they had,
+              and the app works out what each person owes, tax and tip included.
             </p>
             <div className="mt-6 sm:mt-8 flex gap-3 justify-center md:justify-start">
               <Link to="/signup" className={`${primaryCta} flex-1 sm:flex-none`}>Get started</Link>
@@ -187,8 +186,8 @@ export default function Landing() {
       <section className="bg-gray-50 border-y border-gray-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">See where the money goes</h2>
-            <p className="mt-4 text-lg text-gray-600">Every item is tracked, so there's a lot to look at: spending by month, category and store, the most bought items, and what each person paid compared to what they used.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Spending stats</h2>
+            <p className="mt-4 text-lg text-gray-600">Because every item is tracked, you can see spending by month, category and store, what gets bought most, and how much each person has paid compared to what they actually used.</p>
           </div>
           <div className="mt-10 flex justify-center sm:hidden">
             <PhoneShot name="phone-stats" alt="Stats on a phone: what each person paid compared to what they used" className="w-[240px]" />
@@ -222,8 +221,8 @@ export default function Landing() {
 
       {/* Closing call to action */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 text-center">
-        <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight">Done doing receipt math?</h2>
-        <p className="mt-4 text-lg text-gray-600">Make a group, send your roommates the invite link, and add your first receipt.</p>
+        <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight">Try it with your roommates</h2>
+        <p className="mt-4 text-lg text-gray-600">Make a group, send everyone the invite link, and add your first receipt.</p>
         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
           <Link to="/signup" className={primaryCta}>Get started</Link>
           <Link to="/signin" className={secondaryCta}>I already have an account</Link>

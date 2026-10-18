@@ -12,9 +12,9 @@ const primaryButton = 'w-full py-3 bg-accent-600 text-white font-semibold rounde
 
 // Short version of the landing page, under the sign-in form
 const PITCH = [
-  'Whoever pays adds the receipt',
+  'Whoever paid adds the receipt',
   'Everyone checks off what they had',
-  'Receipts works out who owes who, to the cent',
+  'The app works out what each person owes',
 ]
 
 function Pitch() {

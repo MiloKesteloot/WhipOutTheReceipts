@@ -9,12 +9,12 @@
   body {
     width: 1200px; height: 630px; overflow: hidden; position: relative;
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif; color: #111827;
-    background: radial-gradient(900px 500px at 85% 15%, #dcfce7 0%, transparent 60%), #ffffff;
+    background: radial-gradient(800px 600px at 77% 57%, #bbf7d0 0%, #dcfce7 40%, transparent 70%), #ffffff; /* glow centered behind the phones */
   }
   .text { position: absolute; left: 80px; top: 0; bottom: 0; width: 560px; display: flex; flex-direction: column; justify-content: center; }
   .brand { display: flex; align-items: center; gap: 14px; font-size: 34px; font-weight: 700; }
   .brand img { width: 52px; height: 52px; }
-  h1 { margin-top: 34px; font-size: 64px; line-height: 1.04; font-weight: 800; letter-spacing: -0.03em; }
+  h1 { margin-top: 34px; font-size: 76px; line-height: 1.04; font-weight: 800; letter-spacing: -0.03em; }
   h1 span { color: #16a34a; }
   p { margin-top: 24px; font-size: 26px; line-height: 1.4; color: #4b5563; }
   .phone { position: absolute; width: 270px; border-radius: 40px; background: #111827; padding: 9px; box-shadow: 0 30px 60px rgb(17 24 39 / 0.25); }
@@ -26,8 +26,8 @@
 <body>
   <div class="text">
     <div class="brand"><img src="{{icon}}" alt="">Receipts</div>
-    <h1>Split the groceries.<br><span>Fairly</span>, to the cent.</h1>
-    <p>Everyone checks off what they had. Receipts works out who owes who.</p>
+    <h1>Pay for<br><span>what you ate</span></h1>
+    <p>Everyone checks off what they had, and the app works out what each person owes.</p>
   </div>
   <div class="phone back"><img src="{{shots}}/phone-split.png" alt=""></div>
   <div class="phone front"><img src="{{shots}}/phone-claim.png" alt=""></div>

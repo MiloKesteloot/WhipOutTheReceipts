@@ -171,8 +171,9 @@ async function seed({ url, serviceKey }) {
 
     // Settled debts: paid back in full a day or two later
     if (r.settled.length) {
+      // Same created_at as the stored receipt, so the app rounds it the same way
       const debts = calculateDebts(
-        [{ id: 'r', paid_by: r.paidBy, tip: r.tip, tax: r.tax, fees: r.fees }],
+        [{ id: 'r', paid_by: r.paidBy, tip: r.tip, tax: r.tax, fees: r.fees, created_at: at(r.date, 0) }],
         r.items.map((it, i) => ({ id: i, receipt_id: 'r', meal_id: it.meal, price: it.price })),
         r.items.flatMap((it, i) => it.claimedBy.map(roommate => ({ item_id: i, roommate }))),
         r.meals.map(m => ({ id: m.name, receipt_id: 'r', fee: m.fee })),
