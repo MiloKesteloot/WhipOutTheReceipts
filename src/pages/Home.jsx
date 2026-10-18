@@ -4,13 +4,15 @@ import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
 import { claimersByReceipt, receiptsToCheckOff } from '../lib/receiptStatus.js'
 import BalanceRows from '../components/BalanceRows.jsx'
+import LoadError from '../components/LoadError.jsx'
 
 // Home = what needs you: receipts to check off and where your balances stand.
 // Browsing receipts lives on /receipts, settling up on /balances.
 export default function Home() {
   const { myName } = useGroup()
-  const { loading, data, balances, reload } = useBalances()
+  const { loading, error, data, balances, reload } = useBalances()
 
+  if (error && !data) return <LoadError onRetry={reload} />
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
 
   const unchecked = receiptsToCheckOff(data, claimersByReceipt(data), myName)

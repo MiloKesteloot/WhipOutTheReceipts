@@ -108,7 +108,18 @@ export function GroupProvider({ children }) {
 
     // Map names -> member ids, adding unknown names to the group as guests
     async function ensureMemberIds(nameList) {
-      const wanted = nameList.map(n => String(n || '').trim()).filter(Boolean)
+      // A bare first name ("Alex") matches the one person with it; if several
+      // share it ("Alex K." / "Alex M."), ask which instead of adding a third
+      const byFirst = name => withNames.filter(m => m.active && m.first_name.trim().toLowerCase() === name.toLowerCase())
+      const wanted = nameList.map(n => String(n || '').trim()).filter(Boolean).map(n => {
+        if (idOf(n)) return n
+        const matches = byFirst(n)
+        if (matches.length === 1) return matches[0].displayName
+        if (matches.length > 1) {
+          throw new Error(`There's more than one ${titleCase(n)}: ${matches.map(m => m.displayName).join(', ')}. Use the full name.`)
+        }
+        return n
+      })
       const missing = [...new Set(wanted.filter(n => !idOf(n)).map(titleCase))]
       const created = new Map()
       if (missing.length) {

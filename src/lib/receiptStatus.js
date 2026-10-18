@@ -31,10 +31,11 @@ export function claimersByReceipt({ items, claims, checkins }) {
   return out
 }
 
-// { receiptId: total } = items + tip + tax + fees
-export function receiptTotals({ receipts, items }) {
+// { receiptId: total } = items + tip + tax + fees + meal fees
+export function receiptTotals({ receipts, items, meals = [] }) {
   const itemSum = {}
   for (const i of items) itemSum[i.receipt_id] = (itemSum[i.receipt_id] || 0) + Number(i.price || 0)
+  for (const m of meals) itemSum[m.receipt_id] = (itemSum[m.receipt_id] || 0) + Number(m.fee || 0)
   const out = {}
   for (const r of receipts) {
     out[r.id] = (itemSum[r.id] || 0) + Number(r.tip || 0) + Number(r.tax || 0) + Number(r.fees || 0)

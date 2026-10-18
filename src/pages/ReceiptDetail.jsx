@@ -27,7 +27,7 @@ export default function ReceiptDetail() {
   const [items, setItems] = useState([])
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
-  const { group, switchGroup, myName, myMember, nameOf, idOf, coreNames: coreRoommates, ensureMemberIds } = useGroup()
+  const { group, switchGroup, myName, myMember, nameOf, idOf } = useGroup()
   const [myClaims, setMyClaims] = useState(new Set())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -39,9 +39,6 @@ export default function ReceiptDetail() {
   const [settling, setSettling] = useState(false)
   const [checkins, setCheckins] = useState([])
   const [isDirty, setIsDirty] = useState(false)
-  const [editingMembers, setEditingMembers] = useState(false)
-  const [membersEdit, setMembersEdit] = useState([])
-  const [memberInput, setMemberInput] = useState('')
   const claimsLoadedRef = useRef(false)
   const { confirm, showAlert, DialogUI } = useDialog()
   const bal = useBalances()
@@ -86,7 +83,10 @@ export default function ReceiptDetail() {
     if (!myName || items.length === 0) return
     const mine = claims.filter(c => c.roommate === myName).map(c => c.item_id)
     const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
-    const hasEverSaved = !!localStorage.getItem(`claimed-receipt-${receiptId}-${myMember?.id}`)
+    // Checked in before (on any device: the check-in is in the database) →
+    // show exactly what I claimed. Only a first visit starts with everything checked.
+    const checkedIn = checkins.some(c => c.member_id === myMember?.id)
+    const hasEverSaved = checkedIn || !!localStorage.getItem(`claimed-receipt-${receiptId}-${myMember?.id}`)
     if (mine.length > 0 || hasEverSaved) {
       setMyClaims(new Set([...mine, ...alwaysSplitIds]))
     } else {
@@ -94,7 +94,7 @@ export default function ReceiptDetail() {
     }
     claimsLoadedRef.current = true
     setIsDirty(false)
-  }, [myName, claims, items, receiptId])
+  }, [myName, claims, items, checkins, receiptId])
 
   function toggleClaim(itemId) {
     if (!myName) return
@@ -147,6 +147,14 @@ export default function ReceiptDetail() {
     try {
       await syncMyClaims(myMember.id, itemIds, currentMine, myClaims)
       await ensureCheckin(myMember.id, receiptId)
+      // Checking things off a receipt puts you on it (when it has a member list)
+      const memberIds = receipt.member_ids || []
+      if (memberIds.length && !memberIds.includes(myMember.id) && myClaims.size > 0) {
+        const nextIds = [...memberIds, myMember.id]
+        const { error } = await supabase.from('receipts').update({ member_ids: nextIds }).eq('id', receiptId)
+        if (error) throw error
+        setReceipt(r => ({ ...r, member_ids: nextIds, members: nextIds.map(nameOf) }))
+      }
       bal.reload()
     } catch (err) {
       setSaving(false)
@@ -200,8 +208,12 @@ export default function ReceiptDetail() {
     const last = [...linked].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0]
     if (!last) return
     setSettling(true)
-    await deletePayment(last.id)
-    await bal.reload()
+    try {
+      await deletePayment(last.id)
+      await bal.reload()
+    } catch (err) {
+      await showAlert(err.message, { title: 'Could not undo' })
+    }
     setSettling(false)
   }
 
@@ -216,7 +228,8 @@ export default function ReceiptDetail() {
     if (!await confirm('It will be hidden for everyone. You can restore it later from this page, and the change is recorded in its history.', {
       title: 'Delete receipt?', confirmLabel: 'Delete', danger: true,
     })) return
-    await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
+    const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
+    if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
     navigate('/')
   }
 
@@ -226,32 +239,25 @@ export default function ReceiptDetail() {
     setReceipt(r => ({ ...r, deleted_at: null }))
   }
 
-  async function saveMembers(newMembers) {
-    const ids = await ensureMemberIds(newMembers)
-    await supabase.from('receipts').update({ member_ids: ids }).eq('id', receiptId)
-    setReceipt(r => ({ ...r, member_ids: ids, members: ids.map(nameOf) }))
-    setEditingMembers(false)
-    setMemberInput('')
-  }
-
   function copyLink() {
     navigator.clipboard.writeText(window.location.href)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const countedClaims = claims
   const syntheticClaims = myName ? [
-    ...claims.filter(c => c.roommate !== myName),
+    ...countedClaims.filter(c => c.roommate !== myName),
     ...[...myClaims].map(item_id => ({ item_id, roommate: myName })),
-  ] : claims
+  ] : countedClaims
   const receiptArr = receipt ? [receipt] : []
   const runningTotal = myName
     ? calculateDebts(receiptArr, items, syntheticClaims, meals)
         .filter(d => d.debtor === myName)
         .reduce((s, d) => s + d.amount, 0)
     : 0
-  const debts = calculateDebts(receiptArr, items, claims, meals)
-  const breakdown = getItemizedBreakdown(receiptArr, items, claims, meals)
+  const debts = calculateDebts(receiptArr, items, countedClaims, meals)
+  const breakdown = getItemizedBreakdown(receiptArr, items, countedClaims, meals)
 
   const checkinNames = new Set(checkins.map(c => c.roommate.toLowerCase()))
   const claimerNames = new Set(claims.map(c => c.roommate.toLowerCase()))
@@ -388,63 +394,7 @@ export default function ReceiptDetail() {
 
       {/* Members */}
       <div className="mt-3 mb-4">
-        {editingMembers ? (
-          <div className="bg-white border border-gray-200 rounded-xl p-3">
-            <p className="text-sm font-medium text-gray-700 mb-2">Who's on this receipt?</p>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {[...new Set([...coreRoommates, ...(receipt.members || [])])].map(name => {
-                const selected = membersEdit.includes(name)
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => setMembersEdit(prev =>
-                      prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]
-                    )}
-                    className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
-                      selected ? 'bg-accent-600 text-white border-accent-600' : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
-                    }`}
-                  >
-                    {name}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={memberInput}
-                onChange={e => setMemberInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    const name = memberInput.trim()
-                    if (name && !membersEdit.includes(name)) setMembersEdit(prev => [...prev, name])
-                    setMemberInput('')
-                  }
-                }}
-                placeholder="Add someone…"
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => saveMembers(membersEdit)}
-                className="px-4 py-1.5 bg-accent-600 text-white text-sm font-medium rounded-lg hover:bg-accent-700 transition"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => { setEditingMembers(false); setMemberInput('') }}
-                className="px-4 py-1.5 text-gray-600 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <span className="text-sm text-gray-500">Members: {(receipt.members || []).join(', ') || 'none'}</span>
-        )}
+        <span className="text-sm text-gray-500">Members: {(receipt.members || []).join(', ') || 'none'}</span>
       </div>
 
       {/* Waiting on */}
@@ -606,6 +556,11 @@ export default function ReceiptDetail() {
         <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 space-y-4">
           <div>
             <h3 className="font-semibold text-gray-800 mb-2">Who owes what</h3>
+            {!receiptComplete && (
+              <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
+                Not final yet: these amounts count toward balances once everyone on the receipt has checked in.
+              </p>
+            )}
             {debts.length === 0 ? (
               <p className="text-gray-400 text-sm">No debts — everyone paid their own items or nothing has been claimed.</p>
             ) : (

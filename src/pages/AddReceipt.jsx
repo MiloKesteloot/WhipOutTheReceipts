@@ -18,6 +18,12 @@ function newItem(dbId = null) {
   return { id: crypto.randomUUID(), dbId, name: '', price: '', always_split: false, meal_local_id: null }
 }
 
+// Today as YYYY-MM-DD in the device's time zone (not UTC)
+function localToday() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const isBlankItem = item => !item.name.trim() && item.price === ''
 const containerOf = item => item.meal_local_id || UNGROUPED
 
@@ -44,7 +50,7 @@ export default function AddReceipt() {
 
   const [storeName, setStoreName] = useState('')
   const [paidBy, setPaidBy] = useState('')
-  const { group, switchGroup, members, myName, coreNames: coreRoommates, nameOf, ensureMemberIds } = useGroup()
+  const { group, switchGroup, members, myName, myMember, coreNames: coreRoommates, nameOf, ensureMemberIds } = useGroup()
   const knownNames = members.filter(m => m.active).map(m => m.displayName)
   const [paidByOpen, setPaidByOpen] = useState(false)
   const paidByRef = useRef(null)
@@ -52,9 +58,10 @@ export default function AddReceipt() {
   const [meals, setMeals] = useState([])
   const [originalDbIds, setOriginalDbIds] = useState(new Set())
   const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
+  const [originalMemberIds, setOriginalMemberIds] = useState([])
   const [category, setCategory] = useState('Groceries')
   const [receiptDate, setReceiptDate] = useState(() => {
-    if (!receiptId) return searchParams.get('date') || new Date().toISOString().slice(0, 10)
+    if (!receiptId) return searchParams.get('date') || localToday()
     return ''
   })
   const [receiptMembers, setReceiptMembers] = useState([])
@@ -95,6 +102,7 @@ export default function AddReceipt() {
           setFees(receipt.fees ? String(receipt.fees) : '')
           if (receipt.receipt_date) setReceiptDate(receipt.receipt_date)
           setReceiptMembers(receipt.members || core)
+          setOriginalMemberIds(row.member_ids || [])
         }
 
         const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
@@ -217,24 +225,12 @@ Rules:
       }
       const results = await Promise.all(Array.from(files).map(f => scanOneFile(f, apiKey)))
 
-      // Use store name + category from the first result that has them
-      const firstStore = results.find(r => r.store_name)
-      const firstCat = results.find(r => r.category)
-      if (firstStore?.store_name) { setStoreName(toTitleCase(firstStore.store_name)); setErrors(v => ({ ...v, storeName: undefined })) }
-      if (firstCat?.category && ['Groceries', 'Dining', 'Transportation', 'Misc'].includes(firstCat.category)) {
-        setCategory(firstCat.category)
-      }
+      // Scanning adds to the receipt; it never removes what's already there.
+      // With items already entered, it only fills in fields that are empty.
+      const hasItems = lineItems.some(i => !isBlankItem(i))
+      const fillIfEmpty = (current, set, value) => { if (value && (!hasItems || !String(current).trim())) set(value) }
 
-      // Sum tip/tax/fees across all results (handles multi-page receipts)
-      const totalTip = results.reduce((s, r) => s + (r.tip || 0), 0)
-      const totalTax = results.reduce((s, r) => s + (r.tax || 0), 0)
-      const totalFees = results.reduce((s, r) => s + (r.fees || 0), 0)
-      if (totalTip > 0) setTip(String(totalTip.toFixed(2)))
-      if (totalTax > 0) setTax(String(totalTax.toFixed(2)))
-      if (totalFees > 0) setFees(String(totalFees.toFixed(2)))
-
-      // Group results by store name — photos of the same receipt share the same store name.
-      // Deduplicate within each group (same receipt, multiple photos) but not across groups.
+      // Photos of the same receipt share a store name
       const groups = new Map()
       for (const result of results) {
         const storeKey = String(result.store_name || '').toLowerCase().trim() || '__unknown__'
@@ -242,19 +238,43 @@ Rules:
         groups.get(storeKey).push(result)
       }
 
+      // Store name + category from the first result that has them
+      const firstStore = results.find(r => r.store_name)
+      const firstCat = results.find(r => r.category)
+      if (firstStore?.store_name) { fillIfEmpty(storeName, setStoreName, toTitleCase(firstStore.store_name)); setErrors(v => ({ ...v, storeName: undefined })) }
+      if (firstCat?.category && ['Groceries', 'Dining', 'Transportation', 'Misc'].includes(firstCat.category) && !hasItems) {
+        setCategory(firstCat.category)
+      }
+
+      // Tip/tax/fees: photos of one receipt each show the same totals, so take
+      // the largest per receipt (not the sum), then add up different receipts
+      const extra = field => [...groups.values()].reduce((sum, rs) => sum + Math.max(0, ...rs.map(r => Number(r[field]) || 0)), 0)
+      const [totalTip, totalTax, totalFees] = [extra('tip'), extra('tax'), extra('fees')]
+      if (totalTip > 0) fillIfEmpty(tip, setTip, totalTip.toFixed(2))
+      if (totalTax > 0) fillIfEmpty(tax, setTax, totalTax.toFixed(2))
+      if (totalFees > 0) fillIfEmpty(fees, setFees, totalFees.toFixed(2))
+
+      // Items: an item listed twice on one photo is two items. Across photos
+      // of the same receipt (overlapping shots), keep the most times any one
+      // photo shows it, so overlaps aren't counted twice.
       const merged = []
       for (const groupResults of groups.values()) {
-        const seen = new Set()
+        const keep = new Map() // key -> { count, name, price }
         for (const result of groupResults) {
+          const counts = new Map()
           for (const item of (result.items || [])) {
-            const key = String(item.name || '').toLowerCase().replace(/\s+/g, ' ').trim()
-            if (!key || seen.has(key) || !Number(item.price)) continue
-            seen.add(key)
-            merged.push({
-              ...newItem(),
-              name: toTitleCase(String(item.name || '')),
-              price: String(Number(item.price || 0).toFixed(2)),
-            })
+            const name = String(item.name || '').trim()
+            const price = Number(item.price)
+            if (!name || !price) continue
+            const key = `${name.toLowerCase().replace(/\s+/g, ' ')}|${price.toFixed(2)}`
+            counts.set(key, (counts.get(key) || 0) + 1)
+            if (!keep.has(key)) keep.set(key, { count: 0, name, price })
+          }
+          for (const [key, n] of counts) keep.get(key).count = Math.max(keep.get(key).count, n)
+        }
+        for (const { count, name, price } of keep.values()) {
+          for (let n = 0; n < count; n++) {
+            merged.push({ ...newItem(), name: toTitleCase(name), price: price.toFixed(2) })
           }
         }
       }
@@ -282,7 +302,7 @@ Rules:
       const finalItems = merged.filter(i => !cancelledIds.has(i.id))
 
       if (finalItems.length > 0) {
-        setLineItems(withBlankRows(finalItems, mealIdsRef.current))
+        setLineItems(prev => withBlankRows([...prev.filter(i => !isBlankItem(i)), ...finalItems], mealIdsRef.current))
         setErrors(v => ({ ...v, items: undefined }))
         markDirty()
       } else {
@@ -447,18 +467,27 @@ Rules:
 
   function validate() {
     const errs = {}
+    if (!receiptDate) errs.receiptDate = 'Pick the date of the receipt.'
     if (!storeName.trim()) errs.storeName = 'Store name is required.'
     if (!paidBy.trim()) errs.paidBy = 'Payer name is required.'
     if (filledItems().length === 0) errs.items = 'Add at least one item.'
     filledItems().forEach(item => {
       if (!item.name.trim()) errs[`name-${item.id}`] = 'Required'
       const p = parseFloat(item.price)
-      if (isNaN(p) || p < 0) errs[`price-${item.id}`] = 'Invalid'
+      if (isNaN(p)) errs[`price-${item.id}`] = 'Invalid'
     })
     meals.forEach(meal => {
       if (!meal.name.trim()) errs[`meal-${meal.local_id}`] = 'Meal name required'
     })
     return errs
+  }
+
+  // Every database step is checked: a failure stops the save and says so,
+  // instead of half-saving and moving on as if it worked
+  async function must(query, what) {
+    const { data, error } = await query
+    if (error) throw new Error(`${what}: ${error.message}`)
+    return data
   }
 
   async function saveMeals(receiptDbId) {
@@ -468,20 +497,29 @@ Rules:
 
     // Insert new meals in bulk and get back their IDs
     if (newMeals.length > 0) {
-      const { data } = await supabase.from('meals')
+      const rows = await must(supabase.from('meals')
         .insert(newMeals.map(m => ({ receipt_id: receiptDbId, name: m.name.trim(), fee: parseFloat(m.fee) || 0 })))
-        .select()
-      ;(data || []).forEach((row, i) => mealLocalToDbId.set(newMeals[i].local_id, row.id))
+        .select(), 'Could not save meals')
+      rows.forEach((row, i) => mealLocalToDbId.set(newMeals[i].local_id, row.id))
     }
 
     // Update existing meals
     for (const meal of existingMeals) {
-      await supabase.from('meals').update({ name: meal.name.trim(), fee: parseFloat(meal.fee) || 0 }).eq('id', meal.dbId)
+      await must(supabase.from('meals').update({ name: meal.name.trim(), fee: parseFloat(meal.fee) || 0 }).eq('id', meal.dbId), 'Could not update a meal')
       mealLocalToDbId.set(meal.local_id, meal.dbId)
     }
 
     return mealLocalToDbId
   }
+
+  const itemRow = (item, receiptDbId, mealLocalToDbId, position) => ({
+    receipt_id: receiptDbId,
+    name: item.name.trim(),
+    price: parseFloat(item.price),
+    always_split: item.always_split,
+    meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
+    position,
+  })
 
   async function handleSave(e) {
     e.preventDefault()
@@ -498,99 +536,83 @@ Rules:
       await showAlert(err.message, { title: 'Error saving people' }); setSaving(false); return
     }
 
+    const receiptFields = {
+      store_name: storeName.trim(), paid_by_member: paidById, category,
+      tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0,
+      receipt_date: receiptDate, member_ids: memberIds,
+    }
+
     if (isEditing) {
-      const updatePayload = {
-        store_name: storeName.trim(), paid_by_member: paidById, category,
-        tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0,
-        receipt_date: receiptDate || null, member_ids: memberIds,
+      try {
+        await must(supabase.from('receipts').update(receiptFields).eq('id', receiptId), 'Could not update the receipt')
+        const mealLocalToDbId = await saveMeals(receiptId)
+
+        // Delete removed meals
+        const survivingMealDbIds = new Set(meals.filter(m => m.dbId).map(m => m.dbId))
+        const mealsToDelete = [...originalMealDbIds].filter(id => !survivingMealDbIds.has(id))
+        if (mealsToDelete.length > 0) {
+          await must(supabase.from('meals').update({ deleted_at: new Date().toISOString() }).in('id', mealsToDelete), 'Could not remove meals')
+        }
+
+        const filled = filledItems()
+        const position = new Map(filled.map((item, i) => [item.id, i]))
+        const toUpdate = filled.filter(i => i.dbId)
+        for (const item of toUpdate) {
+          const { receipt_id, ...fields } = itemRow(item, receiptId, mealLocalToDbId, position.get(item.id))
+          await must(supabase.from('items').update(fields).eq('id', item.dbId), `Could not update "${item.name.trim()}"`)
+        }
+
+        const toInsert = filled.filter(i => !i.dbId)
+        if (toInsert.length > 0) {
+          await must(supabase.from('items').insert(toInsert.map(item => itemRow(item, receiptId, mealLocalToDbId, position.get(item.id)))), 'Could not add new items')
+        }
+
+        const survivingDbIds = new Set(toUpdate.map(i => i.dbId))
+        const toDelete = [...originalDbIds].filter(id => !survivingDbIds.has(id))
+        if (toDelete.length > 0) {
+          await must(supabase.from('items').update({ deleted_at: new Date().toISOString() }).in('id', toDelete), 'Could not remove items')
+        }
+
+        // People taken off the receipt: their check-offs and check-in go too,
+        // so they don't keep owing on it
+        const removed = originalMemberIds.filter(id => !memberIds.includes(id) && id !== paidById)
+        if (removed.length > 0 && originalDbIds.size > 0) {
+          await must(supabase.from('claims').delete().in('member_id', removed).in('item_id', [...originalDbIds]), `Could not clear removed people's check-offs`)
+          await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).in('member_id', removed), `Could not clear removed people's check-ins`)
+        }
+
+        // New items: everyone else checks in again, so they see the new items
+        // and nothing lands on the payer unnoticed
+        if (toInsert.length > 0 && myMember) {
+          await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).neq('member_id', myMember.id), 'Could not ask everyone to check in again')
+        }
+      } catch (err) {
+        await showAlert(`${err.message}. Some changes may not have saved; check the receipt and try again.`, { title: 'Error saving receipt' })
+        setSaving(false)
+        return
       }
-      const { error: updateErr } = await supabase
-        .from('receipts')
-        .update(updatePayload)
-        .eq('id', receiptId)
-      if (updateErr) { await showAlert(updateErr.message, { title: 'Error updating receipt' }); setSaving(false); return }
-
-      const mealLocalToDbId = await saveMeals(receiptId)
-
-      // Delete removed meals
-      const survivingMealDbIds = new Set(meals.filter(m => m.dbId).map(m => m.dbId))
-      const mealsToDelete = [...originalMealDbIds].filter(id => !survivingMealDbIds.has(id))
-      if (mealsToDelete.length > 0) {
-        await supabase.from('meals').update({ deleted_at: new Date().toISOString() }).in('id', mealsToDelete)
-      }
-
-      const filled = filledItems()
-      const position = new Map(filled.map((item, i) => [item.id, i]))
-      const toUpdate = filled.filter(i => i.dbId)
-      for (const item of toUpdate) {
-        await supabase.from('items')
-          .update({
-            name: item.name.trim(),
-            price: parseFloat(item.price),
-            always_split: item.always_split,
-            meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
-            position: position.get(item.id),
-          })
-          .eq('id', item.dbId)
-      }
-
-      const toInsert = filled.filter(i => !i.dbId)
-      if (toInsert.length > 0) {
-        await supabase.from('items').insert(
-          toInsert.map(item => ({
-            receipt_id: receiptId,
-            name: item.name.trim(),
-            price: parseFloat(item.price),
-            always_split: item.always_split,
-            meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
-            position: position.get(item.id),
-          }))
-        )
-      }
-
-      const survivingDbIds = new Set(toUpdate.map(i => i.dbId))
-      const toDelete = [...originalDbIds].filter(id => !survivingDbIds.has(id))
-      if (toDelete.length > 0) {
-        await supabase.from('items').update({ deleted_at: new Date().toISOString() }).in('id', toDelete)
-      }
-    } else {
-      const insertPayload = {
-        group_id: group.id,
-        store_name: storeName.trim(),
-        paid_by_member: paidById,
-        category,
-        tip: parseFloat(tip) || 0,
-        tax: parseFloat(tax) || 0,
-        fees: parseFloat(fees) || 0,
-        receipt_date: receiptDate || null,
-        member_ids: memberIds,
-      }
-      const { data: receipt, error: receiptErr } = await supabase
-        .from('receipts')
-        .insert(insertPayload)
-        .select()
-        .single()
-      if (receiptErr) { await showAlert(receiptErr.message, { title: 'Error saving receipt' }); setSaving(false); return }
-
-      const mealLocalToDbId = await saveMeals(receipt.id)
-
-      const { error: itemsErr } = await supabase.from('items').insert(
-        filledItems().map((item, i) => ({
-          receipt_id: receipt.id,
-          name: item.name.trim(),
-          price: parseFloat(item.price),
-          always_split: item.always_split,
-          meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
-          position: i,
-        }))
-      )
-      if (itemsErr) { await showAlert(itemsErr.message, { title: 'Error saving items' }); setSaving(false); return }
-
-      navigate(`/receipt/${receipt.id}`)
+      navigate(`/receipt/${receiptId}`)
       return
     }
 
-    navigate(`/receipt/${receiptId}`)
+    let receipt
+    try {
+      receipt = await must(supabase.from('receipts').insert({ group_id: group.id, ...receiptFields }).select().single(), 'Could not save the receipt')
+    } catch (err) {
+      await showAlert(err.message, { title: 'Error saving receipt' }); setSaving(false); return
+    }
+    try {
+      const mealLocalToDbId = await saveMeals(receipt.id)
+      await must(supabase.from('items').insert(filledItems().map((item, i) => itemRow(item, receipt.id, mealLocalToDbId, i))), 'Could not save the items')
+    } catch (err) {
+      // Undo the half-made receipt and stay on the form, so everything typed
+      // is still here to try again
+      await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receipt.id)
+      await showAlert(`${err.message}. Nothing was saved; try again.`, { title: 'Error saving receipt' })
+      setSaving(false)
+      return
+    }
+    navigate(`/receipt/${receipt.id}`)
   }
 
   async function handleDelete() {
@@ -599,7 +621,8 @@ Rules:
       confirmLabel: 'Delete',
       danger: true,
     })) return
-    await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
+    const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
+    if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
     navigate('/')
   }
 
@@ -628,7 +651,6 @@ Rules:
             <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
             <input
               type="number"
-              min="0"
               step="0.01"
               value={item.price}
               onChange={e => { updateItem(item.id, 'price', e.target.value); setErrors(v => ({ ...v, [`price-${item.id}`]: undefined })) }}
@@ -718,9 +740,10 @@ Rules:
           <input
             type="date"
             value={receiptDate}
-            onChange={e => { markDirty(); setReceiptDate(e.target.value) }}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400"
+            onChange={e => { markDirty(); setReceiptDate(e.target.value); setErrors(v => ({ ...v, receiptDate: undefined })) }}
+            className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.receiptDate ? 'border-red-400' : 'border-gray-300'}`}
           />
+          {errors.receiptDate && <p className="text-xs text-red-500 mt-1">{errors.receiptDate}</p>}
         </div>
 
         {/* Members */}

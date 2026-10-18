@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useGroup } from '../lib/group.jsx'
 import { loadReceipts, loadItems, loadClaims, loadMeals } from '../lib/db.js'
 import { CATEGORIES, CHART_TRIP_NAME_LENGTH } from '../config.js'
+import { calculateDebts } from '../lib/splitLogic.js'
+import LoadError from '../components/LoadError.jsx'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Legend, LineChart, Line, PieChart, Pie, Cell,
@@ -37,82 +39,34 @@ function colorFor(index) {
 }
 const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
 
+// What each person actually consumed, using the same split as Balances:
+// a person's share of a receipt is what they owe the payer for it, and the
+// payer consumed everything else (their own items, unclaimed items, and the
+// rest of the tax/tip/fees).
 function computeConsumption(receipts, items, claims, meals) {
-  const payerByReceipt = {}
-  const tipTaxFeesByReceipt = {}
-  for (const r of receipts) {
-    payerByReceipt[r.id] = r.paid_by
-    tipTaxFeesByReceipt[r.id] = (r.tip || 0) + (r.tax || 0) + (r.fees || 0)
-  }
-
-  const claimsByItem = {}
-  for (const c of claims) {
-    if (!claimsByItem[c.item_id]) claimsByItem[c.item_id] = []
-    claimsByItem[c.item_id].push(c.roommate)
-  }
-
   const itemsByReceipt = {}
-  const itemsByMeal = {}
-  for (const item of items) {
-    if (!itemsByReceipt[item.receipt_id]) itemsByReceipt[item.receipt_id] = []
-    itemsByReceipt[item.receipt_id].push(item)
-    if (item.meal_id) {
-      if (!itemsByMeal[item.meal_id]) itemsByMeal[item.meal_id] = []
-      itemsByMeal[item.meal_id].push(item)
-    }
-  }
+  for (const item of items) (itemsByReceipt[item.receipt_id] ||= []).push(item)
+  const mealsByReceipt = {}
+  for (const meal of meals) (mealsByReceipt[meal.receipt_id] ||= []).push(meal)
+  const claimsByItem = {}
+  for (const c of claims) (claimsByItem[c.item_id] ||= []).push(c)
 
   const consumed = {}
-
-  for (const item of items) {
-    const claimers = claimsByItem[item.id] || []
-    if (!claimers.length) continue
-    const share = item.price / claimers.length
-    for (const person of claimers) {
-      consumed[person] = (consumed[person] || 0) + share
+  const add = (person, amount) => { if (person) consumed[person] = (consumed[person] || 0) + amount }
+  for (const r of receipts) {
+    const rItems = itemsByReceipt[r.id] || []
+    const rMeals = mealsByReceipt[r.id] || []
+    const rClaims = rItems.flatMap(i => claimsByItem[i.id] || [])
+    const total = rItems.reduce((s, i) => s + Number(i.price || 0), 0)
+      + Number(r.tip || 0) + Number(r.tax || 0) + Number(r.fees || 0)
+      + rMeals.reduce((s, m) => s + Number(m.fee || 0), 0)
+    let owedToPayer = 0
+    for (const d of calculateDebts([r], rItems, rClaims, rMeals)) {
+      add(d.debtor, d.amount)
+      owedToPayer += d.amount
     }
+    add(r.paid_by, Math.round((total - owedToPayer) * 100) / 100)
   }
-
-  for (const receipt of receipts) {
-    const extra = tipTaxFeesByReceipt[receipt.id]
-    if (!extra) continue
-    const receiptItems = itemsByReceipt[receipt.id] || []
-    const effectiveByPerson = {}
-    for (const item of receiptItems) {
-      const claimers = claimsByItem[item.id] || []
-      if (!claimers.length) continue
-      const share = item.price / claimers.length
-      for (const p of claimers) {
-        effectiveByPerson[p] = (effectiveByPerson[p] || 0) + share
-      }
-    }
-    const total = Object.values(effectiveByPerson).reduce((s, v) => s + v, 0)
-    if (!total) continue
-    for (const [person, eff] of Object.entries(effectiveByPerson)) {
-      consumed[person] = (consumed[person] || 0) + extra * (eff / total)
-    }
-  }
-
-  for (const meal of meals) {
-    const fee = meal.fee || 0
-    if (!fee) continue
-    const mealItems = itemsByMeal[meal.id] || []
-    const effectiveByPerson = {}
-    for (const item of mealItems) {
-      const claimers = claimsByItem[item.id] || []
-      if (!claimers.length) continue
-      const share = item.price / claimers.length
-      for (const p of claimers) {
-        effectiveByPerson[p] = (effectiveByPerson[p] || 0) + share
-      }
-    }
-    const total = Object.values(effectiveByPerson).reduce((s, v) => s + v, 0)
-    if (!total) continue
-    for (const [person, eff] of Object.entries(effectiveByPerson)) {
-      consumed[person] = (consumed[person] || 0) + fee * (eff / total)
-    }
-  }
-
   return consumed
 }
 
@@ -142,6 +96,8 @@ export default function Stats() {
   const { group, nameOf, memberIds, coreNames, myName: myDisplayName } = useGroup()
   const myName = myDisplayName.toLowerCase()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [retries, setRetries] = useState(0)
   const [raw, setRaw] = useState(null)
   const [selectedPeople, setSelectedPeople] = useState(null)
   const [selectedCategories, setSelectedCategories] = useState(null)
@@ -187,8 +143,9 @@ export default function Stats() {
       setRaw({ receipts, items, claims, meals, coreRoommatesLower, defaultSelected, allPeopleUnfiltered, availableCategories })
       setLoading(false)
     }
-    load()
-  }, [myName])
+    setLoadError(false)
+    load().catch(() => { setLoadError(true); setLoading(false) })
+  }, [myName, retries])
 
   // Initialize selectedPeople and selectedCategories once raw loads
   useEffect(() => {
@@ -210,6 +167,7 @@ export default function Stats() {
     if (raw && selectedCategories === null) setSelectedCategories(new Set(raw.availableCategories))
   }, [raw, selectedPeople, selectedCategories])
 
+  if (loadError) return <LoadError onRetry={() => { setLoading(true); setRetries(n => n + 1) }} />
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
   if (!raw) return null
 

@@ -6,6 +6,7 @@ import {
 } from '../lib/search.jsx'
 import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
+import LoadError from '../components/LoadError.jsx'
 import { claimersByReceipt, receiptTotals, isOnReceipt } from '../lib/receiptStatus.js'
 import { ReceiptCalendar, ReceiptDays, ReceiptList } from '../components/ReceiptViews.jsx'
 
@@ -58,7 +59,7 @@ export default function Receipts() {
   const [view, setView] = useState(savedView)
   const [showAll, setShowAll] = useState(localStorage.getItem('default-show-all-trips') === '1')
   const searchData = useSearchData()
-  const { loading, data } = useBalances()
+  const { loading, error, data, reload } = useBalances()
   const navigate = useNavigate()
   const { myName } = useGroup()
 
@@ -161,7 +162,9 @@ export default function Receipts() {
             <Segmented small options={[['mine', 'Mine'], ['all', 'All']]} value={showAll ? 'all' : 'mine'} onChange={v => setShowAll(v === 'all')} />
           </div>
 
-          {loading ? (
+          {error && !data ? (
+            <LoadError onRetry={reload} />
+          ) : loading ? (
             <p className="text-center py-16 text-sm text-gray-400">Loading…</p>
           ) : view === 'calendar' ? (
             <ReceiptCalendar {...viewProps} />

@@ -5,6 +5,7 @@ import { useGroup } from '../lib/group.jsx'
 import { useSession } from '../lib/session.jsx'
 import { AuthShell, inputClass, primaryButton } from './Auth.jsx'
 import BackButton from '../components/BackButton.jsx'
+import { useDialog } from '../lib/useDialog.jsx'
 
 // Accepts a bare code or a full invite link (…#/join/ABCD2345)
 function parseInviteCode(input) {
@@ -80,6 +81,7 @@ export function Join() {
   const { switchGroup, refreshMemberships } = useGroup()
   const navigate = useNavigate()
   const [preview, setPreview] = useState(undefined) // undefined = loading, null = invalid
+  const { confirm, DialogUI } = useDialog()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -90,6 +92,15 @@ export function Join() {
     // The invite has been opened; stop redirecting here on future sign-ins
     if (user.user_metadata?.pending_invite) supabase.auth.updateUser({ data: { pending_invite: null } })
   }, [code])
+
+  // Claiming a person takes over their history, so confirm it's really you
+  async function claim(p) {
+    const name = `${p.first_name}${p.last_name ? ` ${p.last_name}` : ''}`
+    if (!await confirm(`You'll join ${preview.name} as ${name}, with everything already recorded for ${p.first_name}. Only do this if it's you.`, {
+      title: `Are you ${name}?`, confirmLabel: `Yes, I'm ${p.first_name}`,
+    })) return
+    join(p.id)
+  }
 
   async function join(claimMemberId = null) {
     setBusy(true); setError('')
@@ -123,6 +134,7 @@ export function Join() {
 
   return (
     <AuthShell title={`Join ${preview.name}`} subtitle={preview.unclaimed.length ? 'Are you already in this group?' : null}>
+      {DialogUI}
       {preview.unclaimed.length > 0 && (
         <div className="mb-4">
           <p className="text-xs text-gray-400 mb-2">If someone already added you, pick your name to keep your history.</p>
@@ -131,7 +143,7 @@ export function Join() {
               <button
                 key={p.id}
                 disabled={busy}
-                onClick={() => join(p.id)}
+                onClick={() => claim(p)}
                 className="px-3 py-1.5 rounded-full border border-gray-300 text-sm text-gray-700 hover:border-accent-400 hover:bg-accent-50 hover:text-accent-700 transition disabled:opacity-50"
               >
                 I'm {p.first_name}{p.last_name ? ` ${p.last_name}` : ''}

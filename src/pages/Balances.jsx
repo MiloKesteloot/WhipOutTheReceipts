@@ -5,6 +5,7 @@ import { useBalances } from '../lib/useBalances.js'
 import { deletePayment } from '../lib/db.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
+import LoadError from '../components/LoadError.jsx'
 
 const fmtPaidAt = ts => ts ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
 
@@ -162,9 +163,10 @@ function PaymentHistory({ data, myName, onRemove }) {
 
 export default function Balances() {
   const { myName } = useGroup()
-  const { loading, data, balances, reload } = useBalances()
-  const { confirm, DialogUI } = useDialog()
+  const { loading, error, data, balances, reload } = useBalances()
+  const { confirm, showAlert, DialogUI } = useDialog()
 
+  if (error && !data) return <LoadError onRetry={reload} />
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
 
   const myBalances = myName ? balances.forPerson(myName).sort((a, b) => b.amount - a.amount) : []
@@ -177,7 +179,11 @@ export default function Balances() {
     if (!await confirm(`$${Number(p.amount).toFixed(2)} from ${p.from} to ${p.to} will be removed and the balance goes back up. This is recorded in the history.`, {
       title: 'Remove this payment?', confirmLabel: 'Remove', danger: true,
     })) return
-    await deletePayment(p.id)
+    try {
+      await deletePayment(p.id)
+    } catch (err) {
+      await showAlert(err.message, { title: 'Could not remove the payment' })
+    }
     reload()
   }
 

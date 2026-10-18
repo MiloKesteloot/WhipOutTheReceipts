@@ -23,13 +23,14 @@ function Badge({ children, tone = 'gray' }) {
 
 function GroupInfo() {
   const { group, isOwner, refreshMemberships } = useGroup()
-  const { confirm, DialogUI } = useDialog()
+  const { confirm, showAlert, DialogUI } = useDialog()
   const [name, setName] = useState(group.name)
   const [copied, setCopied] = useState(false)
   const inviteLink = `${appBaseUrl}#/join/${group.invite_code}`
 
   async function rename() {
-    await supabase.from('groups').update({ name: name.trim() }).eq('id', group.id)
+    const { error } = await supabase.from('groups').update({ name: name.trim() }).eq('id', group.id)
+    if (error) await showAlert(error.message, { title: 'Could not rename the group' })
     refreshMemberships()
   }
 
@@ -37,7 +38,8 @@ function GroupInfo() {
     if (!await confirm('Anyone with the current link or code will no longer be able to join.', {
       title: 'Create a new invite link?', confirmLabel: 'New link',
     })) return
-    await supabase.rpc('regenerate_invite', { p_group: group.id })
+    const { error } = await supabase.rpc('regenerate_invite', { p_group: group.id })
+    if (error) await showAlert(error.message, { title: 'Could not make a new link' })
     refreshMemberships()
   }
 
@@ -104,7 +106,8 @@ function PersonRow({ m }) {
   }
 
   async function toggleGuest() {
-    await supabase.from('group_members').update({ is_guest: !m.is_guest }).eq('id', m.id)
+    const { error } = await supabase.from('group_members').update({ is_guest: !m.is_guest }).eq('id', m.id)
+    if (error) await showAlert(error.message)
     refreshMembers()
   }
 
@@ -168,6 +171,7 @@ function PersonRow({ m }) {
 
 function People() {
   const { group, members, refreshMembers } = useGroup()
+  const { showAlert, DialogUI } = useDialog()
   const [first, setFirst] = useState('')
   const [asGuest, setAsGuest] = useState(false)
   const [showInactive, setShowInactive] = useState(false)
@@ -180,13 +184,15 @@ function People() {
     e.preventDefault()
     const name = first.trim().replace(/\b\w/g, c => c.toUpperCase())
     if (!name) return
-    await supabase.from('group_members').insert({ group_id: group.id, first_name: name, is_guest: asGuest })
+    const { error } = await supabase.from('group_members').insert({ group_id: group.id, first_name: name, is_guest: asGuest })
+    if (error) { await showAlert(error.message, { title: 'Could not add that person' }); return }
     setFirst('')
     refreshMembers()
   }
 
   return (
     <section>
+      {DialogUI}
       <div className={card}>
         <p className="text-sm font-medium text-gray-700 mb-0.5">People</p>
         <p className="text-xs text-gray-400 mb-2">
@@ -307,14 +313,15 @@ function LeaveGroup() {
 }
 
 export default function GroupSettings() {
-  const { group } = useGroup()
+  const { group, isOwner } = useGroup()
   return (
     <div className="max-w-xl mx-auto p-4 py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">{group.name}</h1>
       <div className="space-y-6">
         <GroupInfo />
         <People />
-        <MergePeople />
+        {/* Merging can move someone's account and history, so it's owner only */}
+        {isOwner && <MergePeople />}
         <LeaveGroup />
       </div>
     </div>

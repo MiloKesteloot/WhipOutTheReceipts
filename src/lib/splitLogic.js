@@ -1,6 +1,86 @@
 /**
- * Distribute an amount (in cents) proportionally among claimers of the given items,
- * excluding the payer. Returns: { person -> cents }
+ * Receipts created before this moment keep the rounding they were settled
+ * with: the old split could hand the others an extra cent of tax/tip and
+ * give the payer's leftover cent to someone else. Fixing it everywhere
+ * would leave a few cents "owed" on receipts people already paid off.
+ * Set to null to use the corrected rounding for every receipt.
+ */
+export const ROUNDING_FIX_FROM = '2026-10-18T10:31:37Z'
+const usesOldRounding = receipt =>
+  !!(ROUNDING_FIX_FROM && receipt?.created_at && Date.parse(receipt.created_at) < Date.parse(ROUNDING_FIX_FROM))
+
+// The old item split: the payer was skipped before taking a leftover cent
+function oldSplitItemCents(price, claimers, payer) {
+  const priceInCents = Math.round(price * 100)
+  const share = Math.floor(priceInCents / claimers.length)
+  let rem = priceInCents - share * claimers.length
+  return claimers.map(person => {
+    if (person === payer) return [person, share]
+    let cents = share
+    if (rem > 0) { cents += 1; rem -= 1 }
+    return [person, cents]
+  })
+}
+
+// The old proportional split: leftover cents were handed out among the
+// non-payers only, even when the payer's share caused them
+function oldDistributeProportionally(feeCents, relevantItems, claimsByItem, payer) {
+  if (!feeCents) return {}
+  const effectiveByPerson = {}
+  for (const item of relevantItems) {
+    const claimers = claimsByItem[item.id] || []
+    if (claimers.length === 0) continue
+    for (const [person, cents] of splitItemCents(item.price, claimers)) {
+      effectiveByPerson[person] = (effectiveByPerson[person] || 0) + cents
+    }
+  }
+  const totalEffective = Object.values(effectiveByPerson).reduce((s, v) => s + v, 0)
+  if (!totalEffective) return {}
+  const shares = Object.entries(effectiveByPerson).filter(([p]) => p !== payer).map(([person, effective]) => ({
+    person, share: Math.floor(feeCents * effective / totalEffective), effective,
+  }))
+  let remainder = feeCents - shares.reduce((s, e) => s + e.share, 0)
+  const frac = e => (feeCents * e.effective / totalEffective) - Math.floor(feeCents * e.effective / totalEffective)
+  shares.sort((a, b) => frac(b) - frac(a))
+  for (const e of shares) {
+    if (remainder <= 0) break
+    e.share += 1
+    remainder -= 1
+  }
+  const result = {}
+  for (const { person, share } of shares) if (share > 0) result[person] = share
+  return result
+}
+
+// Item split and proportional split for this receipt (old rounding for old receipts)
+const itemSplit = (receipt, price, claimers) =>
+  usesOldRounding(receipt) ? oldSplitItemCents(price, claimers, receipt.paid_by) : splitItemCents(price, claimers)
+const proportional = (receipt, ...args) =>
+  (usesOldRounding(receipt) ? oldDistributeProportionally : distributeProportionally)(...args)
+
+/**
+ * Split an item's price between its claimers, in cents. Leftover cents go
+ * to the first claimers, payer included, so every view of a receipt (who
+ * owes what, the breakdown, tax shares) splits it the same way.
+ * Returns [[person, cents], ...] in claimer order.
+ */
+export function splitItemCents(price, claimers) {
+  const priceInCents = Math.round(price * 100)
+  const share = Math.floor(priceInCents / claimers.length)
+  let rem = priceInCents - share * claimers.length
+  return claimers.map(person => {
+    let cents = share
+    if (rem > 0) { cents += 1; rem -= 1 }
+    return [person, cents]
+  })
+}
+
+/**
+ * Distribute an amount (in cents) proportionally to what each claimer of
+ * the given items had, then leave out the payer (their part is theirs).
+ * Leftover cents are handed out over everyone, payer included, so the
+ * others never pick up extra cents for the payer's share.
+ * Returns: { person -> cents }
  */
 function distributeProportionally(feeCents, relevantItems, claimsByItem, payer) {
   if (!feeCents) return {}
@@ -10,37 +90,22 @@ function distributeProportionally(feeCents, relevantItems, claimsByItem, payer) 
   for (const item of relevantItems) {
     const claimers = claimsByItem[item.id] || []
     if (claimers.length === 0) continue
-    const priceInCents = Math.round(item.price * 100)
-    const share = Math.floor(priceInCents / claimers.length)
-    let rem = priceInCents - share * claimers.length
-    for (const person of claimers) {
-      let owes = share
-      if (rem > 0) { owes += 1; rem -= 1 }
-      effectiveByPerson[person] = (effectiveByPerson[person] || 0) + owes
+    for (const [person, cents] of splitItemCents(item.price, claimers)) {
+      effectiveByPerson[person] = (effectiveByPerson[person] || 0) + cents
     }
   }
 
   const totalEffective = Object.values(effectiveByPerson).reduce((s, v) => s + v, 0)
   if (!totalEffective) return {}
 
-  // Distribute only among non-payer claimers
-  const debtors = Object.entries(effectiveByPerson).filter(([p]) => p !== payer)
-
-  const shares = debtors.map(([person, effective]) => ({
-    person,
-    share: Math.floor(feeCents * effective / totalEffective),
-    effective,
-  }))
-
-  // Distribute remainder cents to those with largest fractional parts
-  const distributed = shares.reduce((s, e) => s + e.share, 0)
-  let remainder = feeCents - distributed
-  shares.sort((a, b) => {
-    const aFrac = (feeCents * a.effective / totalEffective) - Math.floor(feeCents * a.effective / totalEffective)
-    const bFrac = (feeCents * b.effective / totalEffective) - Math.floor(feeCents * b.effective / totalEffective)
-    return bFrac - aFrac
+  const shares = Object.entries(effectiveByPerson).map(([person, effective], order) => {
+    const exact = feeCents * effective / totalEffective
+    return { person, share: Math.floor(exact), frac: exact - Math.floor(exact), order }
   })
-  for (const s of shares) {
+
+  // Leftover cents to the largest fractional parts (ties: claimer order)
+  let remainder = feeCents - shares.reduce((s, e) => s + e.share, 0)
+  for (const s of [...shares].sort((a, b) => b.frac - a.frac || a.order - b.order)) {
     if (remainder <= 0) break
     s.share += 1
     remainder -= 1
@@ -48,14 +113,14 @@ function distributeProportionally(feeCents, relevantItems, claimsByItem, payer) 
 
   const result = {}
   for (const { person, share } of shares) {
-    if (share > 0) result[person] = share
+    if (person !== payer && share > 0) result[person] = share
   }
   return result
 }
 
 function distributeTipTaxFees(receipt, receiptItems, claimsByItem) {
   const cents = Math.round(((receipt.tip || 0) + (receipt.tax || 0) + (receipt.fees || 0)) * 100)
-  return distributeProportionally(cents, receiptItems, claimsByItem, receipt.paid_by)
+  return proportional(receipt, cents, receiptItems, claimsByItem, receipt.paid_by)
 }
 
 /**
@@ -73,7 +138,8 @@ function distributeTipTaxFees(receipt, receiptItems, claimsByItem) {
  */
 export function calculateDebts(receipts, items, claims, meals = []) {
   const payerByReceipt = {}
-  for (const r of receipts) payerByReceipt[r.id] = r.paid_by
+  const receiptById = {}
+  for (const r of receipts) { payerByReceipt[r.id] = r.paid_by; receiptById[r.id] = r }
 
   const claimsByItem = {}
   for (const c of claims) {
@@ -103,14 +169,8 @@ export function calculateDebts(receipts, items, claims, meals = []) {
     const claimers = claimsByItem[item.id] || []
     if (claimers.length === 0) continue
 
-    const priceInCents = Math.round(item.price * 100)
-    const share = Math.floor(priceInCents / claimers.length)
-    let remainder = priceInCents - share * claimers.length
-
-    for (const debtor of claimers) {
+    for (const [debtor, owes] of itemSplit(receiptById[item.receipt_id], item.price, claimers)) {
       if (debtor === payer) continue
-      let owes = share
-      if (remainder > 0) { owes += 1; remainder -= 1 }
       if (!rawDebts[debtor]) rawDebts[debtor] = {}
       rawDebts[debtor][payer] = (rawDebts[debtor][payer] || 0) + owes
     }
@@ -133,7 +193,7 @@ export function calculateDebts(receipts, items, claims, meals = []) {
     const payer = payerByReceipt[meal.receipt_id]
     if (!payer) continue
     const mealItems = itemsByMeal[meal.id] || []
-    const shares = distributeProportionally(feeCents, mealItems, claimsByItem, payer)
+    const shares = proportional(receiptById[meal.receipt_id], feeCents, mealItems, claimsByItem, payer)
     for (const [debtor, cents] of Object.entries(shares)) {
       if (!rawDebts[debtor]) rawDebts[debtor] = {}
       rawDebts[debtor][payer] = (rawDebts[debtor][payer] || 0) + cents
@@ -156,6 +216,7 @@ export function calculateDebts(receipts, items, claims, meals = []) {
  * @returns Map: roommate -> [{ itemName, storeName, payer, share }]
  */
 export function getItemizedBreakdown(receipts, items, claims, meals = []) {
+  const receiptById = Object.fromEntries(receipts.map(r => [r.id, r]))
   const payerByReceipt = {}
   const storeByReceipt = {}
   const tipTaxByReceipt = {}
@@ -189,11 +250,10 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
     const store = storeByReceipt[item.receipt_id]
     const claimers = claimsByItem[item.id] || []
     if (claimers.length === 0) continue
-    const share = item.price / claimers.length
-    for (const roommate of claimers) {
+    for (const [roommate, cents] of itemSplit(receiptById[item.receipt_id], item.price, claimers)) {
       if (roommate === payer) continue
       if (!breakdown[roommate]) breakdown[roommate] = []
-      breakdown[roommate].push({ itemName: item.name, storeName: store, payer, share })
+      breakdown[roommate].push({ itemName: item.name, storeName: store, payer, share: cents / 100 })
     }
   }
 
@@ -219,7 +279,7 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
     const store = storeByReceipt[meal.receipt_id]
     if (!payer) continue
     const mealItems = itemsByMeal[meal.id] || []
-    const shares = distributeProportionally(feeCents, mealItems, claimsByItem, payer)
+    const shares = proportional(receiptById[meal.receipt_id], feeCents, mealItems, claimsByItem, payer)
     for (const [person, cents] of Object.entries(shares)) {
       if (!breakdown[person]) breakdown[person] = []
       breakdown[person].push({ itemName: `${meal.name} fee`, storeName: store, payer, share: cents / 100 })
