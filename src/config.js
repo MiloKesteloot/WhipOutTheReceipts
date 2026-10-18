@@ -36,9 +36,10 @@ export const DEFAULT_CATEGORY = 'Groceries'
 export const CHART_TRIP_NAME_LENGTH = 14
 
 // ── Receipt scanner ───────────────────────────────────────────
-// Gemini model used for receipt photo scanning.
-// Options: 'gemini-2.0-flash' | 'gemini-1.5-flash' | 'gemini-1.5-pro'
-export const GEMINI_MODEL = 'gemini-2.0-flash'
+// Gemini model used for receipt photo scanning (must accept images).
+// Current stable models: https://ai.google.dev/gemini-api/docs/models
+// (gemini-2.0-flash, used before, was shut down by Google.)
+export const GEMINI_MODEL = 'gemini-3.8-flash'
 
 // ── Known store logos ─────────────────────────────────────────
 // Maps store name keywords → domain for favicon lookup.

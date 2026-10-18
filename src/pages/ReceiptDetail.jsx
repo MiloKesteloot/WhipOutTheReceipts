@@ -9,6 +9,7 @@ import { useGroup, formatWaitingOn } from '../lib/group.jsx'
 import { receiptFromDb, claimFromDb, checkinFromDb, syncMyClaims, ensureCheckin, recordPayment, deletePayment } from '../lib/db.js'
 import { useBalances } from '../lib/useBalances.js'
 import ReceiptHistory from '../components/ReceiptHistory.jsx'
+import { guestLinkUrl } from './GroupSettings.jsx'
 import BackButton from '../components/BackButton.jsx'
 
 function getStoreLogo(storeName) {
@@ -27,7 +28,14 @@ export default function ReceiptDetail() {
   const [items, setItems] = useState([])
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
-  const { group, switchGroup, myName, myMember, nameOf, idOf } = useGroup()
+  const { group, switchGroup, myName, myMember, nameOf, idOf, members, refreshMembers } = useGroup()
+  // Whose check-offs are being edited: me, or a guest on this receipt
+  // (someone without an account) that I'm checking in for
+  const [actingForId, setActingForId] = useState(null)
+  const [copiedLinkFor, setCopiedLinkFor] = useState(null)
+  const actor = actingForId
+    ? { id: actingForId, name: nameOf(actingForId) }
+    : myMember ? { id: myMember.id, name: myName } : null
   const [myClaims, setMyClaims] = useState(new Set())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -80,13 +88,13 @@ export default function ReceiptDetail() {
   }, [loadData])
 
   useEffect(() => {
-    if (!myName || items.length === 0) return
-    const mine = claims.filter(c => c.roommate === myName).map(c => c.item_id)
+    if (!actor || items.length === 0) return
+    const mine = claims.filter(c => c.roommate === actor.name).map(c => c.item_id)
     const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
     // Checked in before (on any device: the check-in is in the database) →
     // show exactly what I claimed. Only a first visit starts with everything checked.
-    const checkedIn = checkins.some(c => c.member_id === myMember?.id)
-    const hasEverSaved = checkedIn || !!localStorage.getItem(`claimed-receipt-${receiptId}-${myMember?.id}`)
+    const checkedIn = checkins.some(c => c.member_id === actor.id)
+    const hasEverSaved = checkedIn || !!localStorage.getItem(`claimed-receipt-${receiptId}-${actor.id}`)
     if (mine.length > 0 || hasEverSaved) {
       setMyClaims(new Set([...mine, ...alwaysSplitIds]))
     } else {
@@ -94,10 +102,10 @@ export default function ReceiptDetail() {
     }
     claimsLoadedRef.current = true
     setIsDirty(false)
-  }, [myName, claims, items, checkins, receiptId])
+  }, [myName, actingForId, claims, items, checkins, receiptId])
 
   function toggleClaim(itemId) {
-    if (!myName) return
+    if (!actor) return
     const item = items.find(i => i.id === itemId)
     if (item?.always_split) return
     setMyClaims(prev => {
@@ -110,7 +118,7 @@ export default function ReceiptDetail() {
   }
 
   function toggleMealGroup(mealId, mealItems) {
-    if (!myName) return
+    if (!actor) return
     const toggleableIds = mealItems.filter(i => !i.always_split).map(i => i.id)
     const allChecked = toggleableIds.every(id => myClaims.has(id))
     setMyClaims(prev => {
@@ -140,17 +148,17 @@ export default function ReceiptDetail() {
   }
 
   async function saveClaims() {
-    if (!myName) return
+    if (!actor) return
     setSaving(true)
     const itemIds = items.map(i => i.id)
-    const currentMine = new Set(claims.filter(c => c.roommate === myName).map(c => c.item_id))
+    const currentMine = new Set(claims.filter(c => c.roommate === actor.name).map(c => c.item_id))
     try {
-      await syncMyClaims(myMember.id, itemIds, currentMine, myClaims)
-      await ensureCheckin(myMember.id, receiptId)
+      await syncMyClaims(actor.id, itemIds, currentMine, myClaims)
+      await ensureCheckin(actor.id, receiptId)
       // Checking things off a receipt puts you on it (when it has a member list)
       const memberIds = receipt.member_ids || []
-      if (memberIds.length && !memberIds.includes(myMember.id) && myClaims.size > 0) {
-        const nextIds = [...memberIds, myMember.id]
+      if (memberIds.length && !memberIds.includes(actor.id) && myClaims.size > 0) {
+        const nextIds = [...memberIds, actor.id]
         const { error } = await supabase.from('receipts').update({ member_ids: nextIds }).eq('id', receiptId)
         if (error) throw error
         setReceipt(r => ({ ...r, member_ids: nextIds, members: nextIds.map(nameOf) }))
@@ -161,16 +169,16 @@ export default function ReceiptDetail() {
       await showAlert(err.message, { title: 'Could not save claims' })
       return
     }
-    const newClaims = [...myClaims].map(item_id => ({ item_id, member_id: myMember.id, roommate: myName }))
+    const newClaims = [...myClaims].map(item_id => ({ item_id, member_id: actor.id, roommate: actor.name }))
 
-    localStorage.setItem(`claimed-receipt-${receiptId}-${myMember.id}`, '1')
+    localStorage.setItem(`claimed-receipt-${receiptId}-${actor.id}`, '1')
     setClaims(prev => [
-      ...prev.filter(c => !(c.roommate === myName && itemIds.includes(c.item_id))),
+      ...prev.filter(c => !(c.roommate === actor.name && itemIds.includes(c.item_id))),
       ...newClaims,
     ])
     setCheckins(prev => [
-      ...prev.filter(c => c.roommate !== myName),
-      { receipt_id: receiptId, member_id: myMember.id, roommate: myName },
+      ...prev.filter(c => c.roommate !== actor.name),
+      { receipt_id: receiptId, member_id: actor.id, roommate: actor.name },
     ])
     setSaving(false)
     setSaved(true)
@@ -217,6 +225,27 @@ export default function ReceiptDetail() {
     setSettling(false)
   }
 
+  async function switchActor(id) {
+    if (id === actingForId) return
+    if (isDirty && !await confirm('Your unsaved check-offs will be lost.', { title: 'Switch person?', confirmLabel: 'Switch', danger: true })) return
+    setSaved(false)
+    setActingForId(id)
+  }
+
+  // Copy a guest's link (making one first if they don't have one yet)
+  async function copyGuestLink(m) {
+    let token = m.guest_token
+    if (!token) {
+      const { data, error } = await supabase.rpc('guest_link_create', { p_member: m.id })
+      if (error) { await showAlert(error.message, { title: 'Could not make a link' }); return }
+      token = data
+      refreshMembers()
+    }
+    navigator.clipboard.writeText(guestLinkUrl(token))
+    setCopiedLinkFor(m.id)
+    setTimeout(() => setCopiedLinkFor(null), 2000)
+  }
+
   async function handleBack() {
     if (isDirty && !await confirm('You have unsaved claims. Leave without saving?', {
       title: 'Unsaved changes', confirmLabel: 'Leave', danger: true,
@@ -246,14 +275,14 @@ export default function ReceiptDetail() {
   }
 
   const countedClaims = claims
-  const syntheticClaims = myName ? [
-    ...countedClaims.filter(c => c.roommate !== myName),
-    ...[...myClaims].map(item_id => ({ item_id, roommate: myName })),
+  const syntheticClaims = actor ? [
+    ...countedClaims.filter(c => c.roommate !== actor.name),
+    ...[...myClaims].map(item_id => ({ item_id, roommate: actor.name })),
   ] : countedClaims
   const receiptArr = receipt ? [receipt] : []
-  const runningTotal = myName
+  const runningTotal = actor
     ? calculateDebts(receiptArr, items, syntheticClaims, meals)
-        .filter(d => d.debtor === myName)
+        .filter(d => d.debtor === actor.name)
         .reduce((s, d) => s + d.amount, 0)
     : 0
   const debts = calculateDebts(receiptArr, items, countedClaims, meals)
@@ -271,6 +300,10 @@ export default function ReceiptDetail() {
   const waitingOn = receiptMembers.filter(
     m => !checkinNames.has(m.toLowerCase()) && !claimerNames.has(m.toLowerCase())
   )
+
+  // People on this receipt without an account (they can't sign in to check in)
+  const guestsOnReceipt = (members || []).filter(m => !m.user_id && m.active && (receipt?.member_ids || []).includes(m.id))
+  const waitingGuests = guestsOnReceipt.filter(m => waitingOn.some(n => n.toLowerCase() === m.displayName.toLowerCase()))
 
   const itemsByMeal = {}
   for (const item of items) {
@@ -397,11 +430,38 @@ export default function ReceiptDetail() {
         <span className="text-sm text-gray-500">Members: {(receipt.members || []).join(', ') || 'none'}</span>
       </div>
 
-      {/* Waiting on */}
+      {/* Waiting on (with a link to send anyone who doesn't have an account) */}
       {waitingOn.length > 0 && items.length > 0 && (
-        <div className="mb-4 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-          <span className="shrink-0">Still waiting on:</span>
-          <span className="font-medium">{formatWaitingOn(waitingOn, myName)}</span>
+        <div className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="shrink-0">Still waiting on:</span>
+            <span className="font-medium">{formatWaitingOn(waitingOn, myName)}</span>
+          </div>
+          {waitingGuests.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {waitingGuests.map(m => (
+                <button key={m.id} onClick={() => copyGuestLink(m)} className="px-2.5 py-1 text-xs font-medium bg-white border border-amber-200 rounded-lg hover:bg-amber-100 transition">
+                  {copiedLinkFor === m.id ? 'Link copied ✓' : `Copy ${m.displayName}'s link`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Check off for a guest (someone without an account) instead of yourself */}
+      {myName && items.length > 0 && guestsOnReceipt.length > 0 && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap text-sm">
+          <span className="text-gray-500">Checking off for:</span>
+          {[{ id: null, label: 'You' }, ...guestsOnReceipt.map(m => ({ id: m.id, label: m.displayName }))].map(o => (
+            <button
+              key={o.id || 'me'}
+              onClick={() => switchActor(o.id)}
+              className={`px-3 py-1 rounded-full text-sm font-medium border transition ${actingForId === o.id ? 'bg-accent-600 text-white border-accent-600' : 'bg-white text-gray-600 border-gray-300 hover:border-accent-400'}`}
+            >
+              {o.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -492,7 +552,7 @@ export default function ReceiptDetail() {
         <div className="sticky bottom-above-tabbar sm:bottom-4">
           <div className="bg-white border border-gray-200 shadow-lg rounded-2xl px-4 py-3 flex items-center justify-between">
             <div>
-              <p className="text-xs text-gray-400">Your running total</p>
+              <p className="text-xs text-gray-400">{actingForId ? `${actor.name}'s running total` : 'Your running total'}</p>
               <p className="text-xl font-bold text-accent-600">${runningTotal.toFixed(2)}</p>
             </div>
             <button
@@ -500,7 +560,7 @@ export default function ReceiptDetail() {
               disabled={saving}
               className="px-5 py-2 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50 min-w-[140px] whitespace-nowrap text-center"
             >
-              {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save my claims'}
+              {saving ? 'Saving…' : saved ? 'Saved ✓' : actingForId ? `Save for ${actor.name}` : 'Save my claims'}
             </button>
           </div>
         </div>

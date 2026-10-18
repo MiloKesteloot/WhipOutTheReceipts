@@ -45,6 +45,17 @@ if (deleteBody?.code === 'PGRST202') {
   process.exit(1)
 }
 
+// And guest links (migration 20261018040000_guest_links.sql)
+const guestCheck = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/rpc/guest_view`, {
+  method: 'POST', headers: { apikey: env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }, body: '{"p_token":"check"}',
+})
+const guestBody = await guestCheck.json().catch(() => ({}))
+if (guestBody?.code === 'PGRST202') {
+  console.error('\n✗ Not deploying: the production database is missing the guest link functions.')
+  console.error('  Apply supabase/migrations/20261018040000_guest_links.sql first.\n')
+  process.exit(1)
+}
+
 const data = JSON.parse(readFileSync(versionFile, 'utf8'))
 data.version += 1
 writeFileSync(versionFile, JSON.stringify(data, null, 2) + '\n')

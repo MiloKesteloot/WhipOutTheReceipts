@@ -80,6 +80,61 @@ function GroupInfo() {
   )
 }
 
+// A secret link that lets someone without an account check off their own
+// items (pages/Guest.jsx). "New link" stops the old one from working.
+export function guestLinkUrl(token) {
+  return `${appBaseUrl}#/guest/${token}`
+}
+
+function GuestLinkPanel({ m, onClose }) {
+  const { refreshMembers } = useGroup()
+  const { confirm, showAlert, DialogUI } = useDialog()
+  const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const link = m.guest_token ? guestLinkUrl(m.guest_token) : ''
+
+  async function create(replacing) {
+    if (replacing && !await confirm(`The current link will stop working for ${m.displayName}.`, { title: 'Make a new link?', confirmLabel: 'New link' })) return
+    setBusy(true)
+    const { error } = await supabase.rpc('guest_link_create', { p_member: m.id })
+    setBusy(false)
+    if (error) { await showAlert(error.message, { title: 'Could not make a link' }); return }
+    refreshMembers()
+  }
+
+  function copy() {
+    navigator.clipboard.writeText(link)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <li className="py-2 pl-3 border-l-2 border-accent-200 ml-1 mb-2">
+      {DialogUI}
+      <p className="text-xs text-gray-500 mb-2">
+        Send this to {m.displayName} so they can check off what they had, without making an account. Anyone with the link can check off items as {m.displayName}.
+      </p>
+      {link ? (
+        <>
+          <div className="flex gap-2">
+            <input readOnly value={link} onFocus={e => e.target.select()} className={`${smallInput} text-gray-500 bg-gray-50`} />
+            <button onClick={copy} className={primarySmall}>{copied ? 'Copied ✓' : 'Copy'}</button>
+          </div>
+          <div className="mt-1.5 flex gap-4">
+            <button onClick={() => create(true)} disabled={busy} className="text-xs text-gray-400 hover:text-gray-600">Replace with a new link…</button>
+            <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">Done</button>
+          </div>
+        </>
+      ) : (
+        <div className="flex gap-2">
+          <button onClick={() => create(false)} disabled={busy} className={primarySmall}>{busy ? 'Making link…' : 'Make a guest link'}</button>
+          <button onClick={onClose} className={smallButton}>Cancel</button>
+        </div>
+      )}
+    </li>
+  )
+}
+
 function PersonRow({ m }) {
   const { isOwner, myMember, refreshMembers } = useGroup()
   const { confirm, showAlert, DialogUI } = useDialog()
@@ -87,6 +142,7 @@ function PersonRow({ m }) {
   const [first, setFirst] = useState(m.first_name)
   const [last, setLast] = useState(m.last_name)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
   const isMe = m.id === myMember?.id
   const linked = !!m.user_id
 
@@ -134,6 +190,7 @@ function PersonRow({ m }) {
   ].filter(Boolean) : []
 
   return (
+    <>
     <li className={`flex items-center gap-3 py-2 ${m.active ? '' : 'opacity-50'}`}>
       {DialogUI}
       <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
@@ -147,6 +204,7 @@ function PersonRow({ m }) {
       </div>
       {!linked && m.active && (
         <>
+          <button onClick={() => setLinkOpen(o => !o)} className="text-xs text-accent-600 hover:text-accent-700 shrink-0">Guest link</button>
           <button onClick={toggleGuest} className="text-xs text-gray-400 hover:text-gray-600 shrink-0" title="Guests aren't added to new receipts by default">
             {m.is_guest ? 'Make regular' : 'Make guest'}
           </button>
@@ -166,6 +224,8 @@ function PersonRow({ m }) {
         </div>
       )}
     </li>
+    {linkOpen && <GuestLinkPanel m={m} onClose={() => setLinkOpen(false)} />}
+    </>
   )
 }
 

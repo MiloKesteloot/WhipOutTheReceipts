@@ -75,7 +75,7 @@ const STEPS = [
 const FAQ = [
   ['Is it free?', 'Yes. There are no ads and nothing to pay for.'],
   ['Do my roommates need accounts?',
-    'Yes. Everyone makes a free account (Google or email) and joins your group with its invite link, so each person checks off their own items.'],
+    "Roommates make a free account (Google or email) and join your group with its invite link. For someone who only joins now and then, anyone in the group can send them a guest link instead: they check off what they had without making an account."],
   ['Who can see our receipts?', "Only the people in your group. Nobody else can see your receipts, items or payments."],
   ['What if someone never checks in?',
     "Nobody owes anything on a receipt until everyone on it has checked in. The receipt and the home page show who it's still waiting on, so you know who to nudge."],

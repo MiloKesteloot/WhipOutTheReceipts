@@ -5,6 +5,7 @@ import ReceiptDetail from './pages/ReceiptDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
 import Auth, { SetNewPassword, CompleteProfile } from './pages/Auth.jsx'
 import Landing from './pages/Landing.jsx'
+import Guest from './pages/Guest.jsx'
 import Onboarding, { Join } from './pages/Onboarding.jsx'
 import Stats from './pages/Stats.jsx'
 import Settings from './pages/Settings.jsx'
@@ -221,6 +222,10 @@ function Gate() {
   const { session, loading, profile, refreshProfile, recovering, finishRecovery } = useSession()
   const { pathname } = useLocation()
 
+  // Guest links work for anyone with the link, signed in or not
+  if (pathname.startsWith('/guest/')) {
+    return <Routes><Route path="/guest/:token" element={<Guest />} /></Routes>
+  }
   if (loading) return <FullPageLoading />
   if (recovering) return <SetNewPassword onDone={finishRecovery} />
   if (!session) {
