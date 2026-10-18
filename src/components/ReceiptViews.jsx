@@ -53,6 +53,25 @@ function DayPicker({ day, onClose }) {
   )
 }
 
+function PhoneDayStores({ receipts, checkedIn }) {
+  if (!receipts.length) return null
+  const isWaiting = r => waitingOn(r, checkedIn).length > 0
+  const ordered = [...receipts.filter(isWaiting), ...receipts.filter(r => !isWaiting(r))]
+  const shown = ordered.length > 2 ? ordered.slice(0, 1) : ordered
+  const hidden = ordered.slice(shown.length)
+  const line = waiting => `text-xs truncate ${waiting ? 'font-semibold text-amber-600' : 'text-gray-600'}`
+  return (
+    <div className="sm:hidden space-y-0.5">
+      {shown.map(r => <p key={r.id} className={line(isWaiting(r))}>{r.store_name}</p>)}
+      {hidden.length > 0 && (
+        <p className={`text-[10px] leading-4 whitespace-nowrap ${hidden.some(isWaiting) ? 'font-semibold text-amber-600' : 'text-gray-500'}`}>
+          +{hidden.length} more
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function ReceiptCalendar({ receipts, checkedIn, totals }) {
   const navigate = useNavigate()
   const [pickerDay, setPickerDay] = useState(null) // { date, items }
@@ -152,35 +171,40 @@ export function ReceiptCalendar({ receipts, checkedIn, totals }) {
               <div
                 key={`${key}-${i}`}
                 onClick={handleCellClick}
-                className={`relative min-h-28 p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 select-none ${
+                className={`relative h-[94px] overflow-hidden sm:h-auto sm:overflow-visible sm:min-h-28 px-1 py-1.5 sm:p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 select-none ${
                   !isCurrent ? 'bg-gray-50/60' : ''
                 } ${isToday ? 'ring-2 ring-inset ring-accent-600' : ''}`}
               >
-                <div className="flex items-start justify-between mb-2">
+                {/* Phones: the day's total goes under the date (no room beside it) */}
+                <div className="flex flex-col items-start sm:flex-row sm:justify-between mb-1 sm:mb-2">
                   <div className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full leading-none ${
                     isToday ? 'bg-accent-600 text-white' : isCurrent ? 'text-gray-700' : 'text-gray-300'
                   }`}>
                     {date.getDate()}
                   </div>
                   {dayTotal > 0 && isCurrent && (
-                    <span className="text-xs font-semibold text-accent-600">${dayTotal.toFixed(2)}</span>
+                    <span className="text-[10px] sm:text-xs font-semibold text-accent-600 leading-tight mt-0.5 sm:mt-0">${dayTotal.toFixed(2)}</span>
                   )}
                 </div>
-                <div className="space-y-1">
+                {/* Desktop: every receipt, with a dot (amber = waiting on someone) */}
+                <div className="hidden sm:block space-y-1">
                   {dayReceipts.map(receipt => (
                     <div key={receipt.id} className="flex items-center gap-1.5 text-xs text-gray-600">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        waitingOn(receipt, checkedIn).length > 0 ? 'bg-amber-400' : 'bg-accent-500'
-                      }`} />
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${waitingOn(receipt, checkedIn).length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
                       <span className="truncate">{receipt.store_name}</span>
                     </div>
                   ))}
                 </div>
-                {/* "+" button, bottom right: on hover with a mouse, always on touch screens */}
+                {/* Phones: room for two lines (the square is sized for date, total
+                    and two stores). Waiting receipts are bold amber and listed
+                    first; three or more show one store and "+N more". */}
+                <PhoneDayStores receipts={dayReceipts} checkedIn={checkedIn} />
+                {/* "+" button, bottom right: on hover with a mouse, always on touch
+                    screens; not on phones, where there's no room for it */}
                 {isCurrent && dayItems.length >= 1 && (
                   <button
                     onClick={e => { e.stopPropagation(); navigate(`/receipt/new?date=${fmtDate(date)}`) }}
-                    className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full bg-accent-100 text-accent-600 hover:bg-accent-200 text-xs font-bold leading-none pb-px"
+                    className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity w-5 h-5 hidden sm:flex items-center justify-center rounded-full bg-accent-100 text-accent-600 hover:bg-accent-200 text-xs font-bold leading-none pb-px"
                     title="Add another receipt"
                   >
                     +

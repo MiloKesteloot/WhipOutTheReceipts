@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Routes, Route, Link, Navigate, ScrollRestoration, useLocation, useNavigate } from 'react-router-dom'
 import Home from './pages/Home.jsx'
 import ReceiptDetail from './pages/ReceiptDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
@@ -16,6 +16,8 @@ import { SessionProvider, useSession } from './lib/session.jsx'
 import { GroupProvider, useGroup } from './lib/group.jsx'
 import GlassTabBar from './components/GlassTabBar.jsx'
 import { LOGO_URL } from './lib/logo.js'
+import { useDialog } from './lib/useDialog.jsx'
+import { hasUnsavedChanges, leaveWithoutPrompt } from './lib/unsaved.jsx'
 
 // Main sections. Receipt pages count as "Receipts"; the add form has no tab.
 const TABS = [
@@ -104,6 +106,20 @@ function UserMenu() {
   const ref = useRef(null)
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const { confirm, DialogUI } = useDialog()
+
+  // Switching reloads every page, so unsaved work would be lost: ask first.
+  // Home replaces the current page, so Back doesn't reopen the old group's.
+  async function pickGroup(id) {
+    setOpen(false)
+    if (id === group?.id) return
+    if (hasUnsavedChanges() && !await confirm('Your unsaved changes will be lost.', {
+      title: 'Switch group?', confirmLabel: 'Switch', cancelLabel: 'Stay', danger: true,
+    })) return
+    leaveWithoutPrompt()
+    switchGroup(id)
+    navigate('/', { replace: true })
+  }
 
   useEffect(() => { setOpen(false) }, [pathname])
   useEffect(() => {
@@ -117,6 +133,7 @@ function UserMenu() {
 
   return (
     <div className="relative min-w-0" ref={ref}>
+      {DialogUI}
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="Account menu"
@@ -138,7 +155,7 @@ function UserMenu() {
           {memberships.map(m => (
             <button
               key={m.group_id}
-              onClick={() => { switchGroup(m.group_id); setOpen(false); navigate('/') }}
+              onClick={() => pickGroup(m.group_id)}
               className="w-full flex items-center justify-between px-4 py-2 text-sm text-left hover:bg-gray-50"
             >
               <span className={`truncate ${m.group_id === group?.id ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>{m.groups.name}</span>
@@ -175,7 +192,8 @@ function SignedInApp() {
     const code = localStorage.getItem(PENDING_INVITE) || user.user_metadata?.pending_invite
     if (code) {
       localStorage.removeItem(PENDING_INVITE)
-      navigate(`/join/${code}`)
+      // Already showing it (signed in on the invite link): don't add it again
+      if (pathname !== `/join/${code}`) navigate(`/join/${code}`, { replace: true })
     }
   }, [])
 
@@ -246,6 +264,8 @@ function Gate() {
 export default function App() {
   return (
     <SessionProvider>
+      {/* New pages start at the top; Back returns to where you were */}
+      <ScrollRestoration />
       <Gate />
     </SessionProvider>
   )

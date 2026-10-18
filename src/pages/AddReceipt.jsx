@@ -13,7 +13,9 @@ import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 import BackButton from '../components/BackButton.jsx'
 import LoadError from '../components/LoadError.jsx'
+import { parseAmount, amountOrZero } from '../lib/amount.js'
 import { useGoBack, canGoBack } from '../lib/useGoBack.js'
+import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
 import { UNGROUPED, containerFromDropId, SortableRow, DragHandle, DropZone, ItemDragPreview } from '../components/ItemDrag.jsx'
 
 function newItem(dbId = null) {
@@ -55,7 +57,7 @@ export default function AddReceipt() {
 
   const [storeName, setStoreName] = useState('')
   const [paidBy, setPaidBy] = useState('')
-  const { group, switchGroup, members, myName, myMember, coreNames: coreRoommates, nameOf, ensureMemberIds } = useGroup()
+  const { group, memberships, switchGroup, members, myName, myMember, coreNames: coreRoommates, nameOf, ensureMemberIds } = useGroup()
   const knownNames = members.filter(m => m.active).map(m => m.displayName)
   const [paidByOpen, setPaidByOpen] = useState(false)
   const paidByRef = useRef(null)
@@ -89,7 +91,10 @@ export default function AddReceipt() {
   const mealIdsRef = useRef([])
   mealIdsRef.current = meals.map(m => m.local_id)
   const loadComplete = useRef(false)
+  const formRef = useRef(null)
+  const checkinResetPending = useRef(false)
   const { confirm, showAlert, DialogUI } = useDialog()
+  const unsavedDialog = useUnsavedChanges(isDirty, "Your changes to this receipt aren't saved. Leave without saving them?")
 
   useEffect(() => {
     async function load() {
@@ -101,7 +106,11 @@ export default function AddReceipt() {
           .from('receipts').select('*').eq('id', receiptId).single()
         // A blank form here would overwrite the receipt on save
         if (rowError) { setLoadError(true); return }
-        if (row && row.group_id !== group.id) { switchGroup(row.group_id); return }
+        if (row && row.group_id !== group.id) {
+          if (memberships.some(m => m.group_id === row.group_id)) switchGroup(row.group_id)
+          else setLoadError(true)
+          return
+        }
         const receipt = row && receiptFromDb(row, nameOf)
         if (receipt) {
           setStoreName(receipt.store_name)
@@ -327,12 +336,8 @@ Rules:
     }
   }
 
-  async function handleBack() {
-    if (isDirty && !await confirm('You have unsaved changes. Leave without saving?', {
-      title: 'Unsaved changes',
-      confirmLabel: 'Leave',
-      danger: true,
-    })) return
+  // Unsaved changes: asks however you leave (see useUnsavedChanges)
+  function handleBack() {
     leave()
   }
 
@@ -507,6 +512,22 @@ Rules:
     return lineItems.filter(item => item.name.trim() || item.price !== '')
   }
 
+  // Enter moves to the next field instead of saving the receipt (on a phone,
+  // "Go" after an item would otherwise save it half-typed). Save is the
+  // button; Ctrl/⌘+Enter still saves from the keyboard.
+  function handleFormKeyDown(e) {
+    if (e.key !== 'Enter' || e.defaultPrevented || e.target.tagName !== 'INPUT') return
+    if (e.metaKey || e.ctrlKey) return
+    e.preventDefault()
+    const fields = [...e.currentTarget.querySelectorAll('input:not([type=checkbox]):not([type=hidden]):not([disabled]), select, textarea')]
+      .filter(el => el.offsetParent)
+    const next = fields[fields.indexOf(e.target) + 1]
+    if (next) next.focus(); else e.target.blur()
+  }
+
+  // Tip, tax and fees: blank, or an amount that isn't negative
+  const validExtra = value => !String(value).trim() || parseAmount(value) >= 0
+
   function validate() {
     const errs = {}
     if (!receiptDate) errs.receiptDate = 'Pick the date of the receipt.'
@@ -515,12 +536,16 @@ Rules:
     if (filledItems().length === 0) errs.items = 'Add at least one item.'
     filledItems().forEach(item => {
       if (!item.name.trim()) errs[`name-${item.id}`] = 'Required'
-      const p = parseFloat(item.price)
+      const p = parseAmount(item.price)
       if (isNaN(p)) errs[`price-${item.id}`] = 'Invalid'
     })
     meals.forEach(meal => {
       if (!meal.name.trim()) errs[`meal-${meal.local_id}`] = 'Meal name required'
+      if (!validExtra(meal.fee)) errs[`mealfee-${meal.local_id}`] = 'Invalid'
     })
+    if (!validExtra(tip)) errs.tip = 'Invalid'
+    if (!validExtra(tax)) errs.tax = 'Invalid'
+    if (!validExtra(fees)) errs.fees = 'Invalid'
     return errs
   }
 
@@ -532,6 +557,20 @@ Rules:
     return data
   }
 
+  // Editing: rows saved before a later step fails keep their database ids, so
+  // "try again" updates them instead of adding them a second time
+  function rememberSaved(kind, localToDbId) {
+    if (!isEditing || localToDbId.size === 0) return
+    const ids = [...localToDbId.values()]
+    if (kind === 'meals') {
+      setMeals(prev => prev.map(m => localToDbId.has(m.local_id) ? { ...m, dbId: localToDbId.get(m.local_id) } : m))
+      setOriginalMealDbIds(prev => new Set([...prev, ...ids]))
+    } else {
+      setLineItems(prev => prev.map(i => localToDbId.has(i.id) ? { ...i, dbId: localToDbId.get(i.id) } : i))
+      setOriginalDbIds(prev => new Set([...prev, ...ids]))
+    }
+  }
+
   async function saveMeals(receiptDbId) {
     const mealLocalToDbId = new Map()
     const newMeals = meals.filter(m => m.name.trim() && !m.dbId)
@@ -541,14 +580,15 @@ Rules:
     // created, so each gets its own time and they keep the order shown here
     for (const m of newMeals) {
       const row = await must(supabase.from('meals')
-        .insert({ receipt_id: receiptDbId, name: m.name.trim(), fee: parseFloat(m.fee) || 0 })
+        .insert({ receipt_id: receiptDbId, name: m.name.trim(), fee: amountOrZero(m.fee) })
         .select().single(), 'Could not save meals')
       mealLocalToDbId.set(m.local_id, row.id)
+      rememberSaved('meals', new Map([[m.local_id, row.id]]))
     }
 
     // Update existing meals
     for (const meal of existingMeals) {
-      await must(supabase.from('meals').update({ name: meal.name.trim(), fee: parseFloat(meal.fee) || 0 }).eq('id', meal.dbId), 'Could not update a meal')
+      await must(supabase.from('meals').update({ name: meal.name.trim(), fee: amountOrZero(meal.fee) }).eq('id', meal.dbId), 'Could not update a meal')
       mealLocalToDbId.set(meal.local_id, meal.dbId)
     }
 
@@ -558,7 +598,7 @@ Rules:
   const itemRow = (item, receiptDbId, mealLocalToDbId, position) => ({
     receipt_id: receiptDbId,
     name: item.name.trim(),
-    price: parseFloat(item.price),
+    price: parseAmount(item.price),
     always_split: item.always_split,
     meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
     position,
@@ -567,7 +607,16 @@ Rules:
   async function handleSave(e) {
     e.preventDefault()
     const errs = validate()
-    if (Object.keys(errs).length > 0) { setErrors(errs); return }
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs)
+      // The first problem may be far up the page: bring it into view
+      requestAnimationFrame(() => {
+        const field = formRef.current?.querySelector('.border-red-400, .placeholder-red-400, .text-red-500')
+        field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        if (field?.matches('input')) field.focus({ preventScroll: true })
+      })
+      return
+    }
 
     setSaving(true)
 
@@ -585,7 +634,7 @@ Rules:
 
     const receiptFields = {
       store_name: storeName.trim(), paid_by_member: paidById, category,
-      tip: parseFloat(tip) || 0, tax: parseFloat(tax) || 0, fees: parseFloat(fees) || 0,
+      tip: amountOrZero(tip), tax: amountOrZero(tax), fees: amountOrZero(fees),
       receipt_date: receiptDate, member_ids: memberIds,
     }
 
@@ -611,7 +660,10 @@ Rules:
 
         const toInsert = filled.filter(i => !i.dbId)
         if (toInsert.length > 0) {
-          await must(supabase.from('items').insert(toInsert.map(item => itemRow(item, receiptId, mealLocalToDbId, position.get(item.id)))), 'Could not add new items')
+          const rows = await must(supabase.from('items')
+            .insert(toInsert.map(item => itemRow(item, receiptId, mealLocalToDbId, position.get(item.id))))
+            .select('id'), 'Could not add new items')
+          rememberSaved('items', new Map(toInsert.map((item, i) => [item.id, rows[i].id])))
         }
 
         const survivingDbIds = new Set(toUpdate.map(i => i.dbId))
@@ -630,15 +682,20 @@ Rules:
 
         // New items, or items newly locked 🔒 (split with everyone): everyone
         // else checks in again, so they see them and their split includes them
+        // (Remembered across a failed attempt: on "try again" the new items
+        // are already saved, but everyone still needs to check in again.)
         const newlyLocked = toUpdate.filter(i => i.always_split && !i.wasAlwaysSplit)
-        if ((toInsert.length > 0 || newlyLocked.length > 0) && myMember) {
+        if (toInsert.length > 0 || newlyLocked.length > 0) checkinResetPending.current = true
+        if (checkinResetPending.current && myMember) {
           await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).neq('member_id', myMember.id), 'Could not ask everyone to check in again')
+          checkinResetPending.current = false
         }
       } catch (err) {
         await showAlert(`${err.message}. Some changes may not have saved; check the receipt and try again.`, { title: 'Error saving receipt' })
         setSaving(false)
         return
       }
+      leaveWithoutPrompt()
       leave()
       return
     }
@@ -663,6 +720,7 @@ Rules:
       return
     }
     // The new receipt takes the form's place, so Back from it doesn't reopen the form
+    leaveWithoutPrompt()
     navigate(`/receipt/${receipt.id}`, { replace: true })
   }
 
@@ -675,6 +733,7 @@ Rules:
     const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
     // Skip the deleted receipt's page too: back to the screen before it
+    leaveWithoutPrompt()
     if (fromReceipt && canGoBack(2)) navigate(-2)
     else navigate('/receipts', { replace: true })
   }
@@ -694,6 +753,7 @@ Rules:
           <input
             type="text"
             value={item.name}
+            enterKeyHint="next"
             onChange={e => { updateItem(item.id, 'name', e.target.value); setErrors(v => ({ ...v, [`name-${item.id}`]: undefined })) }}
             placeholder="Item name"
             className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors[`name-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
@@ -703,8 +763,9 @@ Rules:
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
             <input
-              type="number"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
+              enterKeyHint="next"
               value={item.price}
               onChange={e => { updateItem(item.id, 'price', e.target.value); setErrors(v => ({ ...v, [`price-${item.id}`]: undefined })) }}
               placeholder="0.00"
@@ -717,7 +778,7 @@ Rules:
           tabIndex={-1}
           onClick={() => updateItem(item.id, 'always_split', !item.always_split)}
           title={item.always_split ? 'Split with everyone who checks in — click to unlock' : 'Click to split with everyone who checks in'}
-          className={`mt-1.5 text-base transition ${item.always_split ? 'text-accent-500' : 'text-gray-300 hover:text-gray-400'}`}
+          className={`w-8 h-10 -my-0.5 shrink-0 flex items-center justify-center text-base transition ${item.always_split ? 'text-accent-500' : 'text-gray-300 hover:text-gray-400'}`}
           aria-label="Toggle always split"
         >
           {item.always_split ? '🔒' : '🔓'}
@@ -726,7 +787,7 @@ Rules:
           type="button"
           tabIndex={-1}
           onClick={() => removeItem(item.id)}
-          className="mt-2 text-gray-400 hover:text-red-500 transition text-sm"
+          className="w-8 h-10 -my-0.5 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500 transition text-sm"
           aria-label="Remove item"
         >
           ✕
@@ -742,6 +803,7 @@ Rules:
   return (
     <>
     {DialogUI}
+    {unsavedDialog}
     <div className="max-w-xl mx-auto p-4 py-8">
       <BackButton onClick={handleBack} className="mb-2" />
       <div className="flex items-center justify-between mb-6">
@@ -788,7 +850,7 @@ Rules:
         </div>
       )}
 
-      <form onSubmit={handleSave} className="space-y-5">
+      <form ref={formRef} onSubmit={handleSave} onKeyDown={handleFormKeyDown} className="space-y-5">
         {/* Date */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
@@ -979,13 +1041,12 @@ Rules:
                   <div className="relative shrink-0 w-24">
                     <span className="absolute left-2 top-1.5 text-gray-400 text-xs">fee $</span>
                     <input
-                      type="number"
-                      min="0"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       value={meal.fee}
-                      onChange={e => updateMeal(meal.local_id, 'fee', e.target.value)}
+                      onChange={e => { updateMeal(meal.local_id, 'fee', e.target.value); setErrors(v => ({ ...v, [`mealfee-${meal.local_id}`]: undefined })) }}
                       placeholder="0.00"
-                      className="w-full border border-gray-200 rounded-md pl-9 pr-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-accent-400"
+                      className={`w-full border rounded-md pl-9 pr-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-accent-400 ${errors[`mealfee-${meal.local_id}`] ? 'border-red-400' : 'border-gray-200'}`}
                     />
                   </div>
                   <button
@@ -1032,11 +1093,11 @@ Rules:
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
-                type="number" min="0" step="0.01"
+                type="text" inputMode="decimal"
                 value={tip}
-                onChange={e => { markDirty(); setTip(e.target.value) }}
+                onChange={e => { markDirty(); setTip(e.target.value); setErrors(v => ({ ...v, tip: undefined })) }}
                 placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+                className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.tip ? 'border-red-400' : 'border-gray-300'}`}
               />
             </div>
           </div>
@@ -1045,11 +1106,11 @@ Rules:
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
-                type="number" min="0" step="0.01"
+                type="text" inputMode="decimal"
                 value={tax}
-                onChange={e => { markDirty(); setTax(e.target.value) }}
+                onChange={e => { markDirty(); setTax(e.target.value); setErrors(v => ({ ...v, tax: undefined })) }}
                 placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+                className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.tax ? 'border-red-400' : 'border-gray-300'}`}
               />
             </div>
           </div>
@@ -1058,11 +1119,11 @@ Rules:
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
-                type="number" min="0" step="0.01"
+                type="text" inputMode="decimal"
                 value={fees}
-                onChange={e => { markDirty(); setFees(e.target.value) }}
+                onChange={e => { markDirty(); setFees(e.target.value); setErrors(v => ({ ...v, fees: undefined })) }}
                 placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+                className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.fees ? 'border-red-400' : 'border-gray-300'}`}
               />
             </div>
           </div>
@@ -1070,11 +1131,11 @@ Rules:
 
         {/* Total preview */}
         {(() => {
-          const itemsTotal = filledItems().reduce((s, i) => s + (parseFloat(i.price) || 0), 0)
-          const tipAmt = parseFloat(tip) || 0
-          const taxAmt = parseFloat(tax) || 0
-          const feesAmt = parseFloat(fees) || 0
-          const mealFeesAmt = meals.reduce((s, m) => s + (parseFloat(m.fee) || 0), 0)
+          const itemsTotal = filledItems().reduce((s, i) => s + amountOrZero(i.price), 0)
+          const tipAmt = amountOrZero(tip)
+          const taxAmt = amountOrZero(tax)
+          const feesAmt = amountOrZero(fees)
+          const mealFeesAmt = meals.reduce((s, m) => s + amountOrZero(m.fee), 0)
           const grandTotal = itemsTotal + tipAmt + taxAmt + feesAmt + mealFeesAmt
           const hasExtras = tipAmt > 0 || taxAmt > 0 || feesAmt > 0 || mealFeesAmt > 0
           return (
@@ -1096,6 +1157,9 @@ Rules:
           )
         })()}
 
+        {Object.values(errors).some(Boolean) && (
+          <p className="text-sm text-red-500 text-center -mb-2">Some fields need fixing. They're marked in red.</p>
+        )}
         <button
           type="submit"
           disabled={saving}

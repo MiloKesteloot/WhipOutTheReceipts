@@ -74,7 +74,8 @@ function Account() {
       return
     }
     await supabase.auth.signOut({ scope: 'local' })
-    window.location.hash = '#/'
+    // Replace, so Back doesn't return to the deleted account's settings
+    window.location.replace(window.location.pathname + '#/')
   }
 
   async function resetPassword() {

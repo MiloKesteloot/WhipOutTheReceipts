@@ -35,7 +35,7 @@ export default function Onboarding() {
     if (error) { setError(error.message); setBusy(false); return }
     await refreshMemberships()
     switchGroup(data)
-    navigate('/group')
+    navigate('/group', { replace: true })
   }
 
   function join(e) {
@@ -82,6 +82,7 @@ export function Join() {
   const { code } = useParams()
   const { switchGroup, refreshMemberships } = useGroup()
   const navigate = useNavigate()
+  const goBack = useGoBack()
   const [preview, setPreview] = useState(undefined) // undefined = loading, null = invalid
   const { confirm, DialogUI } = useDialog()
   const [busy, setBusy] = useState(false)
@@ -110,7 +111,7 @@ export function Join() {
     if (error) { setError(error.message); setBusy(false); return }
     await refreshMemberships()
     switchGroup(data)
-    navigate('/')
+    navigate('/', { replace: true })
   }
 
   if (preview === undefined) return <AuthShell><p className="text-sm text-gray-400">Loading…</p></AuthShell>
@@ -118,7 +119,7 @@ export function Join() {
   if (preview === null) {
     return (
       <AuthShell title="Invite not found" subtitle="This invite link or code isn't valid. It may have been replaced with a new one.">
-        <button onClick={() => navigate('/groups/new')} className={primaryButton}>Try another code</button>
+        <button onClick={() => navigate('/groups/new', { replace: true })} className={primaryButton}>Try another code</button>
       </AuthShell>
     )
   }
@@ -126,7 +127,7 @@ export function Join() {
   if (preview.already_member) {
     return (
       <AuthShell title={preview.name} subtitle="You're already in this group.">
-        <button onClick={() => { switchGroup(preview.group_id); navigate('/') }} className={primaryButton}>Open {preview.name}</button>
+        <button onClick={() => { switchGroup(preview.group_id); navigate('/', { replace: true }) }} className={primaryButton}>Open {preview.name}</button>
       </AuthShell>
     )
   }
@@ -134,7 +135,7 @@ export function Join() {
   if (preview.banned) {
     return (
       <AuthShell title={preview.name} subtitle="The owner removed you from this group. Ask them to let you back in.">
-        <button onClick={() => navigate('/')} className={primaryButton}>Back</button>
+        <button onClick={() => goBack('/')} className={primaryButton}>Back</button>
       </AuthShell>
     )
   }
@@ -177,7 +178,7 @@ export function Join() {
       </button>
       {error && <p className="text-sm text-red-500 mt-3">{error}</p>}
       <div className="mt-4 text-center text-sm">
-        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600">Cancel</button>
+        <button onClick={() => goBack('/')} className="text-gray-400 hover:text-gray-600">Cancel</button>
       </div>
     </AuthShell>
   )

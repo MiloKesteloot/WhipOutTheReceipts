@@ -1,19 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGroup } from './group.jsx'
 import { loadReceipts, loadItems, loadClaims, loadMeals, loadCheckins, loadPayments } from './db.js'
 import { receiptDebts, computeBalances } from './balances.js'
+
+// The last loaded data per group, shown at once while it's fetched again.
+// Coming Back to a page then shows it straight away (and at the same scroll
+// position) instead of "Loading…" first.
+const cache = new Map()
 
 // Loads the current group's receipts + payments and computes who owes whom.
 // Returns { loading, error, data, debts, balances, reload }.
 export function useBalances() {
   const { group, nameOf, memberIds } = useGroup()
-  const [state, setState] = useState({ loading: true })
+  const [state, setState] = useState(() => cache.get(group.id) || { loading: true })
+  const latest = useRef(0)
 
   const reload = useCallback(async () => {
+    // Only the newest request may update the page (an older, slower one is dropped)
+    const request = ++latest.current
     try {
-      await load()
+      const next = await load()
+      if (request !== latest.current) return
+      cache.set(group.id, next)
+      setState(next)
     } catch (error) {
-      setState(prev => ({ ...prev, loading: false, error }))
+      if (request === latest.current) setState(prev => ({ ...prev, loading: false, error }))
     }
   }, [group.id, nameOf])
 
@@ -28,7 +39,7 @@ export function useBalances() {
     ])
     const data = { receipts, items, claims, meals, checkins, payments }
     const debts = receiptDebts(data)
-    setState({ loading: false, error: null, data, debts, balances: computeBalances(debts, payments) })
+    return { loading: false, error: null, data, debts, balances: computeBalances(debts, payments) }
   }
 
   useEffect(() => { reload() }, [reload])

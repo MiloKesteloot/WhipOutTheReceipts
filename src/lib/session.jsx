@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from './supabase.js'
 
 const SessionContext = createContext(null)
@@ -10,6 +11,7 @@ export function SessionProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [recovering, setRecovering] = useState(false)
   const [linkError, setLinkError] = useState('')
+  const navigate = useNavigate()
   // Email links (confirm signup / reset password) arrive as
   // ?token_hash=...&type=...; verifying here works on any device.
   const [emailLink] = useState(() => {
@@ -83,6 +85,9 @@ export function SessionProvider({ children }) {
   async function signOut() {
     await supabase.auth.signOut()
     setProfile(null)
+    // Signed out lands on the start page, not the page you were on (which
+    // the next person to sign in on this device would otherwise open)
+    navigate('/', { replace: true })
   }
 
   return (

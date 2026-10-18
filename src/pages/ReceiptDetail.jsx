@@ -12,7 +12,8 @@ import ReceiptHistory from '../components/ReceiptHistory.jsx'
 import { guestLinkUrl } from './GroupSettings.jsx'
 import BackButton from '../components/BackButton.jsx'
 import { copyText } from '../lib/clipboard.js'
-import { useGoBack } from '../lib/useGoBack.js'
+import { useGoBack, canGoBack } from '../lib/useGoBack.js'
+import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
 
 function getStoreLogo(storeName) {
   if (!storeName) return null
@@ -31,7 +32,9 @@ export default function ReceiptDetail() {
   const [items, setItems] = useState([])
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
-  const { group, switchGroup, myName, myMember, nameOf, idOf, members, refreshMembers } = useGroup()
+  const { group, memberships, switchGroup, myName, myMember, nameOf, idOf, members, refreshMembers } = useGroup()
+  // { id, name } of the group this receipt belongs to, when it isn't the current one
+  const [otherGroup, setOtherGroup] = useState(null)
   // Whose check-offs are being edited: me, or a guest on this receipt
   // (someone without an account) that I'm checking in for
   const [actingForId, setActingForId] = useState(null)
@@ -52,6 +55,7 @@ export default function ReceiptDetail() {
   const [isDirty, setIsDirty] = useState(false)
   const claimsLoadedRef = useRef(false)
   const { confirm, showAlert, DialogUI } = useDialog()
+  const unsavedDialog = useUnsavedChanges(isDirty, "Your check-offs aren't saved yet. Leave without saving them?")
   const bal = useBalances()
 
   const loadData = useCallback(async () => {
@@ -62,7 +66,12 @@ export default function ReceiptDetail() {
 
     if (receiptRes.error) { setError('Receipt not found.'); setLoading(false); return }
     // Shared link to a receipt in another of my groups: switch to that group
-    if (receiptRes.data.group_id !== group.id) { switchGroup(receiptRes.data.group_id); return }
+    if (receiptRes.data.group_id !== group.id) {
+      const other = memberships.find(m => m.group_id === receiptRes.data.group_id)
+      if (!other) { setError('Receipt not found.'); setLoading(false); return }
+      if (!canGoBack()) { switchGroup(other.group_id); return }
+      setOtherGroup({ id: other.group_id, name: other.groups.name }); setLoading(false); return
+    }
     setReceipt(receiptFromDb(receiptRes.data, nameOf))
     setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
 
@@ -227,6 +236,9 @@ export default function ReceiptDetail() {
   async function undoSent(linked) {
     const last = [...linked].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))[0]
     if (!last) return
+    if (!await confirm(`Your $${Number(last.amount).toFixed(2)} payment to ${last.to} will be removed. This is recorded in the history.`, {
+      title: 'Undo this payment?', confirmLabel: 'Remove payment', danger: true,
+    })) return
     setSettling(true)
     try {
       await deletePayment(last.id)
@@ -262,10 +274,8 @@ export default function ReceiptDetail() {
     setTimeout(() => setCopiedLinkFor(null), 2000)
   }
 
-  async function handleBack() {
-    if (isDirty && !await confirm('You have unsaved claims. Leave without saving?', {
-      title: 'Unsaved changes', confirmLabel: 'Leave', danger: true,
-    })) return
+  // Unsaved check-offs: asks however you leave (see useUnsavedChanges)
+  function handleBack() {
     // Receipts live under the Receipts tab, so that's "back" from a shared link
     goBack('/receipts')
   }
@@ -276,6 +286,7 @@ export default function ReceiptDetail() {
     })) return
     const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
+    leaveWithoutPrompt()
     goBack('/receipts')
   }
 
@@ -331,7 +342,25 @@ export default function ReceiptDetail() {
   const ungroupedItems = items.filter(i => !i.meal_id)
 
   if (loading) return <div className="max-w-xl mx-auto p-8 text-gray-400">Loading…</div>
-  if (error) return <div className="max-w-xl mx-auto p-8 text-red-500">{error}</div>
+  if (otherGroup) {
+    return (
+      <div className="max-w-xl mx-auto p-8">
+        <p className="text-gray-700">This receipt is in <span className="font-semibold">{otherGroup.name}</span>.</p>
+        <div className="mt-4 flex gap-2">
+          <button onClick={() => switchGroup(otherGroup.id)} className="px-4 py-2 text-sm font-medium rounded-lg bg-accent-600 text-white hover:bg-accent-700 transition">Switch to {otherGroup.name}</button>
+          <BackButton onClick={() => goBack('/receipts')} />
+        </div>
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="max-w-xl mx-auto p-8">
+        <p className="text-gray-700">{error === 'Receipt not found.' ? "This receipt doesn't exist, or it's in a group you're not in." : error}</p>
+        <BackButton onClick={() => goBack('/receipts')} className="mt-4" />
+      </div>
+    )
+  }
 
   function renderItemRow(item, indent = false) {
     const claimerList = claims.filter(c => c.item_id === item.id).map(c => c.roommate)
@@ -370,6 +399,7 @@ export default function ReceiptDetail() {
   return (
     <>
     {DialogUI}
+    {unsavedDialog}
     <div className="max-w-xl mx-auto p-4 py-8">
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
@@ -506,18 +536,29 @@ export default function ReceiptDetail() {
               const mealTotal = mealItems.reduce((s, i) => s + Number(i.price), 0) + mealFee
               return (
                 <Fragment key={meal.id}>
+                  {/* Tapping the row opens the meal; its checkbox (with a large tap
+                      area) checks or unchecks all of its items */}
                   <li
-                    className={`flex items-center gap-3 px-4 py-3 bg-gray-50 ${myName ? 'cursor-pointer hover:bg-gray-100' : ''}`}
-                    onClick={() => toggleMealGroup(meal.id, mealItems)}
+                    className="flex items-center gap-3 px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100"
+                    onClick={() => toggleExpandMeal(meal.id)}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checkState === 'all'}
-                      ref={el => { if (el) el.indeterminate = checkState === 'some' }}
-                      readOnly
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); toggleMealGroup(meal.id, mealItems) }}
                       disabled={!myName}
-                      className="h-4 w-4 rounded accent-accent-600"
-                    />
+                      aria-label={`Check off all of ${meal.name}`}
+                      className="-m-3 p-3 shrink-0 flex"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checkState === 'all'}
+                        ref={el => { if (el) el.indeterminate = checkState === 'some' }}
+                        readOnly
+                        tabIndex={-1}
+                        disabled={!myName}
+                        className="h-4 w-4 rounded accent-accent-600 pointer-events-none"
+                      />
+                    </button>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-700">{meal.name}</p>
                       <p className="text-xs text-gray-400">
@@ -526,15 +567,11 @@ export default function ReceiptDetail() {
                       </p>
                     </div>
                     <span className="text-sm font-medium text-gray-700 shrink-0">${mealTotal.toFixed(2)}</span>
-                    <button
-                      type="button"
-                      onClick={e => { e.stopPropagation(); toggleExpandMeal(meal.id) }}
-                      className="text-gray-400 hover:text-gray-600 px-1 shrink-0"
-                    >
+                    <span className="text-gray-400 px-1 shrink-0" aria-hidden="true">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
                       </svg>
-                    </button>
+                    </span>
                   </li>
                   {expanded && mealItems.map(item => renderItemRow(item, true))}
                 </Fragment>
@@ -659,18 +696,18 @@ export default function ReceiptDetail() {
                         {settled ? (
                           myName === d.debtor && st.linked.length > 0 ? (
                             <button onClick={() => undoSent(st.linked)} disabled={settling}
-                              className="text-xs text-accent-600 font-medium hover:text-gray-400 transition disabled:opacity-50" title="Undo your payment for this receipt">
+                              className="text-sm px-3 py-1.5 -my-1 rounded-md text-accent-600 font-medium hover:bg-gray-50 transition disabled:opacity-50" title="Undo your payment for this receipt">
                               ✓ Sent
                             </button>
                           ) : <span className="text-xs text-accent-600 font-medium">✓ Paid</span>
                         ) : myName === d.debtor ? (
                           <button onClick={() => markSent(d, st.remaining)} disabled={settling}
-                            className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">
+                            className="text-sm px-3 py-1.5 -my-1 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">
                             Mark sent
                           </button>
                         ) : myName === d.creditor ? (
                           <button onClick={() => markSent(d, st.remaining)} disabled={settling}
-                            className="text-xs px-2 py-0.5 border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 transition disabled:opacity-50">
+                            className="text-sm px-3 py-1.5 -my-1 border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 transition disabled:opacity-50">
                             Mark received
                           </button>
                         ) : <span className="text-xs text-amber-500">awaiting</span>}

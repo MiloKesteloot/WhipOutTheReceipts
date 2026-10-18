@@ -38,6 +38,15 @@ input[type="search"]::-webkit-search-cancel-button {
   appearance: none;
 }
 
+/* Phones: iPhones zoom the page in when you tap a field with text under 16px
+   (and leave it zoomed), so every field is at least 16px there. Desktop keeps
+   the smaller sizes the pages set. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
 /* Safe areas (iOS notch / home indicator) */
 :root {
   --safe-top: env(safe-area-inset-top);

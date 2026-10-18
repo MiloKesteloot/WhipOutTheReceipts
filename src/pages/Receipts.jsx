@@ -13,6 +13,7 @@ import { ReceiptCalendar, ReceiptDays, ReceiptList } from '../components/Receipt
 const PAGE_SIZE = 30
 const VIEWS = [['calendar', 'Calendar'], ['days', 'Days'], ['receipts', 'Receipts']]
 const VIEW_KEY = 'receipts-view'
+const SHOW_ALL_KEY = 'receipts-show-all'
 
 function savedView() {
   try {
@@ -57,7 +58,19 @@ export default function Receipts() {
   const [itemLimit, setItemLimit] = useState(PAGE_SIZE)
   const [receiptLimit, setReceiptLimit] = useState(PAGE_SIZE)
   const [view, setView] = useState(savedView)
-  const [showAll, setShowAll] = useState(localStorage.getItem('default-show-all-trips') === '1')
+  // Mine/All: the Settings default, or what you picked earlier this session
+  // (so it's still set when you come Back from a receipt)
+  const [showAll, setShowAllState] = useState(() => {
+    try {
+      const picked = sessionStorage.getItem(SHOW_ALL_KEY)
+      if (picked) return picked === 'all'
+    } catch {}
+    return localStorage.getItem('default-show-all-trips') === '1'
+  })
+  const setShowAll = all => {
+    try { sessionStorage.setItem(SHOW_ALL_KEY, all ? 'all' : 'mine') } catch {}
+    setShowAllState(all)
+  }
   const searchData = useSearchData()
   const { loading, error, data, reload } = useBalances()
   const navigate = useNavigate()
