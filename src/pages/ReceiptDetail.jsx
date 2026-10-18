@@ -12,6 +12,7 @@ import ReceiptHistory from '../components/ReceiptHistory.jsx'
 import { guestLinkUrl } from './GroupSettings.jsx'
 import BackButton from '../components/BackButton.jsx'
 import { copyText } from '../lib/clipboard.js'
+import { useGoBack } from '../lib/useGoBack.js'
 
 function getStoreLogo(storeName) {
   if (!storeName) return null
@@ -24,6 +25,7 @@ function getStoreLogo(storeName) {
 export default function ReceiptDetail() {
   const { receiptId } = useParams()
   const navigate = useNavigate()
+  const goBack = useGoBack()
 
   const [receipt, setReceipt] = useState(null)
   const [items, setItems] = useState([])
@@ -264,7 +266,8 @@ export default function ReceiptDetail() {
     if (isDirty && !await confirm('You have unsaved claims. Leave without saving?', {
       title: 'Unsaved changes', confirmLabel: 'Leave', danger: true,
     })) return
-    navigate('/')
+    // Receipts live under the Receipts tab, so that's "back" from a shared link
+    goBack('/receipts')
   }
 
   async function deleteReceipt() {
@@ -273,7 +276,7 @@ export default function ReceiptDetail() {
     })) return
     const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
-    navigate('/')
+    goBack('/receipts')
   }
 
   async function restoreReceipt() {
@@ -411,7 +414,7 @@ export default function ReceiptDetail() {
             )}
           </button>
           <button
-            onClick={() => navigate(`/receipt/${receiptId}/edit`)}
+            onClick={() => navigate(`/receipt/${receiptId}/edit`, { state: { fromReceipt: true } })}
             className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-400 hover:text-gray-600"
             title="Edit receipt"
           >
@@ -482,7 +485,7 @@ export default function ReceiptDetail() {
       {items.length === 0 ? (
         <div className="py-8 flex flex-col items-center">
           <button
-            onClick={() => navigate(`/receipt/${receiptId}/edit`)}
+            onClick={() => navigate(`/receipt/${receiptId}/edit`, { state: { fromReceipt: true } })}
             className="flex flex-col items-center gap-3 w-full max-w-xs p-8 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-accent-300 hover:text-accent-500 hover:bg-accent-50 transition-all"
           >
             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

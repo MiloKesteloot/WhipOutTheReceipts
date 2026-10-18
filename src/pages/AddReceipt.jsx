@@ -4,7 +4,7 @@ import {
   pointerWithin, rectIntersection, closestCenter, getFirstCollision, MeasuringStrategy,
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { useGroup } from '../lib/group.jsx'
 import { receiptFromDb } from '../lib/db.js'
@@ -13,6 +13,7 @@ import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 import BackButton from '../components/BackButton.jsx'
 import LoadError from '../components/LoadError.jsx'
+import { useGoBack, canGoBack } from '../lib/useGoBack.js'
 import { UNGROUPED, containerFromDropId, SortableRow, DragHandle, DropZone, ItemDragPreview } from '../components/ItemDrag.jsx'
 
 function newItem(dbId = null) {
@@ -47,6 +48,9 @@ export default function AddReceipt() {
   const { receiptId } = useParams()
   const isEditing = !!receiptId
   const navigate = useNavigate()
+  const goBack = useGoBack()
+  // Editing, opened from the receipt page: that page is the previous screen
+  const fromReceipt = !!useLocation().state?.fromReceipt
   const [searchParams] = useSearchParams()
 
   const [storeName, setStoreName] = useState('')
@@ -329,8 +333,15 @@ Rules:
       confirmLabel: 'Leave',
       danger: true,
     })) return
-    if (isEditing) navigate(`/receipt/${receiptId}`)
-    else navigate('/')
+    leave()
+  }
+
+  // Back to where the form was opened from: the receipt being edited, or
+  // wherever "New receipt" was tapped (Home if opened straight from a link)
+  function leave() {
+    if (!isEditing) goBack('/')
+    else if (fromReceipt) goBack(`/receipt/${receiptId}`)
+    else navigate(`/receipt/${receiptId}`, { replace: true })
   }
 
   // Typing in a list's empty row makes it a real item, and a new empty row
@@ -628,7 +639,7 @@ Rules:
         setSaving(false)
         return
       }
-      navigate(`/receipt/${receiptId}`)
+      leave()
       return
     }
 
@@ -651,7 +662,8 @@ Rules:
       setSaving(false)
       return
     }
-    navigate(`/receipt/${receipt.id}`)
+    // The new receipt takes the form's place, so Back from it doesn't reopen the form
+    navigate(`/receipt/${receipt.id}`, { replace: true })
   }
 
   async function handleDelete() {
@@ -662,7 +674,9 @@ Rules:
     })) return
     const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
-    navigate('/')
+    // Skip the deleted receipt's page too: back to the screen before it
+    if (fromReceipt && canGoBack(2)) navigate(-2)
+    else navigate('/receipts', { replace: true })
   }
 
   const ungroupedItems = lineItems.filter(i => !i.meal_local_id)

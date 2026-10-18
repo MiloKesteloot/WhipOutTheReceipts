@@ -199,6 +199,16 @@ function PersonRow({ m }) {
       .then(ok => ok && run('unlink_member', { p_member: m.id }))],
   ].filter(Boolean) : []
 
+  // Anyone in the group can rename people without an account or switch them
+  // between regular and guest; those go in the ⋯ menu too
+  const menuActions = [
+    ...(!linked && m.active ? [
+      ['Rename', () => setEditing(true)],
+      [m.is_guest ? 'Make regular' : 'Make guest', toggleGuest],
+    ] : []),
+    ...ownerActions,
+  ]
+
   return (
     <>
     <li className={`flex items-center gap-3 py-2 ${m.active ? '' : 'opacity-50'}`}>
@@ -213,20 +223,14 @@ function PersonRow({ m }) {
         {m.active && !linked && !m.is_guest && <Badge>No account yet</Badge>}
       </div>
       {!linked && m.active && (
-        <>
-          <button onClick={() => setLinkOpen(o => !o)} className="text-xs text-accent-600 hover:text-accent-700 shrink-0">Guest link</button>
-          <button onClick={toggleGuest} className="text-xs text-gray-400 hover:text-gray-600 shrink-0" title="Guests aren't added to new receipts by default">
-            {m.is_guest ? 'Make regular' : 'Make guest'}
-          </button>
-          <button onClick={() => setEditing(true)} className="text-xs text-gray-400 hover:text-gray-600 shrink-0">Rename</button>
-        </>
+        <button onClick={() => setLinkOpen(o => !o)} className="text-xs text-accent-600 hover:text-accent-700 shrink-0">Guest link</button>
       )}
-      {ownerActions.length > 0 && (
+      {menuActions.length > 0 && (
         <div className="relative shrink-0">
           <button onClick={() => setMenuOpen(o => !o)} className="px-1.5 text-gray-400 hover:text-gray-600" aria-label="More actions">⋯</button>
           {menuOpen && (
             <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
-              {ownerActions.map(([label, action]) => (
+              {menuActions.map(([label, action]) => (
                 <button key={label} onClick={() => { setMenuOpen(false); action() }} className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{label}</button>
               ))}
             </div>

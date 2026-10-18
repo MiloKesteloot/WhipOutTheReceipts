@@ -5,6 +5,7 @@ import { useGroup } from '../lib/group.jsx'
 import { useSession } from '../lib/session.jsx'
 import { AuthShell, inputClass, primaryButton } from './Auth.jsx'
 import BackButton from '../components/BackButton.jsx'
+import { useGoBack } from '../lib/useGoBack.js'
 import { useDialog } from '../lib/useDialog.jsx'
 
 // Accepts a bare code or a full invite link (…#/join/ABCD2345)
@@ -20,6 +21,7 @@ export default function Onboarding() {
   const { memberships, switchGroup, refreshMemberships } = useGroup()
   const { signOut } = useSession()
   const navigate = useNavigate()
+  const goBack = useGoBack()
   const [groupName, setGroupName] = useState('')
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
@@ -68,7 +70,7 @@ export default function Onboarding() {
 
       <div className="mt-5 text-center text-sm">
         {hasGroups
-          ? <BackButton onClick={() => navigate('/')} />
+          ? <BackButton onClick={() => goBack('/')} />
           : <button onClick={signOut} className="text-gray-400 hover:text-gray-600">Sign out</button>}
       </div>
     </AuthShell>

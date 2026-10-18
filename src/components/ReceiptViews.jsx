@@ -6,6 +6,8 @@ import { waitingOn } from '../lib/receiptStatus.js'
 // Calendar / Days / list views of a group's receipts (the Receipts tab).
 // Each takes already-filtered receipts plus checked-in and totals maps.
 
+const CAL_MONTH_KEY = 'receipts-calendar-month'
+
 const fmtDate = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
 
 function EmptyState() {
@@ -54,9 +56,20 @@ function DayPicker({ day, onClose }) {
 export function ReceiptCalendar({ receipts, checkedIn, totals }) {
   const navigate = useNavigate()
   const [pickerDay, setPickerDay] = useState(null) // { date, items }
-  const [calMonth, setCalMonth] = useState(() => {
+  // The month shown is remembered for this session, so coming back from a
+  // receipt lands on the same month
+  const [calMonth, setCalMonthState] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(CAL_MONTH_KEY))
+      if (Number.isInteger(saved?.year) && Number.isInteger(saved?.month)) return saved
+    } catch {}
     const now = new Date()
     return { year: now.getFullYear(), month: now.getMonth() }
+  })
+  const setCalMonth = next => setCalMonthState(prev => {
+    const value = typeof next === 'function' ? next(prev) : next
+    try { sessionStorage.setItem(CAL_MONTH_KEY, JSON.stringify(value)) } catch {}
+    return value
   })
 
   const now = new Date()
