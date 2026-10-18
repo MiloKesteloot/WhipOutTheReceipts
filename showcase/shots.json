@@ -2,24 +2,44 @@
   "outDir": "../../MiloTheMiloPorfolio/project-assets/receipts",
   "timezone": "America/Los_Angeles",
   "port": 5199,
+  "appAssets": {
+    "outDir": "../public/landing",
+    "files": {
+      "phone-hero.mp4": null, "phone-hero-poster.png": 780,
+      "phone-todo.png": 585, "phone-claim.png": 585, "phone-split.png": 585, "phone-dining.png": 585,
+      "phone-add.png": 585, "phone-payments.png": 585, "phone-stats.png": 585, "desktop-stats.png": 1600
+    }
+  },
   "devices": {
     "phone":   { "width": 390,  "height": 844, "scale": 3, "mobile": true },
     "desktop": { "width": 1280, "height": 800, "scale": 2 }
   },
   "shots": [
-    { "name": "desktop-calendar", "device": "desktop", "path": "/", "sessionStorage": { "home-view": "calendar" } },
+    { "name": "desktop-calendar", "device": "desktop", "path": "/receipts", "localStorage": { "receipts-view": "calendar" } },
     { "name": "desktop-stats",    "device": "desktop", "path": "/stats", "steps": [{ "scrollTo": "text=Cumulative food spending" }, { "scrollBy": -80 }], "settle": 3000 },
 
-    { "name": "phone-todo",       "device": "phone", "path": "/", "sessionStorage": { "home-view": "todo" } },
+    { "name": "phone-todo",       "device": "phone", "path": "/" },
     { "name": "phone-claim",      "device": "phone", "path": "/receipt/{tj}", "steps": [{ "click": "text=Bananas" }, { "click": "text=Avocados (4 pack)" }, { "click": "text=Oat Milk" }, { "click": "text=Frozen Mandarin Orange Chicken" }] },
     { "name": "phone-split",      "device": "phone", "path": "/receipt/{thai}", "steps": [{ "scrollTo": "text=Who owes what" }, { "scrollBy": -100 }] },
 
     { "name": "phone-add",        "device": "phone", "path": "/receipt/{costco}/edit" },
     { "name": "phone-dining",     "device": "phone", "path": "/receipt/{thai}" },
-    { "name": "phone-days",       "device": "phone", "path": "/", "sessionStorage": { "home-view": "days" }, "localStorage": { "default-show-all-trips": "1" } },
+    { "name": "phone-days",       "device": "phone", "path": "/receipts", "localStorage": { "receipts-view": "days", "default-show-all-trips": "1" } },
 
     { "name": "phone-stats",      "device": "phone", "path": "/stats", "steps": [{ "scrollTo": "text=By person" }, { "scrollBy": -80 }], "settle": 2500 },
-    { "name": "phone-payments",   "device": "phone", "path": "/payments" },
-    { "name": "phone-search",     "device": "phone", "path": "/search?q=chicken" }
+    { "name": "phone-payments",   "device": "phone", "path": "/balances" },
+    { "name": "phone-search",     "device": "phone", "path": "/receipts?q=chicken" },
+
+    { "name": "phone-hero", "device": "phone", "path": "/", "video": true, "endCard": true, "viewport": { "scale": 2 },
+      "localStorage": { "claimed-receipt-{tj}-{me}": "1" },
+      "hide": ["[data-settle-button]"],
+      "steps": [
+      { "wait": 900 }, { "click": "text=Trader Joe's", "flash": "amber" }, { "wait": 1300 },
+      { "click": "text=Bananas" }, { "wait": 650 }, { "click": "text=Sourdough Bread" }, { "wait": 650 },
+      { "click": "text=Chocolate Hearts" }, { "wait": 800 },
+      { "smoothScrollBy": 220 }, { "wait": 250 },
+      { "click": "text=Eggs (dozen)" }, { "wait": 650 }, { "click": "text=Spinach" }, { "wait": 1200 },
+      { "tap": "text=Save my claims" }
+    ] }
   ]
 }

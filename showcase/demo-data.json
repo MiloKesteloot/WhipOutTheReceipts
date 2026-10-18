@@ -4,9 +4,11 @@
   "viewer": "Milo",
   "people": [
     { "first": "Milo", "last": "Kesteloot" },
-    { "first": "Priya", "last": "Shah" },
-    { "first": "Jordan", "last": "Lee" },
-    { "first": "Theo", "last": "Martin" }
+    { "first": "Niko", "last": "Shah" },
+    { "first": "Nick", "last": "Lee" },
+    { "first": "Alex", "last": "Martin" },
+    { "first": "Clouey", "last": "Park" },
+    { "first": "Sierra", "last": "Diaz" }
   ],
 
   "receipts": [
@@ -15,21 +17,22 @@
       "store": "Trader Joe's",
       "category": "Groceries",
       "daysAgo": 1,
-      "paidBy": "Priya",
+      "paidBy": "Niko",
       "tax": 1.42,
       "notCheckedIn": ["Milo"],
       "items": [
-        { "name": "Bananas", "price": 1.99, "claimedBy": ["Priya", "Theo"] },
-        { "name": "Avocados (4 pack)", "price": 4.99, "claimedBy": ["Priya", "Jordan"] },
+        { "name": "Bananas", "price": 1.99, "claimedBy": ["Niko", "Alex", "Clouey"] },
+        { "name": "Avocados (4 pack)", "price": 4.99, "claimedBy": ["Niko", "Nick"] },
         { "name": "Sourdough Bread", "price": 3.99 },
-        { "name": "Oat Milk", "price": 3.49, "claimedBy": ["Jordan"] },
+        { "name": "Chocolate Hearts", "price": 4.49, "claimedBy": ["Sierra"] },
+        { "name": "Oat Milk", "price": 3.49, "claimedBy": ["Nick"] },
         { "name": "Eggs (dozen)", "price": 4.29 },
-        { "name": "Cheddar Cheese", "price": 5.49, "claimedBy": ["Theo", "Priya"] },
-        { "name": "Frozen Mandarin Orange Chicken", "price": 5.29, "claimedBy": ["Theo"] },
-        { "name": "Spinach", "price": 2.49, "claimedBy": ["Priya"] },
-        { "name": "Dark Chocolate Peanut Butter Cups", "price": 4.49, "claimedBy": ["Jordan", "Theo"] },
+        { "name": "Cheddar Cheese", "price": 5.49, "claimedBy": ["Alex", "Niko"] },
+        { "name": "Frozen Mandarin Orange Chicken", "price": 5.29, "claimedBy": ["Alex"] },
+        { "name": "Spinach", "price": 2.49, "claimedBy": ["Niko", "Clouey"] },
+        { "name": "Dark Chocolate Peanut Butter Cups", "price": 4.49, "claimedBy": ["Nick", "Alex"] },
         { "name": "Paper Towels", "price": 6.99, "alwaysSplit": true },
-        { "name": "Coffee Beans", "price": 8.99, "claimedBy": ["Priya", "Jordan"] }
+        { "name": "Coffee Beans", "price": 8.99, "claimedBy": ["Niko", "Nick"] }
       ]
     },
     {
@@ -37,12 +40,12 @@
       "store": "Sprouts",
       "category": "Groceries",
       "daysAgo": 2,
-      "paidBy": "Priya",
-      "notCheckedIn": ["Jordan", "Theo"],
+      "paidBy": "Niko",
+      "notCheckedIn": ["Nick", "Alex"],
       "items": [
-        { "name": "Strawberries", "price": 4.99, "claimedBy": ["Priya", "Milo"] },
+        { "name": "Strawberries", "price": 4.99, "claimedBy": ["Niko", "Milo"] },
         { "name": "Granola", "price": 5.49, "claimedBy": ["Milo"] },
-        { "name": "Greek Yogurt", "price": 4.99 },
+        { "name": "Greek Yogurt", "price": 4.99, "claimedBy": ["Sierra", "Clouey"] },
         { "name": "Tortilla Chips", "price": 3.29 },
         { "name": "Salsa", "price": 3.99 }
       ]
@@ -52,28 +55,29 @@
       "store": "Thai Basil",
       "category": "Dining",
       "daysAgo": 3,
-      "paidBy": "Jordan",
+      "paidBy": "Nick",
       "tax": 6.18,
       "tip": 14.00,
+      "members": ["Milo", "Niko", "Nick", "Alex"],
       "meals": [
         { "name": "Milo", "fee": 0, "items": [
           { "name": "Pad See Ew", "price": 16.50, "claimedBy": ["Milo"] },
           { "name": "Thai Iced Tea", "price": 5.00, "claimedBy": ["Milo"] }
         ] },
-        { "name": "Priya", "fee": 0, "items": [
-          { "name": "Green Curry", "price": 17.00, "claimedBy": ["Priya"] }
+        { "name": "Niko", "fee": 0, "items": [
+          { "name": "Green Curry", "price": 17.00, "claimedBy": ["Niko"] }
         ] },
-        { "name": "Jordan", "fee": 0, "items": [
-          { "name": "Pad Thai", "price": 15.50, "claimedBy": ["Jordan"] },
-          { "name": "Mango Sticky Rice", "price": 8.00, "claimedBy": ["Jordan", "Theo"] }
+        { "name": "Nick", "fee": 0, "items": [
+          { "name": "Pad Thai", "price": 15.50, "claimedBy": ["Nick"] },
+          { "name": "Mango Sticky Rice", "price": 8.00, "claimedBy": ["Nick", "Alex"] }
         ] },
-        { "name": "Theo", "fee": 0, "items": [
-          { "name": "Drunken Noodles", "price": 16.50, "claimedBy": ["Theo"] }
+        { "name": "Alex", "fee": 0, "items": [
+          { "name": "Drunken Noodles", "price": 16.50, "claimedBy": ["Alex"] }
         ] }
       ],
       "items": [
         { "name": "Spring Rolls", "price": 9.00 },
-        { "name": "Jasmine Rice", "price": 3.00, "claimedBy": ["Priya", "Theo"] }
+        { "name": "Jasmine Rice", "price": 3.00, "claimedBy": ["Niko", "Alex"] }
       ]
     },
     {
@@ -83,17 +87,18 @@
       "daysAgo": 5,
       "paidBy": "Milo",
       "tax": 3.10,
-      "members": ["Milo", "Priya", "Theo"],
+      "members": ["Milo", "Niko", "Alex", "Sierra"],
       "items": [
         { "name": "Toilet Paper (30 rolls)", "price": 24.99, "alwaysSplit": true },
         { "name": "Dish Soap", "price": 11.49, "alwaysSplit": true },
-        { "name": "Chicken Thighs", "price": 19.87, "claimedBy": ["Milo", "Theo"] },
+        { "name": "Chicken Thighs", "price": 19.87, "claimedBy": ["Milo", "Alex"] },
         { "name": "Rotisserie Chicken", "price": 4.99 },
-        { "name": "Blueberries", "price": 8.99, "claimedBy": ["Priya", "Milo"] },
-        { "name": "Sparkling Water (35 pack)", "price": 13.99, "claimedBy": ["Priya", "Theo"] },
+        { "name": "Blueberries", "price": 8.99, "claimedBy": ["Niko", "Milo"] },
+        { "name": "Sparkling Water (35 pack)", "price": 13.99, "claimedBy": ["Niko", "Alex"] },
         { "name": "Olive Oil", "price": 17.99 },
-        { "name": "Frozen Dumplings", "price": 12.49, "claimedBy": ["Milo", "Priya", "Theo"] },
-        { "name": "Coffee Pods", "price": 34.99, "claimedBy": ["Milo"] }
+        { "name": "Frozen Dumplings", "price": 12.49, "claimedBy": ["Milo", "Niko", "Alex"] },
+        { "name": "Coffee Pods", "price": 34.99, "claimedBy": ["Milo"] },
+        { "name": "Chocolate Hearts", "price": 6.99, "claimedBy": ["Milo", "Sierra"] }
       ]
     },
     {
@@ -101,15 +106,15 @@
       "store": "Safeway",
       "category": "Groceries",
       "daysAgo": 8,
-      "paidBy": "Theo",
-      "notCheckedIn": ["Jordan"],
+      "paidBy": "Alex",
+      "notCheckedIn": ["Nick"],
       "items": [
-        { "name": "Pasta", "price": 2.29 },
+        { "name": "Pasta", "price": 2.29, "claimedBy": ["Clouey", "Alex", "Milo"] },
         { "name": "Marinara Sauce", "price": 4.79 },
-        { "name": "Ground Beef", "price": 7.99, "claimedBy": ["Theo", "Milo"] },
-        { "name": "Parmesan", "price": 6.49, "claimedBy": ["Theo", "Milo", "Priya"] },
+        { "name": "Ground Beef", "price": 7.99, "claimedBy": ["Alex", "Milo"] },
+        { "name": "Parmesan", "price": 6.49, "claimedBy": ["Alex", "Milo", "Niko"] },
         { "name": "Garlic", "price": 0.99 },
-        { "name": "Ice Cream", "price": 5.99, "claimedBy": ["Milo", "Priya"] }
+        { "name": "Ice Cream", "price": 5.99, "claimedBy": ["Milo", "Niko"] }
       ]
     },
     {
@@ -117,13 +122,13 @@
       "store": "Uber",
       "category": "Transportation",
       "daysAgo": 11,
-      "paidBy": "Priya",
+      "paidBy": "Niko",
       "tip": 4.00,
-      "members": ["Priya", "Milo", "Jordan"],
+      "members": ["Niko", "Milo", "Nick"],
       "items": [
         { "name": "Ride to the concert", "price": 23.84 }
       ],
-      "settled": ["Jordan"]
+      "settled": ["Nick"]
     },
     {
       "key": "target",
@@ -136,9 +141,9 @@
         { "name": "Shower Curtain", "price": 14.99, "alwaysSplit": true },
         { "name": "Light Bulbs", "price": 9.99, "alwaysSplit": true },
         { "name": "Trash Bags", "price": 12.49, "alwaysSplit": true },
-        { "name": "Phone Charger", "price": 15.99, "claimedBy": ["Jordan"] }
+        { "name": "Phone Charger", "price": 15.99, "claimedBy": ["Nick"] }
       ],
-      "settled": ["Priya", "Theo", "Jordan"]
+      "settled": ["Niko", "Alex", "Nick"]
     }
   ],
 
@@ -149,7 +154,7 @@
     "toDaysAgo": 14,
     "stores": [
       {
-        "store": "Trader Joe's", "category": "Groceries", "everyDays": 11, "itemsPerTrip": [5, 9], "taxRate": 0.02,
+        "store": "Trader Joe's", "category": "Groceries", "everyDays": 22, "itemsPerTrip": [5, 9], "taxRate": 0.02,
         "items": [
           ["Bananas", 1.99], ["Avocados (4 pack)", 4.99], ["Sourdough Bread", 3.99], ["Oat Milk", 3.49],
           ["Eggs (dozen)", 4.29], ["Cheddar Cheese", 5.49], ["Frozen Mandarin Orange Chicken", 5.29],
@@ -159,7 +164,7 @@
         ]
       },
       {
-        "store": "Safeway", "category": "Groceries", "everyDays": 20, "itemsPerTrip": [4, 7], "taxRate": 0.0,
+        "store": "Safeway", "category": "Groceries", "everyDays": 40, "itemsPerTrip": [4, 7], "taxRate": 0.0,
         "items": [
           ["Milk", 4.49], ["Ground Beef", 7.99], ["Chicken Breast", 9.49], ["Rice", 5.99], ["Onions", 2.99],
           ["Garlic", 0.99], ["Ice Cream", 5.99], ["Cereal", 4.99], ["Orange Juice", 5.49], ["Butter", 4.79],
@@ -167,7 +172,7 @@
         ]
       },
       {
-        "store": "Costco", "category": "Groceries", "everyDays": 36, "itemsPerTrip": [5, 8], "taxRate": 0.03,
+        "store": "Costco", "category": "Groceries", "everyDays": 72, "itemsPerTrip": [5, 8], "taxRate": 0.03,
         "items": [
           ["Toilet Paper (30 rolls)", 24.99, true], ["Laundry Detergent", 19.99, true], ["Chicken Thighs", 19.87],
           ["Salmon Fillets", 29.99], ["Blueberries", 8.99], ["Sparkling Water (35 pack)", 13.99],
@@ -175,20 +180,20 @@
         ]
       },
       {
-        "store": "Chipotle", "category": "Dining", "everyDays": 26, "itemsPerTrip": [3, 4], "taxRate": 0.09,
+        "store": "Chipotle", "category": "Dining", "everyDays": 52, "itemsPerTrip": [3, 4], "taxRate": 0.09,
         "oneEach": true,
         "items": [["Burrito Bowl", 12.95], ["Burrito", 12.45], ["Tacos", 11.75], ["Chips & Guac", 6.25], ["Quesadilla", 11.95]]
       },
       {
-        "store": "Pizza Night", "category": "Dining", "everyDays": 33, "itemsPerTrip": [2, 3], "taxRate": 0.09, "tipRate": 0.15,
+        "store": "Pizza Night", "category": "Dining", "everyDays": 66, "itemsPerTrip": [2, 3], "taxRate": 0.09, "tipRate": 0.15,
         "items": [["Large Pepperoni Pizza", 24.00], ["Large Margherita Pizza", 22.00], ["Garlic Knots", 7.50], ["Caesar Salad", 11.00]]
       },
       {
-        "store": "Uber", "category": "Transportation", "everyDays": 50, "itemsPerTrip": [1, 1], "tipRate": 0.12,
+        "store": "Uber", "category": "Transportation", "everyDays": 100, "itemsPerTrip": [1, 1], "tipRate": 0.12,
         "items": [["Ride to the airport", 38.42], ["Ride home from downtown", 21.17], ["Ride to the beach", 29.65]]
       },
       {
-        "store": "Target", "category": "Misc", "everyDays": 55, "itemsPerTrip": [2, 4], "taxRate": 0.0925,
+        "store": "Target", "category": "Misc", "everyDays": 110, "itemsPerTrip": [2, 4], "taxRate": 0.0925,
         "items": [["Light Bulbs", 9.99, true], ["Trash Bags", 12.49, true], ["Hand Soap", 4.99, true], ["Storage Bins", 18.99, true], ["Batteries", 13.99, true]]
       }
     ]

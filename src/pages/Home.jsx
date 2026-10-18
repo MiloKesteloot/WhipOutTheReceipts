@@ -3,12 +3,13 @@ import { version as buildVersion } from '../buildVersion.json'
 import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
 import { claimersByReceipt, receiptsToCheckOff } from '../lib/receiptStatus.js'
+import BalanceRows from '../components/BalanceRows.jsx'
 
 // Home = what needs you: receipts to check off and where your balances stand.
 // Browsing receipts lives on /receipts, settling up on /balances.
 export default function Home() {
   const { myName } = useGroup()
-  const { loading, data, balances } = useBalances()
+  const { loading, data, balances, reload } = useBalances()
 
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
 
@@ -19,15 +20,18 @@ export default function Home() {
   const owedToMeTotal = myBalances.filter(e => !e.iOwe).reduce((s, e) => s + e.amount, 0)
   const caughtUp = unchecked.length === 0 && myBalances.length === 0
 
+  const sortedBalances = [...myBalances].sort((a, b) => b.iOwe - a.iOwe || b.amount - a.amount)
+
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4 pb-8 space-y-4">
 
       {/* Receipts to check off */}
       {unchecked.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-800">Receipts to check off</h2>
-            <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{unchecked.length}</span>
+        <section className="bg-white border border-amber-200 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
+            <h2 className="font-semibold text-amber-800">
+              {unchecked.length === 1 ? '1 receipt to check off' : `${unchecked.length} receipts to check off`}
+            </h2>
           </div>
           <ul className="divide-y divide-gray-100">
             {unchecked.map(r => {
@@ -50,22 +54,26 @@ export default function Home() {
               )
             })}
           </ul>
-        </div>
+        </section>
       )}
 
-      {/* Balance summary */}
+      {/* Where you stand: who you owe and who owes you */}
       {myBalances.length > 0 && (
-        <Link to="/balances" className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3.5 hover:bg-gray-50 transition">
-          <div className="min-w-0">
-            <h2 className="font-semibold text-gray-800">Balances</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {iOweTotal > 0 && <>You owe <span className="font-semibold text-amber-600">${iOweTotal.toFixed(2)}</span></>}
-              {iOweTotal > 0 && owedToMeTotal > 0 && <span className="text-gray-300"> · </span>}
-              {owedToMeTotal > 0 && <>You're owed <span className="font-semibold text-accent-600">${owedToMeTotal.toFixed(2)}</span></>}
-            </p>
+        <section className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
+            <div className="px-4 py-3.5">
+              <p className="text-xs font-medium text-gray-400">You owe</p>
+              <p className={`text-2xl font-bold ${iOweTotal > 0 ? 'text-amber-600' : 'text-gray-300'}`}>${iOweTotal.toFixed(2)}</p>
+            </div>
+            <div className="px-4 py-3.5">
+              <p className="text-xs font-medium text-gray-400">You're owed</p>
+              <p className={`text-2xl font-bold ${owedToMeTotal > 0 ? 'text-accent-600' : 'text-gray-300'}`}>${owedToMeTotal.toFixed(2)}</p>
+            </div>
           </div>
-          <span className="text-gray-300 shrink-0">›</span>
-        </Link>
+          <div className="p-2">
+            <BalanceRows entries={sortedBalances} reload={reload} showDirection />
+          </div>
+        </section>
       )}
 
       {/* All clear */}

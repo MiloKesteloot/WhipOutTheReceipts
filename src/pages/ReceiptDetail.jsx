@@ -59,7 +59,8 @@ export default function ReceiptDetail() {
     setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
 
     const [{ data: itemData }, { data: mealData }] = await Promise.all([
-      supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
+      supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null)
+        .order('position', { ascending: true, nullsFirst: false }).order('created_at'),
       supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
     ])
     const allItems = itemData || []

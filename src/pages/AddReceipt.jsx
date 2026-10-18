@@ -1,4 +1,9 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import {
+  DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors,
+  pointerWithin, rectIntersection, closestCenter, getFirstCollision, MeasuringStrategy,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { useGroup } from '../lib/group.jsx'
@@ -7,9 +12,24 @@ import { fetchGeminiKey } from './Settings.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 import BackButton from '../components/BackButton.jsx'
+import { UNGROUPED, containerFromDropId, SortableRow, DragHandle, DropZone, ItemDragPreview } from '../components/ItemDrag.jsx'
 
 function newItem(dbId = null) {
   return { id: crypto.randomUUID(), dbId, name: '', price: '', always_split: false, meal_local_id: null }
+}
+
+const isBlankItem = item => !item.name.trim() && item.price === ''
+const containerOf = item => item.meal_local_id || UNGROUPED
+
+// Every list (ungrouped and each meal) ends with one empty row to type into.
+// Lists show their items in array order, so moving the empty rows to the end
+// of the array puts each one last in its own list.
+function withBlankRows(items, mealIds) {
+  const next = [...items]
+  for (const meal of [null, ...mealIds]) {
+    if (!next.some(i => (i.meal_local_id || null) === meal && isBlankItem(i))) next.push({ ...newItem(), meal_local_id: meal })
+  }
+  return [...next.filter(i => !isBlankItem(i)), ...next.filter(isBlankItem)]
 }
 
 function newMeal(dbId = null) {
@@ -47,8 +67,13 @@ export default function AddReceipt() {
   const [errors, setErrors] = useState({})
   const [isDirty, setIsDirty] = useState(false)
   const scanInputRef = useRef(null)
-  const [draggingItemId, setDraggingItemId] = useState(null)
-  const [dragOverTarget, setDragOverTarget] = useState(null) // null = ungrouped, meal.local_id = that meal
+  const [activeDragId, setActiveDragId] = useState(null)
+  const itemsBeforeDrag = useRef(null)
+  const lastOverId = useRef(null)
+  const lineItemsRef = useRef(lineItems)
+  lineItemsRef.current = lineItems
+  const mealIdsRef = useRef([])
+  mealIdsRef.current = meals.map(m => m.local_id)
   const loadComplete = useRef(false)
   const { confirm, showAlert, DialogUI } = useDialog()
 
@@ -73,7 +98,8 @@ export default function AddReceipt() {
         }
 
         const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
-          supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
+          supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null)
+            .order('position', { ascending: true, nullsFirst: false }).order('created_at'),
           supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
         ])
 
@@ -97,7 +123,7 @@ export default function AddReceipt() {
           meal_local_id: item.meal_id ? (dbIdToLocalId.get(item.meal_id) || null) : null,
         }))
         setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
-        setLineItems([...loaded, newItem()])
+        setLineItems(withBlankRows(loaded, loadedMeals.map(m => m.local_id)))
       } else {
         if (myName) setPaidBy(myName)
         // Default: the group's regular (non-guest) people, plus me
@@ -256,7 +282,7 @@ Rules:
       const finalItems = merged.filter(i => !cancelledIds.has(i.id))
 
       if (finalItems.length > 0) {
-        setLineItems([...finalItems, newItem()])
+        setLineItems(withBlankRows(finalItems, mealIdsRef.current))
         setErrors(v => ({ ...v, items: undefined }))
         markDirty()
       } else {
@@ -279,38 +305,29 @@ Rules:
     else navigate('/')
   }
 
+  // Typing in a list's empty row makes it a real item, and a new empty row
+  // appears under it
   function updateItem(itemId, field, value) {
     markDirty()
     setLineItems(prev => {
       const next = prev.map(item => item.id === itemId ? { ...item, [field]: value } : item)
       const item = next.find(i => i.id === itemId)
-      // Auto-add blank row at end of ungrouped section when editing the last ungrouped item
-      if (item && !item.meal_local_id) {
-        const ungrouped = next.filter(i => !i.meal_local_id)
-        const isLastUngrouped = ungrouped[ungrouped.length - 1]?.id === item.id
-        if (isLastUngrouped && (item.name.trim() || item.price !== '')) {
-          return [...next, newItem()]
-        }
-      }
-      return next
+      const container = item?.meal_local_id || null
+      if (next.some(i => (i.meal_local_id || null) === container && isBlankItem(i))) return next
+      return [...next, { ...newItem(), meal_local_id: container }]
     })
   }
 
   function removeItem(itemId) {
     markDirty()
-    setLineItems(prev => {
-      const next = prev.filter(i => i.id !== itemId)
-      if (next.length === 0) return [newItem()]
-      // Always keep at least one ungrouped blank row
-      const hasUngroupedBlank = next.some(i => !i.meal_local_id && !i.name.trim() && i.price === '')
-      if (!hasUngroupedBlank) return [...next, newItem()]
-      return next
-    })
+    setLineItems(prev => withBlankRows(prev.filter(i => i.id !== itemId), mealIdsRef.current))
   }
 
   function addMeal() {
     markDirty()
-    setMeals(prev => [...prev, newMeal()])
+    const meal = newMeal()
+    setMeals(prev => [...prev, meal])
+    setLineItems(prev => [...prev, { ...newItem(), meal_local_id: meal.local_id }])
   }
 
   function updateMeal(localId, field, value) {
@@ -319,45 +336,109 @@ Rules:
     if (field === 'name') setErrors(v => ({ ...v, [`meal-${localId}`]: undefined }))
   }
 
+  // The meal's items move back to the main list; its empty row goes away
   function removeMeal(localId) {
     markDirty()
-    setLineItems(prev => prev.map(item =>
-      item.meal_local_id === localId ? { ...item, meal_local_id: null } : item
+    setLineItems(prev => withBlankRows(
+      prev.filter(i => !(i.meal_local_id === localId && isBlankItem(i)))
+        .map(i => i.meal_local_id === localId ? { ...i, meal_local_id: null } : i),
+      mealIdsRef.current.filter(id => id !== localId),
     ))
     setMeals(prev => prev.filter(m => m.local_id !== localId))
   }
 
-  function addItemToMeal(mealLocalId) {
-    markDirty()
-    setLineItems(prev => [...prev, { ...newItem(), meal_local_id: mealLocalId }])
+  // ── Drag and drop ──────────────────────────────────────────
+  // Pointer covers mouse, pen and touch (the handle has touch-action: none);
+  // a few pixels of movement before a drag starts keeps taps as taps.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  function findContainer(id) {
+    const fromDrop = containerFromDropId(id)
+    if (fromDrop) return fromDrop
+    const item = lineItemsRef.current.find(i => i.id === id)
+    return item ? containerOf(item) : null
   }
 
-  // Drag and drop
-  function handleDragStart(e, itemId) {
-    setDraggingItemId(itemId)
-    e.dataTransfer.effectAllowed = 'move'
+  // The pointer picks the list (ungrouped or a meal); within it, the row
+  // whose center is nearest the dragged row's center is the target. So rows
+  // swap once you're past a neighbor's middle, not the moment you touch it.
+  const collisionDetection = useCallback(args => {
+    const hits = pointerWithin(args)
+    const firstId = getFirstCollision(hits.length ? hits : rectIntersection(args), 'id')
+    if (firstId == null) return lastOverId.current ? [{ id: lastOverId.current }] : []
+    const containerHit = hits.map(h => containerFromDropId(h.id)).find(Boolean)
+    const container = containerHit ?? findContainer(firstId)
+    const ids = new Set(lineItemsRef.current
+      .filter(i => containerOf(i) === container && !isBlankItem(i))
+      .map(i => i.id))
+    let overId = containerHit ? `container:${container}` : firstId
+    if (ids.size) {
+      overId = closestCenter({ ...args, droppableContainers: args.droppableContainers.filter(c => ids.has(c.id)) })[0]?.id ?? overId
+    }
+    lastOverId.current = overId
+    return [{ id: overId }]
+  }, [])
+
+  function handleDragStart({ active }) {
+    itemsBeforeDrag.current = lineItems
+    setActiveDragId(active.id)
+    document.body.style.cursor = 'grabbing'
+    navigator.vibrate?.(8)
   }
 
-  function handleDragEnd() {
-    setDraggingItemId(null)
-    setDragOverTarget(null)
+  // Moving into another list happens live, so the rows there make room
+  function handleDragOver({ active, over, activatorEvent, delta }) {
+    if (!over) return
+    const from = findContainer(active.id)
+    const to = findContainer(over.id)
+    if (!from || !to || from === to) return
+    setLineItems(items => {
+      const moving = items.find(i => i.id === active.id)
+      const rest = items.filter(i => i.id !== active.id)
+      const moved = { ...moving, meal_local_id: to === UNGROUPED ? null : to }
+      let at
+      if (containerFromDropId(over.id)) {
+        const blank = rest.findIndex(i => containerOf(i) === to && isBlankItem(i))
+        const last = rest.findLastIndex(i => containerOf(i) === to)
+        at = blank !== -1 ? blank : last === -1 ? rest.length : last + 1
+      } else {
+        // Above or below the row under the pointer, by which half it's in
+        const overIndex = rest.findIndex(i => i.id === over.id)
+        const startY = activatorEvent?.clientY ?? activatorEvent?.touches?.[0]?.clientY
+        const pointerY = startY == null ? null : startY + delta.y
+        const below = pointerY != null && pointerY > over.rect.top + over.rect.height / 2
+        at = overIndex + (below ? 1 : 0)
+      }
+      rest.splice(at, 0, moved)
+      return rest
+    })
   }
 
-  function handleDragOver(e, targetId) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setDragOverTarget(targetId)
+  function endDrag() {
+    setActiveDragId(null)
+    lastOverId.current = null
+    document.body.style.cursor = ''
   }
 
-  function handleDrop(e, targetMealLocalId) {
-    e.preventDefault()
-    if (!draggingItemId) return
-    markDirty()
-    setLineItems(prev => prev.map(item =>
-      item.id === draggingItemId ? { ...item, meal_local_id: targetMealLocalId } : item
-    ))
-    setDraggingItemId(null)
-    setDragOverTarget(null)
+  function handleDragEnd({ active, over }) {
+    endDrag()
+    const items = lineItemsRef.current
+    let next = items
+    if (over && !containerFromDropId(over.id) && active.id !== over.id && findContainer(active.id) === findContainer(over.id)) {
+      next = arrayMove(items, items.findIndex(i => i.id === active.id), items.findIndex(i => i.id === over.id))
+    }
+    next = withBlankRows(next, mealIdsRef.current)
+    const key = list => list.map(i => `${i.id}:${i.meal_local_id}`).join()
+    if (key(next) !== key(itemsBeforeDrag.current || [])) markDirty()
+    setLineItems(next)
+  }
+
+  function handleDragCancel() {
+    endDrag()
+    if (itemsBeforeDrag.current) setLineItems(itemsBeforeDrag.current)
   }
 
   function filledItems() {
@@ -439,6 +520,7 @@ Rules:
       }
 
       const filled = filledItems()
+      const position = new Map(filled.map((item, i) => [item.id, i]))
       const toUpdate = filled.filter(i => i.dbId)
       for (const item of toUpdate) {
         await supabase.from('items')
@@ -447,6 +529,7 @@ Rules:
             price: parseFloat(item.price),
             always_split: item.always_split,
             meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
+            position: position.get(item.id),
           })
           .eq('id', item.dbId)
       }
@@ -460,6 +543,7 @@ Rules:
             price: parseFloat(item.price),
             always_split: item.always_split,
             meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
+            position: position.get(item.id),
           }))
         )
       }
@@ -491,12 +575,13 @@ Rules:
       const mealLocalToDbId = await saveMeals(receipt.id)
 
       const { error: itemsErr } = await supabase.from('items').insert(
-        filledItems().map(item => ({
+        filledItems().map((item, i) => ({
           receipt_id: receipt.id,
           name: item.name.trim(),
           price: parseFloat(item.price),
           always_split: item.always_split,
           meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
+          position: i,
         }))
       )
       if (itemsErr) { await showAlert(itemsErr.message, { title: 'Error saving items' }); setSaving(false); return }
@@ -519,26 +604,16 @@ Rules:
   }
 
   const ungroupedItems = lineItems.filter(i => !i.meal_local_id)
-  const isBlankItem = item => !item.name.trim() && item.price === ''
+  const activeDragItem = activeDragId ? lineItems.find(i => i.id === activeDragId) : null
+  const activeContainer = activeDragItem ? containerOf(activeDragItem) : null
 
   function renderItemRow(item) {
-    const isDragging = draggingItemId === item.id
     const canDrag = !isBlankItem(item)
     return (
-      <div
-        key={item.id}
-        className={`flex gap-2 items-start transition-opacity ${isDragging ? 'opacity-30' : ''}`}
-        draggable={canDrag || undefined}
-        onDragStart={canDrag ? e => handleDragStart(e, item.id) : undefined}
-        onDragEnd={handleDragEnd}
-        onDragOver={e => e.preventDefault()}
-      >
-        <div
-          className={`mt-2.5 text-sm leading-none select-none ${canDrag ? 'text-gray-300 cursor-grab active:cursor-grabbing' : 'text-transparent'}`}
-          title="Drag to move to a meal"
-        >
-          ⠿
-        </div>
+      <SortableRow key={item.id} id={item.id} disabled={!canDrag}>
+        {handleProps => (
+      <div className="flex gap-2 items-start">
+        <DragHandle handleProps={handleProps} disabled={!canDrag} />
         <div className="flex-1">
           <input
             type="text"
@@ -582,6 +657,8 @@ Rules:
           ✕
         </button>
       </div>
+        )}
+      </SortableRow>
     )
   }
 
@@ -783,30 +860,37 @@ Rules:
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">Items</label>
-            <span className="text-xs text-gray-400">🔒 always splits with everyone · ⠿ drag to regroup</span>
+            <span className="text-xs text-gray-400">🔒 always splits with everyone · drag ⠿ to reorder</span>
           </div>
           {errors.items && <p className="text-xs text-red-500 mb-2">{errors.items}</p>}
 
-          {/* Ungrouped items drop zone */}
-          <div
-            className={`space-y-2 min-h-[2.5rem] rounded-lg p-1 transition-colors ${dragOverTarget === null && draggingItemId ? 'bg-accent-50 ring-2 ring-accent-200' : ''}`}
-            onDragOver={e => handleDragOver(e, null)}
-            onDrop={e => handleDrop(e, null)}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={collisionDetection}
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
           >
-            {ungroupedItems.map(item => renderItemRow(item))}
-            {dragOverTarget === null && draggingItemId && (
-              <p className="text-xs text-accent-400 text-center py-2">Drop here to ungroup</p>
-            )}
-          </div>
+          {/* Ungrouped items */}
+          <SortableContext items={ungroupedItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
+            <DropZone
+              id={UNGROUPED}
+              className={`space-y-2 min-h-[2.75rem] rounded-xl p-1 -m-1 transition-colors duration-150 ${activeContainer === UNGROUPED && meals.length > 0 ? 'bg-accent-50/70' : ''}`}
+            >
+              {ungroupedItems.map(item => renderItemRow(item))}
+            </DropZone>
+          </SortableContext>
 
           {/* Meal groups */}
           {meals.map(meal => {
             const mealItems = lineItems.filter(i => i.meal_local_id === meal.local_id)
-            const isDragTarget = dragOverTarget === meal.local_id && !!draggingItemId
+            const isDragTarget = activeContainer === meal.local_id
             return (
               <div
                 key={meal.local_id}
-                className={`mt-3 border rounded-xl overflow-hidden transition-colors ${isDragTarget ? 'ring-2 ring-accent-300 border-accent-300' : 'border-gray-200'}`}
+                className={`mt-3 border rounded-xl overflow-hidden transition-[box-shadow,border-color] duration-150 ${isDragTarget ? 'ring-2 ring-accent-300 border-accent-300' : 'border-gray-200'}`}
               >
                 {/* Meal header */}
                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">
@@ -841,34 +925,23 @@ Rules:
                   </button>
                 </div>
 
-                {/* Meal items drop zone */}
-                <div
-                  className={`p-2 space-y-2 min-h-[3rem] transition-colors ${isDragTarget ? 'bg-accent-50' : 'bg-white'}`}
-                  onDragOver={e => handleDragOver(e, meal.local_id)}
-                  onDrop={e => handleDrop(e, meal.local_id)}
-                >
-                  {mealItems.map(item => renderItemRow(item))}
-                  {isDragTarget && mealItems.length === 0 && (
-                    <p className="text-xs text-accent-400 text-center py-2">Drop here</p>
-                  )}
-                  {!isDragTarget && mealItems.length === 0 && (
-                    <p className="text-xs text-gray-300 text-center py-2">Drag items here or add below</p>
-                  )}
-                </div>
-
-                {/* Add item to meal */}
-                <div className="px-3 pb-2 pt-1 bg-white border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() => addItemToMeal(meal.local_id)}
-                    className="text-xs text-accent-500 hover:text-accent-700 transition"
+                {/* Meal items */}
+                <SortableContext items={mealItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
+                  <DropZone
+                    id={meal.local_id}
+                    className={`p-2 space-y-2 min-h-[3.25rem] transition-colors duration-150 ${isDragTarget ? 'bg-accent-50/70' : 'bg-white'}`}
                   >
-                    + Add item
-                  </button>
-                </div>
+                    {mealItems.map(item => renderItemRow(item))}
+                  </DropZone>
+                </SortableContext>
               </div>
             )
           })}
+
+          <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' }}>
+            {activeDragItem ? <ItemDragPreview item={activeDragItem} /> : null}
+          </DragOverlay>
+          </DndContext>
 
           {/* Add Meal Group button */}
           <button

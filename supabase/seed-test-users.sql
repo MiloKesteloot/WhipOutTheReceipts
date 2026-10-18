@@ -49,3 +49,41 @@ begin
     end if;
   end loop;
 end $$;
+
+-- A receipt Milo paid, mostly bought for Alex and Nicolas, so the Milo test
+-- account is owed money as well as owing it (the copied history only has
+-- Milo owing). Fixed ids, so re-running doesn't add it twice. Skipped if the
+-- group doesn't have these people.
+do $$
+declare
+  g uuid := (select id from public.groups order by created_at limit 1);
+  milo uuid; alex uuid; nicolas uuid; milo_user uuid;
+  r uuid := 'ad000000-0000-4000-8000-000000000001';
+begin
+  select id, user_id into milo, milo_user from public.group_members where group_id = g and first_name = 'Milo';
+  select id into alex from public.group_members where group_id = g and first_name = 'Alex';
+  select id into nicolas from public.group_members where group_id = g and first_name = 'Nicolas';
+  if milo is null or alex is null or nicolas is null then return; end if;
+  if exists (select 1 from public.receipts where id = r) then return; end if;
+
+  insert into public.receipts (id, group_id, store_name, category, receipt_date, paid_by_member, member_ids, tax, created_by)
+  values (r, g, 'Whole Foods', 'Groceries', current_date - 2, milo, array[milo, alex, nicolas], 3.12, milo_user);
+
+  insert into public.items (id, receipt_id, name, price, always_split, position, created_by) values
+    ('ad000000-0000-4000-8000-000000000011', r, 'Olive Oil', 12.99, false, 0, milo_user),
+    ('ad000000-0000-4000-8000-000000000012', r, 'Coffee Beans', 15.49, false, 1, milo_user),
+    ('ad000000-0000-4000-8000-000000000013', r, 'Salmon Fillets', 18.75, false, 2, milo_user),
+    ('ad000000-0000-4000-8000-000000000014', r, 'Paper Towels', 9.99, true, 3, milo_user),
+    ('ad000000-0000-4000-8000-000000000015', r, 'Sparkling Water', 6.49, false, 4, milo_user);
+
+  insert into public.claims (item_id, member_id) values
+    ('ad000000-0000-4000-8000-000000000011', alex),
+    ('ad000000-0000-4000-8000-000000000012', alex),
+    ('ad000000-0000-4000-8000-000000000013', nicolas),
+    ('ad000000-0000-4000-8000-000000000014', milo),
+    ('ad000000-0000-4000-8000-000000000014', alex),
+    ('ad000000-0000-4000-8000-000000000014', nicolas),
+    ('ad000000-0000-4000-8000-000000000015', milo);
+
+  insert into public.checkins (receipt_id, member_id) values (r, milo), (r, alex), (r, nicolas);
+end $$;

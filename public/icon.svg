@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#16a34a"/>
+  <!-- Receipt with a torn (zigzag) bottom edge: three teeth -->
+  <path d="M146 96h220a14 14 0 0 1 14 14v306l-41.33-26-41.34 26-41.33-26-41.33 26-41.34-26L132 416V110a14 14 0 0 1 14-14z" fill="#fff"/>
+  <!-- Check -->
+  <path d="M182 250l52 50 98-100" fill="none" stroke="#16a34a" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

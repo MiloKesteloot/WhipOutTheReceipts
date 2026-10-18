@@ -1,21 +1,56 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase, appBaseUrl } from '../lib/supabase.js'
 import { APP_NAME, APP_TAGLINE } from '../config.js'
 import { useSession } from '../lib/session.jsx'
 import { version as buildVersion } from '../buildVersion.json'
 import DevTestLogin from '../components/DevTestLogin.jsx'
+import { LOGO_URL } from '../lib/logo.js'
 
 const inputClass = 'w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-accent-400 text-gray-900'
 const primaryButton = 'w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50'
 
-export function AuthShell({ title, subtitle, children }) {
+// Short version of the landing page, under the sign-in form
+const PITCH = [
+  'Whoever pays adds the receipt',
+  'Everyone checks off what they had',
+  'Receipts works out who owes who, to the cent',
+]
+
+function Pitch() {
+  return (
+    <div className="mt-6 px-2">
+      <ol className="space-y-2.5">
+        {PITCH.map((text, i) => (
+          <li key={text} className="flex items-center gap-3 text-sm text-gray-600">
+            <span className="w-6 h-6 shrink-0 rounded-full bg-accent-600 text-white text-xs font-bold flex items-center justify-center" aria-hidden="true">{i + 1}</span>
+            {text}
+          </li>
+        ))}
+      </ol>
+      <Link to="/" className="mt-4 inline-block text-sm font-medium text-accent-600 hover:text-accent-700">See how it works →</Link>
+    </div>
+  )
+}
+
+export function AuthShell({ title, subtitle, children, pitch }) {
   // Double-click the version (npm run dev only) to show test-account sign-in
   const [showTestLogin, setShowTestLogin] = useState(false)
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">{APP_NAME}</h1>
+          {pitch ? (
+            <Link to="/" className="inline-flex items-center gap-2 text-3xl font-bold text-gray-900 mb-2">
+              <img src={LOGO_URL} alt="" width={36} height={36} className="w-9 h-9" />
+              {APP_NAME}
+            </Link>
+          ) : (
+            <h1 className="inline-flex items-center gap-2 text-3xl font-bold text-gray-900 mb-2">
+              <img src={LOGO_URL} alt="" width={36} height={36} className="w-9 h-9" />
+              {APP_NAME}
+            </h1>
+          )}
           <p className="text-gray-500">{APP_TAGLINE}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
@@ -23,6 +58,7 @@ export function AuthShell({ title, subtitle, children }) {
           {subtitle && <p className="text-sm text-gray-400 mb-4">{subtitle}</p>}
           {children}
         </div>
+        {pitch && <Pitch />}
         {import.meta.env.DEV && showTestLogin && <DevTestLogin />}
         <p
           className="mt-6 text-center text-xs text-gray-300 select-none"
@@ -130,8 +166,8 @@ function GoogleButton() {
   )
 }
 
-export default function Auth() {
-  const [mode, setMode] = useState('signin') // signin | signup | forgot
+export default function Auth({ initialMode = 'signin' }) {
+  const [mode, setMode] = useState(initialMode) // signin | signup | forgot
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
@@ -178,7 +214,7 @@ export default function Auth() {
   }
 
   return (
-    <AuthShell title={titles[mode][0]} subtitle={titles[mode][1]}>
+    <AuthShell title={titles[mode][0]} subtitle={titles[mode][1]} pitch>
       {mode !== 'forgot' && (
         <>
           <GoogleButton />

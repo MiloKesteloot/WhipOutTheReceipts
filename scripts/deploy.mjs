@@ -21,6 +21,18 @@ if (check.status === 404 || ['PGRST205', '42P01'].includes(body?.code)) {
   process.exit(1)
 }
 
+// Same for item order (migration 20261018000000_item_position.sql): the editor
+// saves it and receipts load sorted by it
+const positionCheck = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/items?select=position&limit=1`, {
+  headers: { apikey: env.VITE_SUPABASE_ANON_KEY },
+})
+const positionBody = await positionCheck.json().catch(() => ({}))
+if (positionBody?.code === '42703' || /position/.test(positionBody?.message || '')) {
+  console.error('\n✗ Not deploying: the production database is missing items.position.')
+  console.error('  Apply supabase/migrations/20261018000000_item_position.sql first.\n')
+  process.exit(1)
+}
+
 const data = JSON.parse(readFileSync(versionFile, 'utf8'))
 data.version += 1
 writeFileSync(versionFile, JSON.stringify(data, null, 2) + '\n')

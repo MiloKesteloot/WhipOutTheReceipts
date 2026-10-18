@@ -4,6 +4,7 @@ import Home from './pages/Home.jsx'
 import ReceiptDetail from './pages/ReceiptDetail.jsx'
 import AddReceipt from './pages/AddReceipt.jsx'
 import Auth, { SetNewPassword, CompleteProfile } from './pages/Auth.jsx'
+import Landing from './pages/Landing.jsx'
 import Onboarding, { Join } from './pages/Onboarding.jsx'
 import Stats from './pages/Stats.jsx'
 import Settings from './pages/Settings.jsx'
@@ -13,6 +14,7 @@ import Balances from './pages/Balances.jsx'
 import { SessionProvider, useSession } from './lib/session.jsx'
 import { GroupProvider, useGroup } from './lib/group.jsx'
 import GlassTabBar from './components/GlassTabBar.jsx'
+import { LOGO_URL } from './lib/logo.js'
 
 // Main sections. Receipt pages count as "Receipts"; the add form has no tab.
 const TABS = [
@@ -60,8 +62,8 @@ function TopNav() {
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50 select-none" style={{ paddingTop: 'var(--safe-top)' }}>
       <div className="max-w-5xl mx-auto flex items-center px-4 h-14">
-        <Link to="/" className="font-bold text-gray-900 text-base mr-4 shrink-0">
-          Receipts
+        <Link to="/" aria-label="Receipts home" className="mr-4 shrink-0">
+          <img src={LOGO_URL} alt="" width={32} height={32} className="w-8 h-8" />
         </Link>
         <div className="hidden sm:flex items-center">
           {TABS.map(tab => {
@@ -117,16 +119,16 @@ function UserMenu() {
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="Account menu"
-        className="flex items-center gap-2 max-w-full -mr-1.5 sm:mr-0 pl-2 pr-1.5 sm:px-3 py-1.5 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+        className="flex items-center gap-2 max-w-full pl-2 pr-0 sm:px-3 py-1.5 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
       >
         {/* Phones: current group next to the circle */}
         <span className="sm:hidden text-gray-600 truncate min-w-0">{group?.name}</span>
         <span className="w-7 h-7 shrink-0 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center text-xs font-bold">
           {(myName || '?').slice(0, 1).toUpperCase()}
         </span>
-        <span className="hidden sm:flex flex-col items-start leading-tight">
-          <span className="text-gray-800">{myName}</span>
-          <span className="text-[11px] text-gray-400 max-w-[140px] truncate">{group?.name}</span>
+        <span className="hidden sm:flex flex-col items-start leading-tight min-w-0">
+          <span className="text-gray-800 max-w-full truncate">{myName}</span>
+          <span className="text-[11px] text-gray-400 max-w-full truncate">{group?.name}</span>
         </span>
       </button>
       {open && (
@@ -145,6 +147,7 @@ function UserMenu() {
           <Link to="/group" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Group settings &amp; invite</Link>
           <Link to="/groups/new" className="block px-4 py-2 text-sm text-accent-600 hover:bg-gray-50">+ Create or join a group</Link>
           <div className="border-t border-gray-100 my-1" />
+          <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
           <Link to="/settings" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Your settings</Link>
           <button onClick={signOut} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Sign out</button>
         </div>
@@ -223,7 +226,9 @@ function Gate() {
   if (!session) {
     const invite = pathname.match(/^\/join\/([A-Za-z0-9]+)/)
     if (invite) localStorage.setItem(PENDING_INVITE, invite[1])
-    return <Auth />
+    // Signed-out home is the landing page; any other link asks to sign in
+    if (pathname === '/') return <Landing />
+    return <Auth key={pathname} initialMode={pathname === '/signup' ? 'signup' : 'signin'} />
   }
   if (!profile?.first_name?.trim()) return <CompleteProfile profile={profile} onDone={refreshProfile} />
   return (

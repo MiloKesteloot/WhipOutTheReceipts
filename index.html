@@ -3,11 +3,60 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Receipts</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>" />
+    <title>Receipts · Split groceries and bills with roommates</title>
+    <meta name="description" content="Split groceries, dinners and bills with your roommates. Whoever pays adds the receipt, everyone checks off what they had, and Receipts works out who owes who, down to the cent." />
+    <link rel="canonical" href="https://milokesteloot.github.io/WhipOutTheReceipts/" />
+
+    <!-- Icons and home screen (bump ?v= when the icon changes, so browsers refetch it) -->
+    <link rel="icon" href="/icon.svg?v=2" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png?v=2" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
+    <link rel="manifest" href="/manifest.webmanifest?v=2" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Receipts" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+    <!-- Link previews (iMessage, Discord, Slack, social) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Receipts" />
+    <meta property="og:title" content="Receipts · Split groceries and bills with roommates" />
+    <meta property="og:description" content="Everyone checks off what they had. Receipts works out who owes who, down to the cent." />
+    <meta property="og:url" content="https://milokesteloot.github.io/WhipOutTheReceipts/" />
+    <meta property="og:image" content="https://milokesteloot.github.io/WhipOutTheReceipts/og-image.png?v=2" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Receipts app on two phones: checking off items on a Trader Joe's receipt, and who owes who" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Receipts · Split groceries and bills with roommates" />
+    <meta name="twitter:description" content="Everyone checks off what they had. Receipts works out who owes who, down to the cent." />
+    <meta name="twitter:image" content="https://milokesteloot.github.io/WhipOutTheReceipts/og-image.png?v=2" />
+
+    <!-- Search engines: what this is -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Receipts",
+        "url": "https://milokesteloot.github.io/WhipOutTheReceipts/",
+        "description": "Split groceries, dinners and bills with your roommates. Everyone checks off what they had, and Receipts works out who owes who, down to the cent.",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Any (web browser)",
+        "image": "https://milokesteloot.github.io/WhipOutTheReceipts/og-image.png?v=2",
+        "author": { "@type": "Person", "name": "Milo Kesteloot", "url": "https://www.milo.games/" }
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Replaced by the app on load; here for crawlers and no-JavaScript visitors -->
+      <noscript>
+        <h1>Receipts</h1>
+        <p>Split groceries, dinners and bills with your roommates. Whoever pays adds the receipt, everyone checks off what they had, and Receipts works out who owes who, down to the cent. Tax and tip are split in proportion to what each person bought.</p>
+        <p>Receipts needs JavaScript to run.</p>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
