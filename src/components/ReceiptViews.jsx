@@ -4,7 +4,7 @@ import { formatWaitingOn } from '../lib/group.jsx'
 import { waitingOn } from '../lib/receiptStatus.js'
 
 // Calendar / Days / list views of a group's receipts (the Receipts tab).
-// Each takes already-filtered receipts plus claimers and totals maps.
+// Each takes already-filtered receipts plus checked-in and totals maps.
 
 const fmtDate = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
 
@@ -51,7 +51,7 @@ function DayPicker({ day, onClose }) {
   )
 }
 
-export function ReceiptCalendar({ receipts, claimers, totals }) {
+export function ReceiptCalendar({ receipts, checkedIn, totals }) {
   const navigate = useNavigate()
   const [pickerDay, setPickerDay] = useState(null) // { date, items }
   const [calMonth, setCalMonth] = useState(() => {
@@ -157,7 +157,7 @@ export function ReceiptCalendar({ receipts, claimers, totals }) {
                   {dayReceipts.map(receipt => (
                     <div key={receipt.id} className="flex items-center gap-1.5 text-xs text-gray-600">
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        waitingOn(receipt, claimers).length > 0 ? 'bg-amber-400' : 'bg-accent-500'
+                        waitingOn(receipt, checkedIn).length > 0 ? 'bg-amber-400' : 'bg-accent-500'
                       }`} />
                       <span className="truncate">{receipt.store_name}</span>
                     </div>
@@ -182,7 +182,7 @@ export function ReceiptCalendar({ receipts, claimers, totals }) {
   )
 }
 
-export function ReceiptDays({ receipts, claimers, totals, myName }) {
+export function ReceiptDays({ receipts, checkedIn, totals, myName }) {
   const navigate = useNavigate()
   const byDate = {}
   for (const r of receipts) (byDate[r.receipt_date] ||= []).push(r)
@@ -204,7 +204,7 @@ export function ReceiptDays({ receipts, claimers, totals, myName }) {
             </div>
             <div className="space-y-2">
               {dayReceipts.map(r => {
-                const waiting = waitingOn(r, claimers)
+                const waiting = waitingOn(r, checkedIn)
                 const total = totals[r.id] || 0
                 return (
                   <button
@@ -236,7 +236,7 @@ export function ReceiptDays({ receipts, claimers, totals, myName }) {
   )
 }
 
-export function ReceiptList({ receipts, claimers, totals, myName }) {
+export function ReceiptList({ receipts, checkedIn, totals, myName }) {
   const navigate = useNavigate()
   const sorted = [...receipts].sort((a, b) => b.receipt_date.localeCompare(a.receipt_date))
   if (sorted.length === 0) return <EmptyState />
@@ -244,7 +244,7 @@ export function ReceiptList({ receipts, claimers, totals, myName }) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100 select-none">
       {sorted.map(r => {
-        const waiting = waitingOn(r, claimers)
+        const waiting = waitingOn(r, checkedIn)
         const total = totals[r.id] || 0
         const date = new Date(r.receipt_date + 'T12:00:00')
         return (

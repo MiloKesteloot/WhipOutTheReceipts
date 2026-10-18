@@ -15,16 +15,11 @@ export function isOnReceipt(receipt, name) {
   return !name || members.length === 0 || members.some(m => m.toLowerCase() === name.toLowerCase())
 }
 
-// { receiptId: Set(lowercased names) } of everyone who claimed or checked in
-export function claimersByReceipt({ items, claims, checkins }) {
-  const itemToReceipt = {}
-  for (const item of items) itemToReceipt[item.id] = item.receipt_id
+// { receiptId: Set(lowercased names) } of everyone who checked in. Only
+// check-ins count, like in balances: adding items to a receipt clears the
+// others' check-ins but keeps their claims, and they need to check in again.
+export function checkedInByReceipt({ checkins }) {
   const out = {}
-  for (const claim of claims) {
-    const receiptId = itemToReceipt[claim.item_id]
-    if (!receiptId) continue
-    ;(out[receiptId] ||= new Set()).add(claim.roommate.toLowerCase())
-  }
   for (const checkin of checkins) {
     ;(out[checkin.receipt_id] ||= new Set()).add(checkin.roommate.toLowerCase())
   }

@@ -129,6 +129,14 @@ export function Join() {
     )
   }
 
+  if (preview.banned) {
+    return (
+      <AuthShell title={preview.name} subtitle="The owner removed you from this group. Ask them to let you back in.">
+        <button onClick={() => navigate('/')} className={primaryButton}>Back</button>
+      </AuthShell>
+    )
+  }
+
   const people = preview.unclaimed.filter(p => !p.is_guest)
   const guests = preview.unclaimed.filter(p => p.is_guest)
 

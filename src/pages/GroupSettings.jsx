@@ -179,13 +179,21 @@ function PersonRow({ m }) {
   }
 
   const ownerActions = isOwner && !isMe ? [
-    m.active
-      ? ['Remove from group', () => confirm(`${m.displayName} will lose access (if they have an account). Their history stays.`, { title: `Remove ${m.displayName}?`, confirmLabel: 'Remove', danger: true })
-          .then(ok => ok && run('remove_member', { p_member: m.id }))]
-      : ['Add back to group', () => run('restore_member', { p_member: m.id })],
+    m.active && ['Remove from group', () => confirm(
+      linked
+        ? `${m.displayName} will lose access, but can rejoin with the invite link. Their history stays.`
+        : `${m.displayName} won't be offered on new receipts. Their history stays.`,
+      { title: `Remove ${m.displayName}?`, confirmLabel: 'Remove', danger: true })
+      .then(ok => ok && run('remove_member', { p_member: m.id }))],
+    // A ban only matters for someone with an account: it keeps the invite from letting them back in
+    linked && !m.banned && ['Ban from group', () => confirm(`${m.displayName} will lose access and can't rejoin with the invite link until you unban them. Their history stays.`, { title: `Ban ${m.displayName}?`, confirmLabel: 'Ban', danger: true })
+      .then(ok => ok && run('remove_member', { p_member: m.id, p_ban: true }))],
+    m.banned && ['Unban', () => run('unban_member', { p_member: m.id }, `${m.displayName} can rejoin with the invite link.`)],
+    !m.active && ['Add back to group', () => run('restore_member', { p_member: m.id })],
     linked && m.active && ['Make owner', () => confirm(`${m.displayName} will become the owner. You'll stay in the group as a regular member.`, { title: 'Transfer ownership?', confirmLabel: 'Make owner' })
       .then(ok => ok && run('transfer_ownership', { p_member: m.id }).then(() => window.location.reload()))],
-    linked && ['Unlink account', () => confirm(`${m.displayName}'s account will be disconnected from this person. Their history stays here, and they can rejoin with the invite link.`, { title: 'Unlink account?', confirmLabel: 'Unlink', danger: true })
+    // Unlinking a banned person would let their account join as someone new
+    linked && !m.banned && ['Unlink account', () => confirm(`${m.displayName}'s account will be disconnected from this person. Their history stays here, and they can rejoin with the invite link.`, { title: 'Unlink account?', confirmLabel: 'Unlink', danger: true })
       .then(ok => ok && run('unlink_member', { p_member: m.id }))],
   ].filter(Boolean) : []
 
@@ -198,7 +206,7 @@ function PersonRow({ m }) {
         {m.last_name && m.displayName.split(' ').length === 1 && <span className="text-xs text-gray-400">{m.last_name}</span>}
         {isMe && <Badge tone="accent">You</Badge>}
         {m.role === 'owner' && <Badge tone="accent">Owner</Badge>}
-        {!m.active && <Badge>Left</Badge>}
+        {m.banned ? <Badge tone="amber">Banned</Badge> : !m.active && <Badge>Left</Badge>}
         {m.active && m.is_guest && <Badge tone="amber">Guest</Badge>}
         {m.active && !linked && !m.is_guest && <Badge>No account yet</Badge>}
       </div>
@@ -266,6 +274,7 @@ function People() {
         {inactive.length > 0 && (
           <button onClick={() => setShowInactive(s => !s)} className="text-xs text-gray-400 hover:text-gray-600 mt-1">
             {showInactive ? 'Hide' : 'Show'} {inactive.length} former member{inactive.length === 1 ? '' : 's'}
+            {inactive.some(m => m.banned) && ` (${inactive.filter(m => m.banned).length} banned)`}
           </button>
         )}
         <form onSubmit={add} className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">

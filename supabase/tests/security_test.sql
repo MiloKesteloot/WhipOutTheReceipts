@@ -164,8 +164,21 @@ select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 select pg_temp.expect_error(format($$select leave_group(%L)$$, :'gid'), 'owner cannot leave without transferring ownership');
 select id as sm2 from group_members where group_id = :'gid' and user_id = '00000000-0000-0000-0000-00000000000b' \gset
 select remove_member(:'sm2');
+select invite_code as gcode from groups where id = :'gid' \gset
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select pg_temp.check(count(*) = 0, 'removed member loses access') from receipts where group_id = :'gid';
+select join_group(:'gcode');
+select pg_temp.check(count(*) > 0, 'removed member can rejoin with the invite') from receipts where group_id = :'gid';
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select remove_member(:'sm2', true);
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select pg_temp.expect_error(format($$select join_group(%L)$$, :'gcode'), 'banned member cannot rejoin with the invite');
+select pg_temp.expect_error(format($$select unban_member(%L)$$, :'sm2'), 'banned member cannot unban themselves');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+select unban_member(:'sm2');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select join_group(:'gcode');
+select pg_temp.check(count(*) > 0, 'unbanned member can rejoin with the invite') from receipts where group_id = :'gid';
 
 -- ── Profile name changes flow to group members ───────────────
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');

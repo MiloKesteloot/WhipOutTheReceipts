@@ -6,8 +6,17 @@
  * Set to null to use the corrected rounding for every receipt.
  */
 export const ROUNDING_FIX_FROM = '2026-10-18T10:31:37Z'
-const usesOldRounding = receipt =>
-  !!(ROUNDING_FIX_FROM && receipt?.created_at && Date.parse(receipt.created_at) < Date.parse(ROUNDING_FIX_FROM))
+const createdBefore = (receipt, moment) =>
+  !!(moment && receipt?.created_at && Date.parse(receipt.created_at) < Date.parse(moment))
+const usesOldRounding = receipt => createdBefore(receipt, ROUNDING_FIX_FROM)
+
+/**
+ * Receipts created before this moment split tax/tip/fees over claimed
+ * items only, so the people who claimed something also paid the fee share
+ * of unclaimed items. From here on the payer keeps that share, along with
+ * the unclaimed items. Set to null to apply it to every receipt.
+ */
+export const UNCLAIMED_FEES_FIX_FROM = '2026-10-18T20:45:00Z'
 
 // The old item split: the payer was skipped before taking a leftover cent
 function oldSplitItemCents(price, claimers, payer) {
@@ -56,7 +65,9 @@ function oldDistributeProportionally(feeCents, relevantItems, claimsByItem, paye
 const itemSplit = (receipt, price, claimers) =>
   usesOldRounding(receipt) ? oldSplitItemCents(price, claimers, receipt.paid_by) : splitItemCents(price, claimers)
 const proportional = (receipt, ...args) =>
-  (usesOldRounding(receipt) ? oldDistributeProportionally : distributeProportionally)(...args)
+  usesOldRounding(receipt)
+    ? oldDistributeProportionally(...args)
+    : distributeProportionally(...args, !createdBefore(receipt, UNCLAIMED_FEES_FIX_FROM))
 
 /**
  * Split an item's price between its claimers, in cents. Leftover cents go
@@ -80,23 +91,28 @@ export function splitItemCents(price, claimers) {
  * the given items had, then leave out the payer (their part is theirs).
  * Leftover cents are handed out over everyone, payer included, so the
  * others never pick up extra cents for the payer's share.
+ * With payerTakesUnclaimed, unclaimed items count as the payer's, so their
+ * part of the fee stays with the payer too.
  * Returns: { person -> cents }
  */
-function distributeProportionally(feeCents, relevantItems, claimsByItem, payer) {
+function distributeProportionally(feeCents, relevantItems, claimsByItem, payer, payerTakesUnclaimed = false) {
   if (!feeCents) return {}
 
   // Each person's effective cents = sum of their split shares of items they claimed
   const effectiveByPerson = {}
   for (const item of relevantItems) {
     const claimers = claimsByItem[item.id] || []
-    if (claimers.length === 0) continue
+    if (claimers.length === 0) {
+      if (payerTakesUnclaimed) effectiveByPerson[payer] = (effectiveByPerson[payer] || 0) + Math.round(item.price * 100)
+      continue
+    }
     for (const [person, cents] of splitItemCents(item.price, claimers)) {
       effectiveByPerson[person] = (effectiveByPerson[person] || 0) + cents
     }
   }
 
   const totalEffective = Object.values(effectiveByPerson).reduce((s, v) => s + v, 0)
-  if (!totalEffective) return {}
+  if (totalEffective <= 0) return {}
 
   const shares = Object.entries(effectiveByPerson).map(([person, effective], order) => {
     const exact = feeCents * effective / totalEffective
@@ -128,8 +144,9 @@ function distributeTipTaxFees(receipt, receiptItems, claimsByItem) {
  *
  * Returns an array of { debtor, creditor, amount } objects.
  * Unclaimed items fall entirely on the payer.
- * Tip and tax are distributed proportionally to each person's claimed item share.
- * Meal fees are distributed proportionally among claimers of items in that meal.
+ * Tip and tax are distributed proportionally to each person's item share;
+ * the share of unclaimed items stays with the payer (see UNCLAIMED_FEES_FIX_FROM).
+ * Meal fees are distributed the same way over the items in that meal.
  *
  * @param {Array} receipts  - [{ id, paid_by, tip, tax }]
  * @param {Array} items     - [{ id, receipt_id, meal_id, name, price }]

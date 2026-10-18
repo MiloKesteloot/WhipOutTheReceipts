@@ -289,7 +289,6 @@ export default function ReceiptDetail() {
   const breakdown = getItemizedBreakdown(receiptArr, items, countedClaims, meals)
 
   const checkinNames = new Set(checkins.map(c => c.roommate.toLowerCase()))
-  const claimerNames = new Set(claims.map(c => c.roommate.toLowerCase()))
   const receiptComplete = (receipt?.members || []).every(m => checkinNames.has(m.toLowerCase()))
   const receiptMembers = (() => {
     const base = receipt?.members || []
@@ -297,9 +296,7 @@ export default function ReceiptDetail() {
     if (!payer || base.some(m => m.toLowerCase() === payer.toLowerCase())) return base
     return [...base, payer]
   })()
-  const waitingOn = receiptMembers.filter(
-    m => !checkinNames.has(m.toLowerCase()) && !claimerNames.has(m.toLowerCase())
-  )
+  const waitingOn = receiptMembers.filter(m => !checkinNames.has(m.toLowerCase()))
 
   // People on this receipt without an account (they can't sign in to check in)
   const guestsOnReceipt = (members || []).filter(m => !m.user_id && m.active && (receipt?.member_ids || []).includes(m.id))

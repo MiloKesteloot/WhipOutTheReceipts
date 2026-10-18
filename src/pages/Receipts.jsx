@@ -7,7 +7,7 @@ import {
 import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
 import LoadError from '../components/LoadError.jsx'
-import { claimersByReceipt, receiptTotals, isOnReceipt } from '../lib/receiptStatus.js'
+import { checkedInByReceipt, receiptTotals, isOnReceipt } from '../lib/receiptStatus.js'
 import { ReceiptCalendar, ReceiptDays, ReceiptList } from '../components/ReceiptViews.jsx'
 
 const PAGE_SIZE = 30
@@ -99,7 +99,7 @@ export default function Receipts() {
   if (data) {
     viewProps = {
       receipts: data.receipts.filter(r => showAll || isOnReceipt(r, myName)),
-      claimers: claimersByReceipt(data),
+      checkedIn: checkedInByReceipt(data),
       totals: receiptTotals(data),
       myName,
     }

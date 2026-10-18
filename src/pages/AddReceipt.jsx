@@ -729,7 +729,7 @@ Rules:
 
       {isEditing && (
         <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-          Existing claims are preserved. Only claims on items you remove will be cleared.
+          Everyone's check-offs are kept. If you add items, everyone else will need to check in again. Taking someone off the receipt clears their check-offs.
         </div>
       )}
 

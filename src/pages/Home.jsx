@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { version as buildVersion } from '../buildVersion.json'
 import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
-import { claimersByReceipt, receiptsToCheckOff } from '../lib/receiptStatus.js'
+import { checkedInByReceipt, receiptsToCheckOff } from '../lib/receiptStatus.js'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError from '../components/LoadError.jsx'
 
@@ -15,7 +15,7 @@ export default function Home() {
   if (error && !data) return <LoadError onRetry={reload} />
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
 
-  const unchecked = receiptsToCheckOff(data, claimersByReceipt(data), myName)
+  const unchecked = receiptsToCheckOff(data, checkedInByReceipt(data), myName)
     .sort((a, b) => b.receipt_date.localeCompare(a.receipt_date))
   const myBalances = myName ? balances.forPerson(myName) : []
   const iOweTotal = myBalances.filter(e => e.iOwe).reduce((s, e) => s + e.amount, 0)

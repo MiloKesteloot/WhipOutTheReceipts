@@ -27,20 +27,7 @@ export function SessionProvider({ children }) {
       setSession(s)
     })
 
-    if (emailLink) {
-      window.history.replaceState(null, '', window.location.pathname + window.location.hash)
-      supabase.auth.verifyOtp({ token_hash: emailLink.tokenHash, type: emailLink.type }).then(({ data, error }) => {
-        if (error) {
-          setLinkError(/expired|invalid/i.test(error.message)
-            ? 'That link has expired or was already used. Please try again.'
-            : error.message)
-        } else {
-          if (emailLink.type === 'recovery') setRecovering(true)
-          setSession(data.session)
-        }
-        setVerifying(false)
-      })
-    } else {
+    function loadStoredSession() {
       supabase.auth.getSession().then(async ({ data }) => {
         // A remembered login can outlive its account (deleted user, reset
         // database). Confirm it with the server; if it's gone, sign out.
@@ -54,6 +41,25 @@ export function SessionProvider({ children }) {
         }
         setSession(data.session)
       })
+    }
+
+    if (emailLink) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash)
+      supabase.auth.verifyOtp({ token_hash: emailLink.tokenHash, type: emailLink.type }).then(({ data, error }) => {
+        if (error) {
+          setLinkError(/expired|invalid/i.test(error.message)
+            ? 'That link has expired or was already used. Please try again.'
+            : error.message)
+          // Carry on with whatever login is already saved (or none)
+          loadStoredSession()
+        } else {
+          if (emailLink.type === 'recovery') setRecovering(true)
+          setSession(data.session)
+        }
+        setVerifying(false)
+      })
+    } else {
+      loadStoredSession()
     }
     return () => sub.subscription.unsubscribe()
   }, [])
