@@ -76,9 +76,9 @@ const FAQ = [
   ['Is it free?', "Yes, it's free, and there are no ads."],
   ['Do my roommates need accounts?',
     "Roommates make a free account (Google or email) and join your group with its invite link. For someone who only joins now and then, anyone in the group can send them a guest link instead: they check off what they had without making an account."],
-  ['Who can see our receipts?', "Only the people in your group. Nobody else can see your receipts, items or payments."],
+  ['Who can see our receipts?', "Only the people in your group. The one exception is a guest link: whoever has it can see the receipts that guest is on (their items, prices and who checked off what), so only send it to that person. You can replace a guest link anytime to turn the old one off."],
   ['What if someone never checks in?',
-    "Nobody owes anything on a receipt until everyone on it has checked in. The receipt and the home page show who it's still waiting on, so you know who to remind."],
+    "Nobody owes anything on a receipt until everyone on it has checked in. The receipt and the Receipts tab show who it's still waiting on, so you know who to remind."],
   ['How does scanning a receipt work?',
     "Take a photo and Google's Gemini AI reads the store, items, prices, tax and tip into the form, for you to check before saving. It uses your own free API key from Google AI Studio, which you add once in Settings. You can always type a receipt in instead."],
   ['Does it work on my phone?', 'Yes, in any browser. Add it to your home screen and it opens like an app.'],
@@ -236,7 +236,7 @@ export default function Landing() {
               <img src={LOGO_URL} alt="" width={28} height={28} className="w-7 h-7" />
               Receipts
             </Link>
-            <p>Your group's receipts and payments are only visible to the people in your group.</p>
+            <p>Your group's receipts and payments are only visible to the people in your group (and to guests, through their own links).</p>
             <p>Made by <a href="https://www.milo.games/" className="text-gray-700 hover:text-gray-900 underline-offset-2 hover:underline">Milo Kesteloot</a></p>
           </div>
           <nav className="flex justify-center sm:justify-end gap-5">

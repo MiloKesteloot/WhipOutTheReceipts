@@ -127,6 +127,8 @@ export default function Receipts() {
         <div className="max-w-2xl mx-auto space-y-6">
           {!searchData ? (
             <p className="text-center py-12 text-sm text-gray-400">Loading…</p>
+          ) : searchData.failed ? (
+            <p className="text-center py-12 text-sm text-gray-400">Couldn't load search. Check your connection and refresh the page.</p>
           ) : (
             <>
               <ResultSection

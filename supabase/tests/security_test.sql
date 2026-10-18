@@ -1,6 +1,9 @@
 -- Security / RLS checks against a migrated database. Runs inside a
 -- transaction and rolls back, so it leaves no trace.
 --   psql <local-db-url> -v ON_ERROR_STOP=1 -f supabase/tests/security_test.sql
+-- Needs a database loaded from a production backup (scripts/local-db-reset.sh,
+-- or `npm run ui:reset`): it expects the original group with its 8 people,
+-- including "Milo" and "Alex". It won't run on an empty database.
 -- Each check raises on failure; reaching "ALL CHECKS PASSED" means success.
 
 begin;
@@ -121,8 +124,10 @@ select pg_temp.expect_error($$insert into audit_log (table_name, action) values 
 select pg_temp.expect_error('delete from audit_log', 'cannot delete from the audit log');
 select pg_temp.expect_error('update audit_log set actor = null', 'cannot edit the audit log');
 reset role;
+-- Only this test's rows (created_at = now() within this transaction): real
+-- data has actor-less rows from guest links, which is expected
 select pg_temp.check(count(*) >= 3 and count(*) filter (where actor is null and table_name in ('items', 'claims')) = 0,
-  'audit log rows cannot be deleted or edited') from audit_log;
+  'audit log rows cannot be deleted or edited') from audit_log where created_at = now();
 
 -- ── Claims must use people from the same group ───────────────
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
@@ -184,6 +189,69 @@ select pg_temp.check(count(*) > 0, 'unbanned member can rejoin with the invite')
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 update profiles set last_name = 'K' where id = '00000000-0000-0000-0000-00000000000a';
 select pg_temp.check((select last_name from group_members where id = :'milo_member') = 'K', 'profile rename syncs to group member');
+
+-- ── Review fixes (20261018070000_hardening) ──────────────────
+set local role anon;
+select pg_temp.expect_error(format($$select member_group(%L)$$, :'milo_member'), 'signed-out visitor cannot call policy helpers');
+reset role;
+insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'casey@example.com',
+   '{"first_name": "Casey", "last_name": "Cole"}');
+
+-- Guest links die once the person has an account, even if it's unlinked later
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select invite_code as scode from groups where id = :'sgid' \gset
+insert into group_members (group_id, first_name) values (:'sgid', 'Gus') returning id as gus \gset
+select guest_link_create(:'gus') as gtoken \gset
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000c');
+select join_group(:'scode', :'gus');
+reset role;
+select pg_temp.check((select guest_token from group_members where id = :'gus') is null, 'a guest link is cleared once the person has an account');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select unlink_member(:'gus');
+select pg_temp.check(guest_view(:'gtoken') is null, 'an old guest link stays dead after the account is unlinked');
+
+-- Merging the owner's own person into a guest keeps the group owned
+insert into group_members (group_id, first_name) values (:'sgid', 'Bee') returning id as bee \gset
+select merge_members(:'stranger_member', :'bee');
+reset role;
+select pg_temp.check((select role = 'owner' and active and user_id = '00000000-0000-0000-0000-00000000000b' from group_members where id = :'bee'),
+  'merging the owner into a guest moves the owner role with the account');
+select pg_temp.check((select role = 'member' and user_id is null from group_members where id = :'stranger_member'),
+  'the merged-away person is no longer an owner');
+
+-- The last account holder can leave; the next person to join becomes owner
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select leave_group(:'sgid');
+select pg_temp.check((invite_preview(:'scode')->>'rejoining')::boolean, 'the join page knows someone who left is rejoining');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000c');
+select join_group(:'scode');
+reset role;
+select id as casey from group_members where group_id = :'sgid' and user_id = '00000000-0000-0000-0000-00000000000c' \gset
+select pg_temp.check((select role from group_members where id = :'casey') = 'owner', 'a group left without an owner gets the next person who joins as owner');
+
+-- Receipts with someone who left can still be finished
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000c');
+insert into receipts (group_id, store_name, paid_by_member, member_ids, receipt_date)
+  values (:'sgid', 'Corner store', :'casey', array[:'casey', :'bee']::uuid[], current_date) returning id as test_receipt \gset
+insert into items (receipt_id, name, price) values (:'test_receipt', 'Milk', 4);
+insert into checkins (receipt_id, member_id) values (:'test_receipt', :'bee');
+select pg_temp.check(count(*) = 1, 'anyone can check in for someone who left the group')
+  from checkins where receipt_id = :'test_receipt' and member_id = :'bee';
+update receipts set created_by = null where id = :'test_receipt';
+reset role;
+select pg_temp.check((select created_by from receipts where id = :'test_receipt') = '00000000-0000-0000-0000-00000000000c',
+  'created_by cannot be cleared by an edit');
+
+-- Deleting an account
+select count(*) as audit_before from audit_log where table_name in ('receipts', 'items') \gset
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000c');
+select delete_my_account();
+reset role;
+select pg_temp.check((select created_by from receipts where id = :'test_receipt') is null, 'deleting an account clears created_by');
+select pg_temp.check(count(*) = :audit_before, 'deleting an account isn''t logged as edits to everything it created')
+  from audit_log where table_name in ('receipts', 'items');
+select pg_temp.check((select not active from group_members where id = :'casey'), 'a deleted account''s person leaves the group, so nobody can claim it');
 
 -- ── Secrets are private ──────────────────────────────────────
 insert into user_secrets (user_id, gemini_api_key) values ('00000000-0000-0000-0000-00000000000a', 'milo-secret');

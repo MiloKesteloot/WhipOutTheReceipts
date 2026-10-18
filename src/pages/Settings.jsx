@@ -23,13 +23,15 @@ const sectionTitle = 'text-sm font-semibold text-gray-400 uppercase tracking-wid
 function YourName() {
   const { profile, refreshProfile } = useSession()
   const { refreshMembers } = useGroup()
+  const { showAlert, DialogUI } = useDialog()
   const [first, setFirst] = useState(profile.first_name)
   const [last, setLast] = useState(profile.last_name)
   const [saved, setSaved] = useState(false)
   const changed = first.trim() !== profile.first_name || last.trim() !== profile.last_name
 
   async function save() {
-    await supabase.from('profiles').update({ first_name: first.trim(), last_name: last.trim() }).eq('id', profile.id)
+    const { error } = await supabase.from('profiles').update({ first_name: first.trim(), last_name: last.trim() }).eq('id', profile.id)
+    if (error) { await showAlert(error.message, { title: 'Could not save your name' }); return }
     await refreshProfile()
     await refreshMembers()
     setSaved(true)
@@ -38,6 +40,7 @@ function YourName() {
 
   return (
     <section>
+      {DialogUI}
       <h2 className={sectionTitle}>Your name</h2>
       <div className={card}>
         <div className="flex gap-2">
@@ -60,7 +63,7 @@ function Account() {
   // Runs delete_my_account() in the database (migration 20261018010000)
   async function deleteAccount() {
     if (!await confirm(
-      "Your login, profile and saved API key are deleted. You'll stay on past receipts and payments in shared groups as a guest, so your roommates' balances don't change. Groups where nobody else has an account are deleted entirely. This can't be undone.",
+      "Your login, profile and saved API key are deleted, and you leave every group. Your name stays on past receipts and payments in shared groups (and in their history), so your roommates' balances don't change. Groups where nobody else has an account are deleted entirely. This can't be undone.",
       { title: 'Delete your account?', confirmLabel: 'Delete account', danger: true },
     )) return
     setDeleting(true)
@@ -75,7 +78,9 @@ function Account() {
   }
 
   async function resetPassword() {
-    await supabase.auth.resetPasswordForEmail(user.email, { redirectTo: appBaseUrl })
+    // Fails e.g. when asked again within a minute (Supabase's rate limit)
+    const { error } = await supabase.auth.resetPasswordForEmail(user.email, { redirectTo: appBaseUrl })
+    if (error) { await showAlert(error.message, { title: 'Could not send the reset link' }); return }
     setSent(true)
   }
 
@@ -97,7 +102,7 @@ function Account() {
           </button>
         )}
         <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
-          <p className="text-xs text-gray-400">Permanently delete your account and personal data.</p>
+          <p className="text-xs text-gray-400">Permanently delete your account. Your name stays on shared receipts.</p>
           <button onClick={deleteAccount} disabled={deleting} className="shrink-0 px-3 py-1.5 text-sm border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition disabled:opacity-50">
             {deleting ? 'Deleting…' : 'Delete account'}
           </button>
@@ -109,7 +114,7 @@ function Account() {
 
 function GeminiKey() {
   const { user } = useSession()
-  const { confirm, DialogUI } = useDialog()
+  const { confirm, showAlert, DialogUI } = useDialog()
   const [key, setKey] = useState(null) // null = loading
   const [replacing, setReplacing] = useState(false)
   const [input, setInput] = useState('')
@@ -119,7 +124,8 @@ function GeminiKey() {
 
   async function save() {
     setSaving(true)
-    await supabase.from('user_secrets').upsert({ user_id: user.id, gemini_api_key: input.trim(), updated_at: new Date().toISOString() })
+    const { error } = await supabase.from('user_secrets').upsert({ user_id: user.id, gemini_api_key: input.trim(), updated_at: new Date().toISOString() })
+    if (error) { setSaving(false); await showAlert(error.message, { title: 'Could not save your key' }); return }
     setKey(input.trim())
     setInput(''); setReplacing(false); setSaving(false)
   }
@@ -128,7 +134,8 @@ function GeminiKey() {
     if (!await confirm('Receipt scanning will stop working for you until you add a new key.', {
       title: 'Delete your API key?', confirmLabel: 'Delete', danger: true,
     })) return
-    await supabase.from('user_secrets').upsert({ user_id: user.id, gemini_api_key: null, updated_at: new Date().toISOString() })
+    const { error } = await supabase.from('user_secrets').upsert({ user_id: user.id, gemini_api_key: null, updated_at: new Date().toISOString() })
+    if (error) { await showAlert(error.message, { title: 'Could not delete your key' }); return }
     setKey(''); setReplacing(false)
   }
 
@@ -184,7 +191,7 @@ function Preferences() {
         <label className="flex items-center justify-between cursor-pointer">
           <div>
             <p className="text-sm font-medium text-gray-800">Show all receipts by default</p>
-            <p className="text-xs text-gray-400 mt-0.5">When off, only receipts you're a member of are shown on the home page</p>
+            <p className="text-xs text-gray-400 mt-0.5">When off, only receipts you're on are shown in the Receipts tab</p>
           </div>
           <button
             onClick={() => setDefaultShowAll(v => !v)}

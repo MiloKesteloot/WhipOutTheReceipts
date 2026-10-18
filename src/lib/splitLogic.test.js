@@ -61,6 +61,35 @@ describe('calculateDebts', () => {
     expect(owed([receipt({ tip: 2, tax: 1, fees: 1 })], items, claims)).toEqual({ Bob: 12 })
   })
 
+  it('gives the leftover cent by claim id, whatever order the claims came in', () => {
+    // $10.00 three ways: the earliest claim id gets $3.34
+    const claims = [
+      { id: 'c', item_id: 'x', roommate: 'Carol' },
+      { id: 'a', item_id: 'x', roommate: 'Bob' },
+      { id: 'b', item_id: 'x', roommate: 'Alice' },
+    ]
+    const expected = { Bob: 3.34, Carol: 3.33 }
+    expect(owed([receipt()], [item('x', 10)], claims)).toEqual(expected)
+    expect(owed([receipt()], [item('x', 10)], [...claims].reverse())).toEqual(expected)
+  })
+
+  it('has the payer owe someone whose lines are mostly a discount', () => {
+    // Bob claims only a $5 coupon: Alice (the payer) owes him $5
+    const debts = calculateDebts([receipt()], [item('steak', 15), item('coupon', -5)], [claim('steak', 'Alice'), claim('coupon', 'Bob')])
+    expect(debts).toEqual([{ debtor: 'Alice', creditor: 'Bob', amount: 5 }])
+  })
+
+  it('credits tax back on a discount, so tax shares add up to the tax', () => {
+    // Carol $15 item, Bob -$5 coupon, $1 tax over $10 net: Carol $1.50, Bob −$0.50
+    const items = [item('a', 15), item('coupon', -5)]
+    const claims = [claim('a', 'Carol'), claim('coupon', 'Bob')]
+    const debts = calculateDebts([receipt({ tax: 1 })], items, claims)
+    expect(debts).toEqual(expect.arrayContaining([
+      { debtor: 'Carol', creditor: 'Alice', amount: 16.5 },
+      { debtor: 'Alice', creditor: 'Bob', amount: 5.5 },
+    ]))
+  })
+
   it('splits a meal fee over that meal\'s items, unclaimed ones staying with the payer', () => {
     const items = [item('pizza', 10, { meal_id: 'm1' }), item('wings', 10, { meal_id: 'm1' })]
     const meals = [{ id: 'm1', receipt_id: 'r1', fee: 4, name: 'Dinner' }]

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, appBaseUrl } from '../lib/supabase.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import { useGroup } from '../lib/group.jsx'
+import { copyText } from '../lib/clipboard.js'
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4'
 const smallInput = 'flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400'
@@ -43,8 +44,8 @@ function GroupInfo() {
     refreshMemberships()
   }
 
-  function copy() {
-    navigator.clipboard.writeText(inviteLink)
+  async function copy() {
+    if (!await copyText(inviteLink)) { await showAlert(inviteLink, { title: 'Copy this link' }); return }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -102,8 +103,8 @@ function GuestLinkPanel({ m, onClose }) {
     refreshMembers()
   }
 
-  function copy() {
-    navigator.clipboard.writeText(link)
+  async function copy() {
+    if (!await copyText(link)) { await showAlert(link, { title: 'Copy this link' }); return }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -152,6 +153,7 @@ function PersonRow({ m }) {
     if (error) await showAlert(error.message, { title: 'Something went wrong' })
     else if (okMessage) await showAlert(okMessage)
     refreshMembers()
+    return !error
   }
 
   async function saveName() {
@@ -191,7 +193,7 @@ function PersonRow({ m }) {
     m.banned && ['Unban', () => run('unban_member', { p_member: m.id }, `${m.displayName} can rejoin with the invite link.`)],
     !m.active && ['Add back to group', () => run('restore_member', { p_member: m.id })],
     linked && m.active && ['Make owner', () => confirm(`${m.displayName} will become the owner. You'll stay in the group as a regular member.`, { title: 'Transfer ownership?', confirmLabel: 'Make owner' })
-      .then(ok => ok && run('transfer_ownership', { p_member: m.id }).then(() => window.location.reload()))],
+      .then(ok => ok && run('transfer_ownership', { p_member: m.id }).then(done => done && window.location.reload()))],
     // Unlinking a banned person would let their account join as someone new
     linked && !m.banned && ['Unlink account', () => confirm(`${m.displayName}'s account will be disconnected from this person. Their history stays here, and they can rejoin with the invite link.`, { title: 'Unlink account?', confirmLabel: 'Unlink', danger: true })
       .then(ok => ok && run('unlink_member', { p_member: m.id }))],
@@ -341,7 +343,10 @@ function MergePeople() {
         )}
         {confirming && (
           <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-sm text-amber-800 mb-3">All of {byId[from].displayName}'s claims, receipts and payments will move to {byId[into].displayName}. This is recorded in the history.</p>
+            <p className="text-sm text-amber-800 mb-3">
+              All of {byId[from].displayName}'s check-offs, receipts and payments will move to {byId[into].displayName}; payments between the two of them are removed.
+              {byId[from].user_id && ` ${byId[from].displayName}'s account moves to ${byId[into].displayName} too.`} This is recorded in the history.
+            </p>
             <div className="flex gap-2">
               <button onClick={merge} disabled={busy} className="flex-1 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50">
                 {busy ? 'Merging…' : 'Yes, merge'}

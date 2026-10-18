@@ -89,6 +89,9 @@ export function useSearchData() {
     fetchSearchData(group.id, nameOf, memberIds).then(d => {
       cache.set(group.id, d)
       if (!cancelled) setData(d)
+    }, () => {
+      // Nothing cached: show that it failed instead of loading forever
+      if (!cancelled && !cache.has(group.id)) setData({ failed: true, receipts: [], items: [] })
     })
     return () => { cancelled = true }
   }, [group.id])

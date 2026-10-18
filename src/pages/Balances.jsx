@@ -6,6 +6,7 @@ import { deletePayment } from '../lib/db.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError from '../components/LoadError.jsx'
+import { isOnReceipt } from '../lib/receiptStatus.js'
 
 const fmtPaidAt = ts => ts ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
 
@@ -175,8 +176,15 @@ export default function Balances() {
   const iOweTotal = iOweEntries.reduce((s, e) => s + e.amount, 0)
   const owedToMeTotal = owedToMeEntries.reduce((s, e) => s + e.amount, 0)
 
+  // My receipts that aren't counted yet: someone on them hasn't checked in
+  const checkedIn = {}
+  for (const c of data.checkins) (checkedIn[c.receipt_id] ||= new Set()).add(c.roommate.toLowerCase())
+  const withItems = new Set(data.items.map(i => i.receipt_id))
+  const pending = myName ? data.receipts.filter(r => withItems.has(r.id) && isOnReceipt(r, myName)
+    && (r.members || []).some(m => !checkedIn[r.id]?.has(m.toLowerCase()))).length : 0
+
   async function removePayment(p) {
-    if (!await confirm(`$${Number(p.amount).toFixed(2)} from ${p.from} to ${p.to} will be removed and the balance goes back up. This is recorded in the history.`, {
+    if (!await confirm(`$${Number(p.amount).toFixed(2)} from ${p.from} to ${p.to} will be removed, and balances will be worked out as if it never happened. This is recorded in the history.`, {
       title: 'Remove this payment?', confirmLabel: 'Remove', danger: true,
     })) return
     try {
@@ -210,6 +218,12 @@ export default function Balances() {
           <p className="font-semibold text-gray-800">You're all settled up</p>
           <p className="text-sm text-gray-400 mt-1">You don't owe anyone, and nobody owes you.</p>
         </div>
+      )}
+
+      {pending > 0 && (
+        <p className="text-sm text-gray-400 text-center">
+          {pending === 1 ? "1 receipt you're on is" : `${pending} receipts you're on are`} still waiting on check-ins, so {pending === 1 ? "it isn't" : "they aren't"} counted yet.
+        </p>
       )}
 
       <div className="pt-4">

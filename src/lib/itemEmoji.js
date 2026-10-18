@@ -1,6 +1,17 @@
 // Returns a food/item emoji for a given item name, or null if no match.
 // Rules are checked in order — place more specific terms before broader ones.
+// A keyword matches at the start of a word ("ham" finds "Ham, sliced" but
+// not "Shampoo"), so plurals and longer forms still match.
 const RULES = [
+  // ── Household (first, so "Toilet paper" or "Shampoo" aren't read as food) ──
+  [['toilet paper', 'tp ', 'tissue', 'paper towel', 'napkin', 'kleenex'], '🧻'],
+  [['detergent', 'laundry', 'dish soap', 'dishwasher', 'fabric softener', 'dryer sheet'], '🧴'],
+  [['shampoo', 'conditioner', 'body wash', 'soap', 'face wash', 'lotion', 'sunscreen', 'deodorant', 'toothpaste', 'mouthwash', 'floss'], '🧴'],
+  [['trash bag', 'garbage bag', 'zip lock', 'ziploc', 'plastic bag', 'aluminum foil', 'foil', 'plastic wrap', 'saran wrap', 'parchment', 'wax paper'], '🗑️'],
+  [['sponge', 'scrub', 'cleaning', 'disinfect', 'bleach', 'windex', 'lysol', 'febreze', 'air freshener'], '🧽'],
+  [['candle', 'diffuser'], '🕯️'],
+  [['battery', 'batteries', 'lightbulb', 'light bulb'], '🔋'],
+
   // ── Fruits ──────────────────────────────────────────────────────────────
   [['strawberr'], '🍓'],
   [['blueberr'], '🫐'],
@@ -10,7 +21,7 @@ const RULES = [
   [['mango'], '🥭'],
   [['peach', 'nectarine', 'apricot'], '🍑'],
   [['cherry', 'cherries'], '🍒'],
-  [['grape', 'raisin'], '🍇'],
+  [['grape', 'raisin', 'craisin'], '🍇'],
   [['orange', 'mandarin', 'clementine', 'tangerine'], '🍊'],
   [['lemon'], '🍋'],
   [['lime'], '🍋'],
@@ -28,11 +39,15 @@ const RULES = [
   [['potato', 'potatoes', 'tater', 'hash brown', 'hashbrown'], '🥔'],
   [['broccoli'], '🥦'],
   [['carrot'], '🥕'],
+  [['popcorn'], '🍿'],
   [['corn', 'maize'], '🌽'],
   [['cucumber'], '🥒'],
   [['eggplant', 'aubergine'], '🍆'],
   [['garlic'], '🧄'],
   [['onion', 'shallot', 'scallion', 'leek', 'chive'], '🧅'],
+  [['pizza'], '🍕'],
+  [['pepperoni'], '🌭'],
+  [['black pepper', 'peppercorn', 'pepper flake'], '🧂'],
   [['bell pepper', 'capsicum'], '🫑'],
   [['pepper', 'jalapeño', 'jalapeno', 'habanero', 'chili', 'chile'], '🌶️'],
   [['spinach', 'kale', 'arugula', 'chard', 'collard', 'romaine', 'cabbage', 'bok choy', 'lettuce', 'mixed greens', 'salad greens'], '🥬'],
@@ -82,14 +97,15 @@ const RULES = [
   [['sushi', 'maki', 'nigiri', 'tempura'], '🍱'],
   [['ramen', 'pho', 'udon', 'soba'], '🍜'],
   [['soup', 'stew', 'chili', 'chowder', 'bisque', 'broth', 'stock'], '🍲'],
-  [['salad'], '🥥'],
+  [['salad'], '🥗'],
   [['hot sauce', 'sriracha', 'tabasco', 'ketchup', 'marinara', 'tomato sauce', 'pasta sauce', 'salsa', 'pesto'], '🫙'],
   [['hummus', 'tahini', 'guacamole', 'dip'], '🫙'],
   [['mustard', 'mayo', 'mayonnaise', 'ranch', 'vinaigrette', 'dressing', 'bbq sauce', 'teriyaki', 'soy sauce', 'worcestershire', 'hot sauce'], '🫙'],
 
   // ── Snacks ───────────────────────────────────────────────────────────────
-  [['popcorn'], '🍿'],
   [['pretzel'], '🥨'],
+  [['cookie', 'chocolate chip cookie'], '🍪'],
+  [['chocolate chip'], '🍫'],
   [['chip', 'crisp', 'doritos', 'cheeto', 'pringle', 'fritos', 'tortilla chip', 'corn chip'], '🥨'],
   [['cracker', 'graham cracker', 'rice cake'], '🫙'],
   [['trail mix', 'mixed nut', 'almond', 'cashew', 'walnut', 'pecan', 'pistachio', 'hazelnut', 'macadamia', 'peanut butter', 'peanut'], '🥜'],
@@ -131,21 +147,21 @@ const RULES = [
   // ── Frozen ───────────────────────────────────────────────────────────────
   [['frozen', 'frost'], '🧊'],
 
-  // ── Household ────────────────────────────────────────────────────────────
-  [['toilet paper', 'tp ', 'tissue', 'paper towel', 'napkin', 'kleenex'], '🧻'],
-  [['detergent', 'laundry', 'dish soap', 'dishwasher', 'fabric softener', 'dryer sheet'], '🧴'],
-  [['shampoo', 'conditioner', 'body wash', 'soap', 'face wash', 'lotion', 'sunscreen', 'deodorant', 'toothpaste', 'mouthwash', 'floss'], '🧴'],
-  [['trash bag', 'garbage bag', 'zip lock', 'ziploc', 'plastic bag', 'aluminum foil', 'plastic wrap', 'saran wrap', 'parchment', 'wax paper'], '🗑️'],
-  [['sponge', 'scrub', 'cleaning', 'disinfect', 'bleach', 'windex', 'lysol', 'febreze', 'air freshener'], '🧽'],
-  [['candle', 'diffuser'], '🕯️'],
-  [['battery', 'batteries', 'lightbulb', 'light bulb'], '🔋'],
 ]
+
+// Does `text` contain `keyword` starting at the beginning of a word?
+function startsWord(text, keyword) {
+  for (let i = text.indexOf(keyword); i !== -1; i = text.indexOf(keyword, i + 1)) {
+    if (i === 0 || !/[a-z0-9]/.test(text[i - 1])) return true
+  }
+  return false
+}
 
 export function getItemEmoji(name) {
   if (!name) return null
   const lower = name.toLowerCase()
   for (const [keywords, emoji] of RULES) {
-    if (keywords.some(k => lower.includes(k))) return emoji
+    if (keywords.some(k => startsWord(lower, k))) return emoji
   }
   return null
 }

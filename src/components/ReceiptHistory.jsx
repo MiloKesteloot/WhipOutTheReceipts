@@ -5,6 +5,9 @@ import { useGroup } from '../lib/group.jsx'
 const money = v => `$${Number(v || 0).toFixed(2)}`
 const fmtWhen = ts => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 const MERGE_WINDOW_MS = 5 * 60 * 1000
+// Most history rows loaded for one receipt (its own changes / check-off changes)
+const DIRECT_LIMIT = 500
+const CLAIM_LIMIT = 1000
 
 // Turn one audit row into a sentence fragment (without the actor), or null to hide it
 function describe(e, { nameOf, itemName, mealName }) {
@@ -84,7 +87,7 @@ export default function ReceiptHistory({ receiptId }) {
       const [{ data: direct }, { data: itemRows }, { data: mealRows }] = await Promise.all([
         supabase.from('audit_log').select('*').eq('group_id', group.id)
           .or(`row_id.eq.${receiptId},new_data->>receipt_id.eq.${receiptId},old_data->>receipt_id.eq.${receiptId}`)
-          .order('created_at', { ascending: false }).limit(500),
+          .order('created_at', { ascending: false }).limit(DIRECT_LIMIT),
         supabase.from('items').select('id, name').eq('receipt_id', receiptId),
         supabase.from('meals').select('id, name').eq('receipt_id', receiptId),
       ])
@@ -94,14 +97,16 @@ export default function ReceiptHistory({ receiptId }) {
         const list = itemIds.join(',')
         const { data } = await supabase.from('audit_log').select('*').eq('group_id', group.id).eq('table_name', 'claims')
           .or(`new_data->>item_id.in.(${list}),old_data->>item_id.in.(${list})`)
-          .order('created_at', { ascending: false }).limit(1000)
+          .order('created_at', { ascending: false }).limit(CLAIM_LIMIT)
         claimRows = data || []
       }
       if (cancelled) return
       const all = [...(direct || []), ...claimRows]
         .filter(e => e.table_name !== 'checkins')
         .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      setEntries({ all, items: itemRows || [], meals: mealRows || [] })
+      // Hit a limit: older changes exist but weren't loaded
+      const truncated = (direct || []).length >= DIRECT_LIMIT || claimRows.length >= CLAIM_LIMIT
+      setEntries({ all, truncated, items: itemRows || [], meals: mealRows || [] })
     }
     load()
     return () => { cancelled = true }
@@ -167,7 +172,9 @@ export default function ReceiptHistory({ receiptId }) {
           {lines.length > visible.length && (
             <li><button onClick={() => setShowAll(true)} className="text-xs text-accent-600 font-medium">Show all {lines.length}</button></li>
           )}
-          {!hasCreation && (
+          {entries.truncated ? (
+            <li className="text-xs text-gray-400 pt-1">Only the most recent changes are shown.</li>
+          ) : !hasCreation && (
             <li className="text-xs text-gray-400 pt-1">
               {lines.length ? 'Earlier changes' : 'Changes to this receipt'} from before history tracking started aren't shown.
             </li>

@@ -11,6 +11,7 @@ import { useBalances } from '../lib/useBalances.js'
 import ReceiptHistory from '../components/ReceiptHistory.jsx'
 import { guestLinkUrl } from './GroupSettings.jsx'
 import BackButton from '../components/BackButton.jsx'
+import { copyText } from '../lib/clipboard.js'
 
 function getStoreLogo(storeName) {
   if (!storeName) return null
@@ -63,18 +64,20 @@ export default function ReceiptDetail() {
     setReceipt(receiptFromDb(receiptRes.data, nameOf))
     setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
 
-    const [{ data: itemData }, { data: mealData }] = await Promise.all([
+    const [itemRes, mealRes] = await Promise.all([
       supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null)
         .order('position', { ascending: true, nullsFirst: false }).order('created_at'),
-      supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
+      supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at').order('id'),
     ])
-    const allItems = itemData || []
+    if (itemRes.error || mealRes.error || checkinRes.error) { setError('Could not load this receipt. Check your connection and refresh.'); setLoading(false); return }
+    const allItems = itemRes.data || []
     setItems(allItems)
-    setMeals(mealData || [])
+    setMeals(mealRes.data || [])
 
     if (allItems.length > 0) {
-      const { data: claimData } = await supabase
-        .from('claims').select('*').in('item_id', allItems.map(i => i.id))
+      const { data: claimData, error: claimError } = await supabase
+        .from('claims').select('*').in('item_id', allItems.map(i => i.id)).order('id')
+      if (claimError) { setError('Could not load this receipt. Check your connection and refresh.'); setLoading(false); return }
       setClaims((claimData || []).map(c => claimFromDb(c, nameOf)))
     } else {
       setClaims([])
@@ -87,8 +90,13 @@ export default function ReceiptDetail() {
     loadData()
   }, [loadData])
 
+  // Whose check-offs myClaims was last set from; fresh data for the same
+  // person (e.g. a reload after copying a guest link) keeps unsaved changes
+  const claimsForRef = useRef(null)
   useEffect(() => {
     if (!actor || items.length === 0) return
+    if (isDirty && claimsForRef.current === actor.id) return
+    claimsForRef.current = actor.id
     const mine = claims.filter(c => c.roommate === actor.name).map(c => c.item_id)
     const alwaysSplitIds = items.filter(i => i.always_split).map(i => i.id)
     // Checked in before (on any device: the check-in is in the database) →
@@ -183,6 +191,8 @@ export default function ReceiptDetail() {
     setSaving(false)
     setSaved(true)
     setIsDirty(false)
+    // The saved claims' ids decide who gets leftover cents; fetch them
+    loadData()
   }
 
   // How much of one debt on this receipt is still unpaid. Once everyone has
@@ -234,14 +244,18 @@ export default function ReceiptDetail() {
 
   // Copy a guest's link (making one first if they don't have one yet)
   async function copyGuestLink(m) {
-    let token = m.guest_token
-    if (!token) {
-      const { data, error } = await supabase.rpc('guest_link_create', { p_member: m.id })
-      if (error) { await showAlert(error.message, { title: 'Could not make a link' }); return }
-      token = data
-      refreshMembers()
-    }
-    navigator.clipboard.writeText(guestLinkUrl(token))
+    let failed = null
+    // Start copying during the tap (Safari needs that), while the link is made
+    const link = m.guest_token
+      ? guestLinkUrl(m.guest_token)
+      : supabase.rpc('guest_link_create', { p_member: m.id }).then(({ data, error }) => {
+          if (error) { failed = error; throw error }
+          return guestLinkUrl(data)
+        })
+    const copied = await copyText(link)
+    if (!m.guest_token) refreshMembers()
+    if (failed) { await showAlert(failed.message, { title: 'Could not make a link' }); return }
+    if (!copied) { await showAlert(await link, { title: `${m.displayName}'s link (copy it from here)` }); return }
     setCopiedLinkFor(m.id)
     setTimeout(() => setCopiedLinkFor(null), 2000)
   }
@@ -254,7 +268,7 @@ export default function ReceiptDetail() {
   }
 
   async function deleteReceipt() {
-    if (!await confirm('It will be hidden for everyone. You can restore it later from this page, and the change is recorded in its history.', {
+    if (!await confirm('It will be hidden for everyone, and the change is recorded in its history. To bring it back, open this receipt\'s link again and tap Restore.', {
       title: 'Delete receipt?', confirmLabel: 'Delete', danger: true,
     })) return
     const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
@@ -268,8 +282,8 @@ export default function ReceiptDetail() {
     setReceipt(r => ({ ...r, deleted_at: null }))
   }
 
-  function copyLink() {
-    navigator.clipboard.writeText(window.location.href)
+  async function copyLink() {
+    if (!await copyText(window.location.href)) { await showAlert(window.location.href, { title: 'Copy this link' }); return }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -298,9 +312,11 @@ export default function ReceiptDetail() {
   })()
   const waitingOn = receiptMembers.filter(m => !checkinNames.has(m.toLowerCase()))
 
-  // People on this receipt without an account (they can't sign in to check in)
-  const guestsOnReceipt = (members || []).filter(m => !m.user_id && m.active && (receipt?.member_ids || []).includes(m.id))
-  const waitingGuests = guestsOnReceipt.filter(m => waitingOn.some(n => n.toLowerCase() === m.displayName.toLowerCase()))
+  // People on this receipt who can't check in themselves: no account, or no
+  // longer in the group. Anyone can check off for them.
+  const guestsOnReceipt = (members || []).filter(m => (!m.user_id || !m.active) && (receipt?.member_ids || []).includes(m.id))
+  // Guest links only work for people still in the group
+  const waitingGuests = guestsOnReceipt.filter(m => m.active && waitingOn.some(n => n.toLowerCase() === m.displayName.toLowerCase()))
 
   const itemsByMeal = {}
   for (const item of items) {
@@ -483,7 +499,8 @@ export default function ReceiptDetail() {
               const mealItems = itemsByMeal[meal.id] || []
               const expanded = expandedMeals.has(meal.id)
               const checkState = getMealCheckState(mealItems)
-              const mealTotal = mealItems.reduce((s, i) => s + Number(i.price), 0)
+              const mealFee = Number(meal.fee) || 0
+              const mealTotal = mealItems.reduce((s, i) => s + Number(i.price), 0) + mealFee
               return (
                 <Fragment key={meal.id}>
                   <li
@@ -500,7 +517,10 @@ export default function ReceiptDetail() {
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-700">{meal.name}</p>
-                      <p className="text-xs text-gray-400">{mealItems.length} item{mealItems.length !== 1 ? 's' : ''}</p>
+                      <p className="text-xs text-gray-400">
+                        {mealItems.length} item{mealItems.length !== 1 ? 's' : ''}
+                        {mealFee > 0 && ` · includes $${mealFee.toFixed(2)} fee`}
+                      </p>
                     </div>
                     <span className="text-sm font-medium text-gray-700 shrink-0">${mealTotal.toFixed(2)}</span>
                     <button
@@ -524,7 +544,7 @@ export default function ReceiptDetail() {
               const parts = []
               if (t) parts.push(`Tax $${t.toFixed(2)}`)
               if (ti) parts.push(`Tip $${ti.toFixed(2)}`)
-              if (f) parts.push(`Service fee $${f.toFixed(2)}`)
+              if (f) parts.push(`Fees $${f.toFixed(2)}`)
               if (parts.length === 0) return null
               return (
                 <li className="flex items-center gap-3 px-4 py-3 bg-gray-50/60">

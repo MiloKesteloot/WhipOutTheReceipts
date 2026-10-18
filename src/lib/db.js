@@ -100,16 +100,17 @@ export async function syncMyClaims(memberId, itemIds, currentMine, wanted) {
     if (error) throw error
   }
   if (toAdd.length) {
-    const { error } = await supabase.from('claims').insert(toAdd.map(item_id => ({ item_id, member_id: memberId })))
+    // Already there (saved from another tab or device meanwhile) is fine
+    const { error } = await supabase.from('claims')
+      .upsert(toAdd.map(item_id => ({ item_id, member_id: memberId })), { onConflict: 'item_id,member_id', ignoreDuplicates: true })
     if (error) throw error
   }
 }
 
 // Record that a person has checked in on a receipt (no-op if already)
 export async function ensureCheckin(memberId, receiptId) {
-  const { data } = await supabase.from('checkins').select('id').eq('member_id', memberId).eq('receipt_id', receiptId).limit(1)
-  if (data?.length) return
-  const { error } = await supabase.from('checkins').insert({ member_id: memberId, receipt_id: receiptId })
+  const { error } = await supabase.from('checkins')
+    .upsert({ member_id: memberId, receipt_id: receiptId }, { onConflict: 'receipt_id,member_id', ignoreDuplicates: true })
   if (error) throw error
 }
 

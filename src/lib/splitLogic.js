@@ -127,11 +127,26 @@ function distributeProportionally(feeCents, relevantItems, claimsByItem, payer, 
     remainder -= 1
   }
 
+  // Negative shares (someone whose items were mostly a discount) are a credit
   const result = {}
   for (const { person, share } of shares) {
-    if (person !== payer && share > 0) result[person] = share
+    if (person !== payer && share !== 0) result[person] = share
   }
   return result
+}
+
+/**
+ * claim lists by item id, each in claim id order (the order the database
+ * returns them in when sorted). Leftover cents go to the first claimers, so
+ * a fixed order makes every page split an item the same way, whatever order
+ * its query returned. Claims without an id (unsaved) go last.
+ */
+function claimersByItem(claims) {
+  const key = c => c.id ?? '￿'
+  const sorted = [...claims].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
+  const out = {}
+  for (const c of sorted) (out[c.item_id] ||= []).push(c.roommate)
+  return out
 }
 
 function distributeTipTaxFees(receipt, receiptItems, claimsByItem) {
@@ -158,11 +173,7 @@ export function calculateDebts(receipts, items, claims, meals = []) {
   const receiptById = {}
   for (const r of receipts) { payerByReceipt[r.id] = r.paid_by; receiptById[r.id] = r }
 
-  const claimsByItem = {}
-  for (const c of claims) {
-    if (!claimsByItem[c.item_id]) claimsByItem[c.item_id] = []
-    claimsByItem[c.item_id].push(c.roommate)
-  }
+  const claimsByItem = claimersByItem(claims)
 
   const itemsByReceipt = {}
   for (const item of items) {
@@ -217,10 +228,12 @@ export function calculateDebts(receipts, items, claims, meals = []) {
     }
   }
 
+  // A negative total (more discount than items) means the payer owes them
   const debts = []
   for (const [debtor, creditors] of Object.entries(rawDebts)) {
     for (const [creditor, cents] of Object.entries(creditors)) {
       if (cents > 0) debts.push({ debtor, creditor, amount: cents / 100 })
+      else if (cents < 0) debts.push({ debtor: creditor, creditor: debtor, amount: -cents / 100 })
     }
   }
   return debts
@@ -243,11 +256,7 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
     tipTaxByReceipt[r.id] = { tip: r.tip || 0, tax: r.tax || 0, fees: r.fees || 0 }
   }
 
-  const claimsByItem = {}
-  for (const c of claims) {
-    if (!claimsByItem[c.item_id]) claimsByItem[c.item_id] = []
-    claimsByItem[c.item_id].push(c.roommate)
-  }
+  const claimsByItem = claimersByItem(claims)
 
   const itemsByReceipt = {}
   const itemsByMeal = {}

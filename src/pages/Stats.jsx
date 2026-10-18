@@ -430,8 +430,8 @@ export default function Stats() {
       {/* Cumulative personal spending */}
       {cumulativeLineData.length > 1 && visiblePeople.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Cumulative food spending</h2>
-          <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of food costs over time</p>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Cumulative spending</h2>
+          <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of costs over time, across the categories shown</p>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 40 }}>
@@ -539,7 +539,7 @@ export default function Stats() {
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div className="bg-accent-400 h-1.5 rounded-full" style={{ width: `${(store.total / maxStore) * 100}%` }} />
                       </div>
-                      <span className="text-xs text-gray-400 shrink-0">{store.visits} {store.visits === 1 ? 'trip' : 'trips'}</span>
+                      <span className="text-xs text-gray-400 shrink-0">{store.visits} {store.visits === 1 ? 'receipt' : 'receipts'}</span>
                     </div>
                   </div>
                 </div>
@@ -610,7 +610,7 @@ export default function Stats() {
                       <span className="font-medium text-gray-800">${p.consumed.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between border-t border-gray-100 pt-1.5 mt-1.5">
-                      <span className="text-gray-500">Net balance</span>
+                      <span className="text-gray-500" title="Paid minus consumed, over all receipts. Payments between people aren't included, so this isn't what anyone owes now (see Balances).">Paid − consumed</span>
                       <span className={`font-semibold ${p.net > 0.01 ? 'text-accent-600' : p.net < -0.01 ? 'text-amber-600' : 'text-gray-500'}`}>
                         {p.net > 0.01 ? '+' : ''}{p.net.toFixed(2)}
                       </span>
@@ -647,7 +647,7 @@ export default function Stats() {
       {visibleFairShareRecalc.length > 0 && visibleTotalPaid > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-1">Fair share</h2>
-          <p className="text-xs text-gray-400 mb-3">% of household spending paid vs. consumed</p>
+          <p className="text-xs text-gray-400 mb-3">% of spending paid vs. consumed, among the people shown</p>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <ResponsiveContainer width="100%" height={Math.max(180, visibleFairShareRecalc.length * 52)}>
               <BarChart data={visibleFairShareRecalc} layout="vertical" margin={{ top: 4, right: 40, left: 40, bottom: 4 }}>

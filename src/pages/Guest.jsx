@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { computeDisplayNames } from '../lib/group.jsx'
 import { calculateDebts } from '../lib/splitLogic.js'
+import { receiptDebts, computeBalances } from '../lib/balances.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { LOGO_URL } from '../lib/logo.js'
 
@@ -57,9 +58,24 @@ export default function Guest() {
       meals: r.meals.map(m => ({ ...m, receipt_id: r.id, fee: Number(m.fee) })),
       claims: r.claims.map(c => ({ ...c, roommate: nameOf(c.member_id) })),
       checkedIn: r.checkins.includes(me),
+      waitingOn: (r.member_ids || []).filter(id => !r.checkins.includes(id)).map(nameOf),
       tip: Number(r.tip), tax: Number(r.tax), fees: Number(r.fees),
     }))
-    return { name: nameOf(me), meId: me, nameOf, receipts }
+    // What's owed, like the Balances page: a receipt counts once everyone on
+    // it has checked in, and payments are taken off
+    const payments = (view.payments || []).map(p => ({
+      id: p.id, from: nameOf(p.from_member), to: nameOf(p.to_member),
+      amount: Number(p.amount), receiptId: p.receipt_id, paidAt: p.paid_at,
+    }))
+    const debts = receiptDebts({
+      receipts,
+      items: receipts.flatMap(r => r.items),
+      claims: receipts.flatMap(r => r.claims),
+      meals: receipts.flatMap(r => r.meals),
+      checkins: receipts.flatMap(r => r.checkins.map(id => ({ receipt_id: r.id, roommate: nameOf(id) }))),
+    })
+    const balances = computeBalances(debts, payments)
+    return { name: nameOf(me), meId: me, nameOf, receipts, balances }
   }, [view])
 
   if (loadFailed) {
@@ -101,8 +117,15 @@ export default function Guest() {
 
   const todo = shaped.receipts.filter(r => !r.checkedIn)
   const done = shaped.receipts.filter(r => r.checkedIn)
-  const myShare = r => calculateDebts([r], r.items, r.claims, r.meals)
-    .filter(d => d.debtor === shaped.name).reduce((s, d) => s + d.amount, 0)
+  const owed = shaped.balances.forPerson(shaped.name)
+  const amountLabel = r => {
+    if (r.paid_by === shaped.name) return null
+    if (r.waitingOn.length) return <span className="text-xs text-gray-400">Waiting on {r.waitingOn.join(', ')}</span>
+    const left = shaped.balances.remainingFor(r.id, shaped.name, r.paid_by)
+    return left > 0
+      ? <span className="text-sm font-semibold text-amber-600">${left.toFixed(2)}</span>
+      : <span className="text-xs text-accent-600 font-medium">Paid ✓</span>
+  }
 
   const row = r => (
     <li key={r.id}>
@@ -112,9 +135,7 @@ export default function Guest() {
           <p className="text-xs text-gray-400">{fmtDate(r.receipt_date)} · Paid by {r.paid_by === shaped.name ? 'you' : r.paid_by}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {r.checkedIn && r.paid_by !== shaped.name && (
-            <span className="text-sm font-semibold text-amber-600">${myShare(r).toFixed(2)}</span>
-          )}
+          {r.checkedIn && amountLabel(r)}
           {savedId === r.id && <span className="text-xs text-accent-600 font-medium">Saved ✓</span>}
           <span className="text-gray-300">›</span>
         </div>
@@ -128,6 +149,17 @@ export default function Guest() {
       <p className="text-sm text-gray-500 mt-1">
         Check off what you had on {view.group.name}'s receipts, and Receipts works out what you owe.
       </p>
+
+      {owed.length > 0 && (
+        <ul className="mt-4 bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+          {owed.map(o => (
+            <li key={o.person} className="flex items-center justify-between px-4 py-3 text-sm">
+              <span className="text-gray-700">{o.iOwe ? `You owe ${o.person}` : `${o.person} owes you`}</span>
+              <span className={`font-semibold ${o.iOwe ? 'text-amber-600' : 'text-accent-600'}`}>${o.amount.toFixed(2)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {shaped.receipts.length === 0 && (
         <p className="mt-8 text-center text-sm text-gray-400">You're not on any receipts yet.</p>
@@ -147,7 +179,7 @@ export default function Guest() {
           <h2 className="px-4 py-3 border-b border-gray-100 font-semibold text-gray-800">Checked off</h2>
           <ul className="divide-y divide-gray-100">{done.map(row)}</ul>
           <p className="px-4 py-2.5 border-t border-gray-100 text-xs text-gray-400">
-            Amounts are your share. Pay whoever paid for each receipt.
+            Amounts are what you still owe whoever paid. They're final once everyone on the receipt has checked off.
           </p>
         </section>
       )}

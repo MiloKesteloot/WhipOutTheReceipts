@@ -7,11 +7,15 @@ import SettleUpDialog from './SettleUpDialog.jsx'
 
 const fmtShort = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 
-// "3 receipts ▾" under a person's name, so it's clear the row expands
-function ReceiptCountToggle({ count, expanded }) {
+// "3 receipts ▾" under a person's name, so it's clear the row expands. An
+// overpayment isn't a receipt, so it's named separately.
+function ReceiptCountToggle({ receipts, overpaid, expanded }) {
+  const parts = []
+  if (receipts) parts.push(`${receipts} receipt${receipts === 1 ? '' : 's'}`)
+  if (overpaid) parts.push(receipts ? 'overpayment' : 'Overpaid earlier')
   return (
     <p className="flex items-center gap-0.5 text-xs text-gray-500 mt-0.5">
-      {expanded ? 'Hide receipts' : `${count} receipt${count === 1 ? '' : 's'}`}
+      {expanded ? 'Hide details' : parts.join(' + ')}
       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
       </svg>
@@ -22,7 +26,6 @@ function ReceiptCountToggle({ count, expanded }) {
 // One person's balance with you: name, total, and (expanded) the receipts
 // still unpaid. Open amounts always add up to the total.
 function PersonBalance({ entry, showDirection, expanded, onToggle, onSettle, onMarkReceipt, busy }) {
-  const count = entry.open.length + (entry.fromPayments > 0 ? 1 : 0)
   const selectionAtPress = useRef('')
   return (
     <li className="border border-gray-100 rounded-lg overflow-hidden">
@@ -42,7 +45,7 @@ function PersonBalance({ entry, showDirection, expanded, onToggle, onSettle, onM
               : entry.iOwe ? <>You owe <span className="font-semibold text-gray-900">{entry.person}</span></>
               : <><span className="font-semibold text-gray-900">{entry.person}</span> owes you</>}
           </p>
-          <ReceiptCountToggle count={count} expanded={expanded} />
+          <ReceiptCountToggle receipts={entry.open.length} overpaid={entry.fromPayments > 0} expanded={expanded} />
         </div>
         <div className="flex items-center gap-2.5 shrink-0">
           <span onClick={e => e.stopPropagation()} className={`font-semibold select-text cursor-text ${entry.iOwe ? 'text-amber-600' : showDirection ? 'text-accent-600' : 'text-gray-900'}`}>${entry.amount.toFixed(2)}</span>

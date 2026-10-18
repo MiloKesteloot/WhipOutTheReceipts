@@ -41,7 +41,10 @@ Production app URL: `https://milokesteloot.github.io/WhipOutTheReceipts/`
 4. **Google sign-in.**
    - In Google Cloud Console, create an OAuth client (type: Web application) with authorized redirect URI
      `https://elmbfcpbjvoyxtyvdhef.supabase.co/auth/v1/callback`.
-   - Paste its client ID and secret into Authentication → Sign In / Providers → Google.
+   - Also add the authorized JavaScript origins `https://milokesteloot.github.io` (and
+     `http://localhost:5173` for local testing): Google One Tap runs on the site itself.
+   - Paste its client ID and secret into Authentication → Sign In / Providers → Google, and
+     put the client ID in `.env` as `VITE_GOOGLE_CLIENT_ID`.
 
 ## 2. Tell the roommates
 
@@ -114,3 +117,11 @@ Tested on a copy of production on 2026-10-16:
   the guest Alicia from the March trips that had never been settled
   (Alex $12.32, Niko $2.18).
 - 54 security checks passed.
+
+## Later migrations
+
+Every migration after these goes out the same way: back up, then
+`npx supabase@2.121.0 db push --db-url "$SUPABASE_DB_URL"` (it applies only the
+ones production doesn't have yet; `migration list` shows which), then
+`npm run deploy`. Each one is written so the live site keeps working between
+the push and the deploy.

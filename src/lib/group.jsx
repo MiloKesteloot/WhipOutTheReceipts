@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase.js'
 import { useSession } from './session.jsx'
 
@@ -82,10 +82,13 @@ export function GroupProvider({ children }) {
     setGroupId(valid ? valid.group_id : memberships[0]?.group_id || null)
   }, [memberships, uid])
 
+  // The group being shown; a slow load for a group we've switched away from is dropped
+  const groupIdRef = useRef(groupId)
+  groupIdRef.current = groupId
   const loadMembers = useCallback(async () => {
     if (!groupId) { setMembers(null); return }
     const { data } = await supabase.from('group_members').select('*').eq('group_id', groupId).order('created_at')
-    setMembers(data || [])
+    if (groupIdRef.current === groupId) setMembers(data || [])
   }, [groupId])
 
   useEffect(() => { setMembers(null); loadMembers() }, [loadMembers])

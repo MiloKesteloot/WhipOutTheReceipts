@@ -137,6 +137,16 @@ export function Join() {
     )
   }
 
+  // Left or was removed before: joining brings back their old person and history
+  if (preview.rejoining) {
+    return (
+      <AuthShell title={`Rejoin ${preview.name}`} subtitle="Welcome back. Your past receipts and payments are still there.">
+        <button onClick={() => join()} disabled={busy} className={primaryButton}>{busy ? 'Joining…' : `Rejoin ${preview.name}`}</button>
+        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+      </AuthShell>
+    )
+  }
+
   const people = preview.unclaimed.filter(p => !p.is_guest)
   const guests = preview.unclaimed.filter(p => p.is_guest)
 

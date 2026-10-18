@@ -27,13 +27,16 @@ receipts it didn't create, unless you pass `--force-reset`.
   - `meals`: groups of items, like one order per person at a restaurant
   - `notCheckedIn`: people who haven't gone through the receipt yet
   - `settled`: people who have already paid the payer back
-- `history`: older receipts generated from a seed, to fill out Stats and Payments.
+- `history`: older receipts generated from a seed, to fill out Stats and Balances.
   Each store is visited every `everyDays`, picking `itemsPerTrip` items from its list
   (`[name, price]`, or `[name, price, true]` to always split).
 
 ## shots.json
 
 - `outDir`: where the images go (the portfolio's `project-assets/receipts`).
+- `appAssets`: copies of some shots for the app's own landing page. `outDir` is
+  where they go (`public/landing`); `files` maps each file name to the width it's
+  resized to (`null` keeps it as is).
 - `devices`: viewport size and pixel density for `phone` and `desktop`.
 - Each shot: `name` (file name), `device`, `path` (an app route; `{tj}` becomes that receipt's id), and optionally:
   - `sessionStorage` / `localStorage`: values set before the page loads, e.g. `"home-view": "calendar"`

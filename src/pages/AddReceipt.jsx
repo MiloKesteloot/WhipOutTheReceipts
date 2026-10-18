@@ -12,6 +12,7 @@ import { fetchGeminiKey } from './Settings.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 import BackButton from '../components/BackButton.jsx'
+import LoadError from '../components/LoadError.jsx'
 import { UNGROUPED, containerFromDropId, SortableRow, DragHandle, DropZone, ItemDragPreview } from '../components/ItemDrag.jsx'
 
 function newItem(dbId = null) {
@@ -73,6 +74,8 @@ export default function AddReceipt() {
   const [scanning, setScanning] = useState(false)
   const [errors, setErrors] = useState({})
   const [isDirty, setIsDirty] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const scanInputRef = useRef(null)
   const [activeDragId, setActiveDragId] = useState(null)
   const itemsBeforeDrag = useRef(null)
@@ -89,8 +92,11 @@ export default function AddReceipt() {
       const core = coreRoommates
 
       if (isEditing) {
-        const { data: row } = await supabase
+        setLoadError(false)
+        const { data: row, error: rowError } = await supabase
           .from('receipts').select('*').eq('id', receiptId).single()
+        // A blank form here would overwrite the receipt on save
+        if (rowError) { setLoadError(true); return }
         if (row && row.group_id !== group.id) { switchGroup(row.group_id); return }
         const receipt = row && receiptFromDb(row, nameOf)
         if (receipt) {
@@ -105,11 +111,12 @@ export default function AddReceipt() {
           setOriginalMemberIds(row.member_ids || [])
         }
 
-        const [{ data: existingItems }, { data: existingMeals }] = await Promise.all([
+        const [{ data: existingItems, error: itemsError }, { data: existingMeals, error: mealsError }] = await Promise.all([
           supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null)
             .order('position', { ascending: true, nullsFirst: false }).order('created_at'),
-          supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at'),
+          supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at').order('id'),
         ])
+        if (itemsError || mealsError) { setLoadError(true); return }
 
         const loadedMeals = (existingMeals || []).map(m => ({
           local_id: crypto.randomUUID(),
@@ -128,6 +135,7 @@ export default function AddReceipt() {
           name: item.name,
           price: String(item.price),
           always_split: item.always_split || false,
+          wasAlwaysSplit: item.always_split || false,
           meal_local_id: item.meal_id ? (dbIdToLocalId.get(item.meal_id) || null) : null,
         }))
         setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
@@ -140,7 +148,7 @@ export default function AddReceipt() {
       loadComplete.current = true
     }
     load()
-  }, [receiptId, isEditing, group.id])
+  }, [receiptId, isEditing, group.id, loadAttempt])
 
   useEffect(() => {
     function handleClick(e) {
@@ -461,6 +469,29 @@ Rules:
     if (itemsBeforeDrag.current) setLineItems(itemsBeforeDrag.current)
   }
 
+  // A typed name as the group shows it: "alex" or a bare first name becomes
+  // that person ("Alex K."), so the same person isn't added twice
+  function canonicalName(typed) {
+    const lc = typed.trim().toLowerCase()
+    const exact = members.find(m => m.displayName.toLowerCase() === lc)
+    if (exact) return exact.displayName
+    const byFirst = members.filter(m => m.active && m.first_name.trim().toLowerCase() === lc)
+    return byFirst.length === 1 ? byFirst[0].displayName : typed.trim()
+  }
+
+  // receiptMembers plus whatever is typed in "Add someone…" (not added yet)
+  function membersWithTyped() {
+    const name = memberInput.trim() && canonicalName(memberInput)
+    if (!name || receiptMembers.some(n => n.toLowerCase() === name.toLowerCase())) return receiptMembers
+    return [...receiptMembers, name]
+  }
+
+  function addTypedMember() {
+    const next = membersWithTyped()
+    if (next !== receiptMembers) { markDirty(); setReceiptMembers(next) }
+    setMemberInput('')
+  }
+
   function filledItems() {
     return lineItems.filter(item => item.name.trim() || item.price !== '')
   }
@@ -495,12 +526,13 @@ Rules:
     const newMeals = meals.filter(m => m.name.trim() && !m.dbId)
     const existingMeals = meals.filter(m => m.name.trim() && m.dbId)
 
-    // Insert new meals in bulk and get back their IDs
-    if (newMeals.length > 0) {
-      const rows = await must(supabase.from('meals')
-        .insert(newMeals.map(m => ({ receipt_id: receiptDbId, name: m.name.trim(), fee: parseFloat(m.fee) || 0 })))
-        .select(), 'Could not save meals')
-      rows.forEach((row, i) => mealLocalToDbId.set(newMeals[i].local_id, row.id))
+    // Insert new meals one at a time: meals are listed by when they were
+    // created, so each gets its own time and they keep the order shown here
+    for (const m of newMeals) {
+      const row = await must(supabase.from('meals')
+        .insert({ receipt_id: receiptDbId, name: m.name.trim(), fee: parseFloat(m.fee) || 0 })
+        .select().single(), 'Could not save meals')
+      mealLocalToDbId.set(m.local_id, row.id)
     }
 
     // Update existing meals
@@ -528,10 +560,14 @@ Rules:
 
     setSaving(true)
 
-    // Names -> people in the group (new names become guests)
+    // Names -> people in the group (new names become guests). A name still
+    // typed in "Add someone…" counts as added.
+    const people = membersWithTyped()
+    if (people !== receiptMembers) { setReceiptMembers(people); setMemberInput('') }
     let paidById, memberIds
     try {
-      ;[paidById, ...memberIds] = await ensureMemberIds([paidBy, ...receiptMembers])
+      ;[paidById, ...memberIds] = await ensureMemberIds([paidBy, ...people])
+      memberIds = [...new Set(memberIds)]
     } catch (err) {
       await showAlert(err.message, { title: 'Error saving people' }); setSaving(false); return
     }
@@ -581,9 +617,10 @@ Rules:
           await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).in('member_id', removed), `Could not clear removed people's check-ins`)
         }
 
-        // New items: everyone else checks in again, so they see the new items
-        // and nothing lands on the payer unnoticed
-        if (toInsert.length > 0 && myMember) {
+        // New items, or items newly locked 🔒 (split with everyone): everyone
+        // else checks in again, so they see them and their split includes them
+        const newlyLocked = toUpdate.filter(i => i.always_split && !i.wasAlwaysSplit)
+        if ((toInsert.length > 0 || newlyLocked.length > 0) && myMember) {
           await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).neq('member_id', myMember.id), 'Could not ask everyone to check in again')
         }
       } catch (err) {
@@ -607,8 +644,10 @@ Rules:
     } catch (err) {
       // Undo the half-made receipt and stay on the form, so everything typed
       // is still here to try again
-      await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receipt.id)
-      await showAlert(`${err.message}. Nothing was saved; try again.`, { title: 'Error saving receipt' })
+      const { error: undoError } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receipt.id)
+      await showAlert(undoError
+        ? `${err.message}. The receipt may have been partly saved: check your receipts before trying again.`
+        : `${err.message}. The receipt wasn't saved; try again.`, { title: 'Error saving receipt' })
       setSaving(false)
       return
     }
@@ -616,7 +655,7 @@ Rules:
   }
 
   async function handleDelete() {
-    if (!await confirm('It will be hidden for everyone. You can restore it later from the receipt page.', {
+    if (!await confirm('It will be hidden for everyone, and the change is recorded in its history. To bring it back, open this receipt\'s link again and tap Restore.', {
       title: 'Delete receipt?',
       confirmLabel: 'Delete',
       danger: true,
@@ -663,7 +702,7 @@ Rules:
           type="button"
           tabIndex={-1}
           onClick={() => updateItem(item.id, 'always_split', !item.always_split)}
-          title={item.always_split ? 'Everyone always splits this — click to remove' : 'Click to always split with everyone'}
+          title={item.always_split ? 'Split with everyone who checks in — click to unlock' : 'Click to split with everyone who checks in'}
           className={`mt-1.5 text-base transition ${item.always_split ? 'text-accent-500' : 'text-gray-300 hover:text-gray-400'}`}
           aria-label="Toggle always split"
         >
@@ -683,6 +722,8 @@ Rules:
       </SortableRow>
     )
   }
+
+  if (loadError) return <LoadError onRetry={() => setLoadAttempt(n => n + 1)} />
 
   return (
     <>
@@ -779,9 +820,7 @@ Rules:
               onKeyDown={e => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  const name = memberInput.trim()
-                  if (name && !receiptMembers.includes(name)) { markDirty(); setReceiptMembers(prev => [...prev, name]) }
-                  setMemberInput('')
+                  addTypedMember()
                 }
               }}
               placeholder="Add someone…"
@@ -789,11 +828,7 @@ Rules:
             />
             <button
               type="button"
-              onClick={() => {
-                const name = memberInput.trim()
-                if (name && !receiptMembers.includes(name)) { markDirty(); setReceiptMembers(prev => [...prev, name]) }
-                setMemberInput('')
-              }}
+              onClick={addTypedMember}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600"
             >
               Add
@@ -883,7 +918,7 @@ Rules:
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">Items</label>
-            <span className="text-xs text-gray-400">🔒 always splits with everyone · drag ⠿ to reorder</span>
+            <span className="text-xs text-gray-400">🔒 splits with everyone who checks in · drag ⠿ to reorder</span>
           </div>
           {errors.items && <p className="text-xs text-red-500 mb-2">{errors.items}</p>}
 
