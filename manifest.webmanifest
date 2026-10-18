@@ -1,7 +1,7 @@
 {
   "name": "Receipts",
   "short_name": "Receipts",
-  "description": "Split groceries, dinners and bills with your roommates. Everyone checks off what they had, and Receipts works out who owes who, down to the cent.",
+  "description": "Split grocery receipts with your roommates. Everyone checks off what they had, and the app works out what each person owes.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
