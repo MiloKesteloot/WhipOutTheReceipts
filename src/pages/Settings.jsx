@@ -53,7 +53,26 @@ function YourName() {
 
 function Account() {
   const { user, signOut } = useSession()
+  const { confirm, showAlert, DialogUI } = useDialog()
   const [sent, setSent] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  // Runs delete_my_account() in the database (migration 20261018010000)
+  async function deleteAccount() {
+    if (!await confirm(
+      "Your login, profile and saved API key are deleted. You'll stay on past receipts and payments in shared groups as a guest, so your roommates' balances don't change. Groups where nobody else has an account are deleted entirely. This can't be undone.",
+      { title: 'Delete your account?', confirmLabel: 'Delete account', danger: true },
+    )) return
+    setDeleting(true)
+    const { error } = await supabase.rpc('delete_my_account')
+    if (error) {
+      setDeleting(false)
+      await showAlert(error.message, { title: 'Could not delete account' })
+      return
+    }
+    await supabase.auth.signOut({ scope: 'local' })
+    window.location.hash = '#/'
+  }
 
   async function resetPassword() {
     await supabase.auth.resetPasswordForEmail(user.email, { redirectTo: appBaseUrl })
@@ -62,6 +81,7 @@ function Account() {
 
   return (
     <section>
+      {DialogUI}
       <h2 className={sectionTitle}>Account</h2>
       <div className={`${card} space-y-3`}>
         <div className="flex items-center justify-between gap-3">
@@ -76,6 +96,12 @@ function Account() {
             {sent ? `Password reset link sent to ${user.email}` : 'Change password…'}
           </button>
         )}
+        <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
+          <p className="text-xs text-gray-400">Permanently delete your account and personal data.</p>
+          <button onClick={deleteAccount} disabled={deleting} className="shrink-0 px-3 py-1.5 text-sm border border-red-200 rounded-lg text-red-500 hover:bg-red-50 transition disabled:opacity-50">
+            {deleting ? 'Deleting…' : 'Delete account'}
+          </button>
+        </div>
       </div>
     </section>
   )

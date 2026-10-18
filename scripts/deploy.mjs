@@ -33,6 +33,18 @@ if (positionBody?.code === '42703' || /position/.test(positionBody?.message || '
   process.exit(1)
 }
 
+// And "Delete account" in Settings (migration 20261018010000_delete_account.sql).
+// Signed-out calls are refused, so this only tells whether the function exists.
+const deleteCheck = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/rpc/delete_my_account`, {
+  method: 'POST', headers: { apikey: env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' }, body: '{}',
+})
+const deleteBody = await deleteCheck.json().catch(() => ({}))
+if (deleteBody?.code === 'PGRST202') {
+  console.error('\n✗ Not deploying: the production database is missing delete_my_account().')
+  console.error('  Apply supabase/migrations/20261018010000_delete_account.sql first.\n')
+  process.exit(1)
+}
+
 const data = JSON.parse(readFileSync(versionFile, 'utf8'))
 data.version += 1
 writeFileSync(versionFile, JSON.stringify(data, null, 2) + '\n')
