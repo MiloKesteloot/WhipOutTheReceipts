@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { formatWaitingOn } from '../lib/group.jsx'
 import { waitingOn } from '../lib/receiptStatus.js'
 
@@ -10,7 +10,18 @@ const CAL_MONTH_KEY = 'receipts-calendar-month'
 
 const fmtDate = d => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
 
-function EmptyState() {
+// Nothing to show: either there are no receipts, or "Mine" hides them all
+function EmptyState({ hiddenCount, onShowAll }) {
+  if (hiddenCount > 0) {
+    return (
+      <div className="text-center py-16 text-gray-400 text-sm">
+        <p>No receipts you're on.</p>
+        <button onClick={onShowAll} className="mt-2 text-accent-600 font-medium hover:text-accent-700">
+          Show all {hiddenCount} receipt{hiddenCount === 1 ? '' : 's'}
+        </button>
+      </div>
+    )
+  }
   return <div className="text-center py-16 text-gray-400 text-sm">No receipts yet.</div>
 }
 
@@ -33,12 +44,13 @@ function DayPicker({ day, onClose }) {
         <ul className="space-y-2 mb-4">
           {day.items.map(item => (
             <li key={item.id}>
-              <button
-                onClick={() => { onClose(); navigate(item.url) }}
-                className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-accent-300 hover:bg-accent-50 transition text-sm font-medium text-gray-800"
+              <Link
+                to={item.url}
+                onClick={onClose}
+                className="block w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-accent-300 hover:bg-accent-50 transition text-sm font-medium text-gray-800"
               >
                 {item.label}
-              </button>
+              </Link>
             </li>
           ))}
         </ul>
@@ -219,12 +231,11 @@ export function ReceiptCalendar({ receipts, checkedIn, totals }) {
   )
 }
 
-export function ReceiptDays({ receipts, checkedIn, totals, myName }) {
-  const navigate = useNavigate()
+export function ReceiptDays({ receipts, checkedIn, totals, myName, hiddenCount, onShowAll }) {
   const byDate = {}
   for (const r of receipts) (byDate[r.receipt_date] ||= []).push(r)
   const sortedDays = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
-  if (sortedDays.length === 0) return <EmptyState />
+  if (sortedDays.length === 0) return <EmptyState hiddenCount={hiddenCount} onShowAll={onShowAll} />
 
   return (
     <div className="space-y-6">
@@ -244,9 +255,9 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName }) {
                 const waiting = waitingOn(r, checkedIn)
                 const total = totals[r.id] || 0
                 return (
-                  <button
+                  <Link
                     key={r.id}
-                    onClick={() => navigate(`/receipt/${r.id}`)}
+                    to={`/receipt/${r.id}`}
                     className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm transition text-left select-none"
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -262,7 +273,7 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName }) {
                       {total > 0 && <span className="text-sm font-semibold text-gray-700">${total.toFixed(2)}</span>}
                       <span className="text-gray-300">›</span>
                     </div>
-                  </button>
+                  </Link>
                 )
               })}
             </div>
@@ -273,10 +284,9 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName }) {
   )
 }
 
-export function ReceiptList({ receipts, checkedIn, totals, myName }) {
-  const navigate = useNavigate()
+export function ReceiptList({ receipts, checkedIn, totals, myName, hiddenCount, onShowAll }) {
   const sorted = [...receipts].sort((a, b) => b.receipt_date.localeCompare(a.receipt_date))
-  if (sorted.length === 0) return <EmptyState />
+  if (sorted.length === 0) return <EmptyState hiddenCount={hiddenCount} onShowAll={onShowAll} />
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100 select-none">
@@ -285,9 +295,9 @@ export function ReceiptList({ receipts, checkedIn, totals, myName }) {
         const total = totals[r.id] || 0
         const date = new Date(r.receipt_date + 'T12:00:00')
         return (
-          <button
+          <Link
             key={r.id}
-            onClick={() => navigate(`/receipt/${r.id}`)}
+            to={`/receipt/${r.id}`}
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
           >
             <div className="flex items-center gap-3 min-w-0">
@@ -304,7 +314,7 @@ export function ReceiptList({ receipts, checkedIn, totals, myName }) {
               {total > 0 && <span className="text-sm font-semibold text-gray-700">${total.toFixed(2)}</span>}
               <span className="text-gray-300">›</span>
             </div>
-          </button>
+          </Link>
         )
       })}
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
-  useSearchData, searchAll, addRecentSearch, receiptLink, MIN_QUERY_LENGTH,
+  useSearchData, searchAll, addRecentSearch, useRecentKey, receiptLink, MIN_QUERY_LENGTH,
   RecentSearches, ItemRow, ReceiptRow, ResultSection, SearchInput,
 } from '../lib/search.jsx'
 import { useGroup } from '../lib/group.jsx'
@@ -72,8 +72,8 @@ export default function Receipts() {
     setShowAllState(all)
   }
   const searchData = useSearchData()
+  const recentKey = useRecentKey()
   const { loading, error, data, reload } = useBalances()
-  const navigate = useNavigate()
   const { myName } = useGroup()
 
   useEffect(() => { setInput(query) }, [query])
@@ -93,10 +93,8 @@ export default function Receipts() {
   const searching = query.trim().length >= MIN_QUERY_LENGTH
   const { items, receipts, terms } = searchAll(searchData, query)
 
-  function open(path) {
-    addRecentSearch(query)
-    navigate(path)
-  }
+  // Opening a result (a link) remembers the search
+  const rememberSearch = () => addRecentSearch(recentKey, query)
 
   function pick(q) {
     setInput(q)
@@ -110,8 +108,11 @@ export default function Receipts() {
 
   let viewProps = null
   if (data) {
+    const shown = data.receipts.filter(r => showAll || isOnReceipt(r, myName))
     viewProps = {
-      receipts: data.receipts.filter(r => showAll || isOnReceipt(r, myName)),
+      receipts: shown,
+      hiddenCount: data.receipts.length - shown.length,
+      onShowAll: () => setShowAll(true),
       checkedIn: checkedInByReceipt(data),
       totals: receiptTotals(data),
       myName,
@@ -124,7 +125,7 @@ export default function Receipts() {
         <SearchInput
           value={input}
           onChange={setInput}
-          onKeyDown={e => { if (e.key === 'Enter') { addRecentSearch(input); e.currentTarget.blur() } }}
+          onKeyDown={e => { if (e.key === 'Enter') { addRecentSearch(recentKey, input); e.currentTarget.blur() } }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />
@@ -150,7 +151,7 @@ export default function Receipts() {
                 footer={<ShowMore remaining={items.length - itemLimit} onClick={() => setItemLimit(l => l + PAGE_SIZE)} />}
               >
                 {items.slice(0, itemLimit).map(item => (
-                  <ItemRow key={item.id} item={item} terms={terms} myName={myName} onClick={() => open(receiptLink(item.receipt))} />
+                  <ItemRow key={item.id} item={item} terms={terms} myName={myName} to={receiptLink(item.receipt)} onClick={rememberSearch} />
                 ))}
               </ResultSection>
 
@@ -160,7 +161,7 @@ export default function Receipts() {
                 footer={<ShowMore remaining={receipts.length - receiptLimit} onClick={() => setReceiptLimit(l => l + PAGE_SIZE)} />}
               >
                 {receipts.slice(0, receiptLimit).map(r => (
-                  <ReceiptRow key={r.id} receipt={r} terms={terms} onClick={() => open(receiptLink(r))} />
+                  <ReceiptRow key={r.id} receipt={r} terms={terms} to={receiptLink(r)} onClick={rememberSearch} />
                 ))}
               </ResultSection>
 

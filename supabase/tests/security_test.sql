@@ -225,7 +225,10 @@ select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select leave_group(:'sgid');
 select pg_temp.check((invite_preview(:'scode')->>'rejoining')::boolean, 'the join page knows someone who left is rejoining');
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000c');
-select join_group(:'scode');
+-- Casey's unlinked person (named Casey Cole) is still there: joining as someone
+-- new would clash, so Casey claims it, like "I'm Casey" on the join page
+select pg_temp.check(invite_preview(:'scode')->'name_clash'->>'kind' = 'same_name', 'rejoining under your old unlinked name is a clash');
+select join_group(:'scode', :'gus');
 reset role;
 select id as casey from group_members where group_id = :'sgid' and user_id = '00000000-0000-0000-0000-00000000000c' \gset
 select pg_temp.check((select role from group_members where id = :'casey') = 'owner', 'a group left without an owner gets the next person who joins as owner');
@@ -253,7 +256,23 @@ select pg_temp.check(count(*) = :audit_before, 'deleting an account isn''t logge
   from audit_log where table_name in ('receipts', 'items');
 select pg_temp.check((select not active from group_members where id = :'casey'), 'a deleted account''s person leaves the group, so nobody can claim it');
 
+-- ── Joining needs a name the group can tell apart (20261018080000) ──
+-- (Milo's member is "Milo K" by now: see the profile rename check above)
+reset role;
+insert into auth.users (id, instance_id, aud, role, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-00000000000d', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'milo2@example.com',
+   '{"first_name": "milo"}');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000d');
+select pg_temp.check(invite_preview(:'code')->'name_clash'->>'kind' = 'needs_last', 'joining with a taken first name and no last name asks for one');
+select pg_temp.expect_error(format($$select join_group(%L)$$, :'code'), 'join_group refuses a name the group can''t tell apart');
+update profiles set last_name = 'k' where id = '00000000-0000-0000-0000-00000000000d';
+select pg_temp.check(invite_preview(:'code')->'name_clash'->>'kind' = 'same_name', 'the exact same full name is also refused');
+update profiles set last_name = 'Moore' where id = '00000000-0000-0000-0000-00000000000d';
+select pg_temp.check(invite_preview(:'code')->'name_clash' = 'null'::jsonb, 'a different last name is enough');
+select pg_temp.check(join_group(:'code') = :'gid', 'and then joining works');
+
 -- ── Secrets are private ──────────────────────────────────────
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
 insert into user_secrets (user_id, gemini_api_key) values ('00000000-0000-0000-0000-00000000000a', 'milo-secret');
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 select pg_temp.check(count(*) = 0, 'other users cannot read your Gemini key') from user_secrets;

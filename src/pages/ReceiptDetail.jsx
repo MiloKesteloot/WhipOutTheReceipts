@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown } from '../lib/splitLogic.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
@@ -11,9 +11,13 @@ import { useBalances } from '../lib/useBalances.js'
 import ReceiptHistory from '../components/ReceiptHistory.jsx'
 import { guestLinkUrl } from './GroupSettings.jsx'
 import BackButton from '../components/BackButton.jsx'
+import TornPaper from '../components/TornPaper.jsx'
 import { copyText } from '../lib/clipboard.js'
 import { useGoBack, canGoBack } from '../lib/useGoBack.js'
 import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
+import { invalidateSearch } from '../lib/search.jsx'
+
+const SWITCHED_KEY = 'switched-group-notice'
 
 function getStoreLogo(storeName) {
   if (!storeName) return null
@@ -35,6 +39,9 @@ export default function ReceiptDetail() {
   const { group, memberships, switchGroup, myName, myMember, nameOf, idOf, members, refreshMembers } = useGroup()
   // { id, name } of the group this receipt belongs to, when it isn't the current one
   const [otherGroup, setOtherGroup] = useState(null)
+  // Opened from a link to another of my groups: we switched to it
+  const [switchedTo, setSwitchedTo] = useState(() => { try { return sessionStorage.getItem(SWITCHED_KEY) } catch { return null } })
+  useEffect(() => { try { sessionStorage.removeItem(SWITCHED_KEY) } catch {} }, [])
   // Whose check-offs are being edited: me, or a guest on this receipt
   // (someone without an account) that I'm checking in for
   const [actingForId, setActingForId] = useState(null)
@@ -69,7 +76,11 @@ export default function ReceiptDetail() {
     if (receiptRes.data.group_id !== group.id) {
       const other = memberships.find(m => m.group_id === receiptRes.data.group_id)
       if (!other) { setError('Receipt not found.'); setLoading(false); return }
-      if (!canGoBack()) { switchGroup(other.group_id); return }
+      if (!canGoBack()) {
+        // Say so on the receipt (shown after the switch reloads this page)
+        try { sessionStorage.setItem(SWITCHED_KEY, other.groups.name) } catch {}
+        switchGroup(other.group_id); return
+      }
       setOtherGroup({ id: other.group_id, name: other.groups.name }); setLoading(false); return
     }
     setReceipt(receiptFromDb(receiptRes.data, nameOf))
@@ -183,6 +194,7 @@ export default function ReceiptDetail() {
         setReceipt(r => ({ ...r, member_ids: nextIds, members: nextIds.map(nameOf) }))
       }
       bal.reload()
+      invalidateSearch(group.id)
     } catch (err) {
       setSaving(false)
       await showAlert(err.message, { title: 'Could not save claims' })
@@ -213,7 +225,8 @@ export default function ReceiptDetail() {
   function debtState(d) {
     const linked = (bal.data?.payments || [])
       .filter(p => p.receiptId === receiptId && p.from === d.debtor && p.to === d.creditor)
-    let remaining = receiptComplete && bal.balances
+    // A deleted receipt isn't in the group balances (it would read as paid)
+    let remaining = receiptComplete && bal.balances && !receipt?.deleted_at
       ? bal.balances.remainingFor(receiptId, d.debtor, d.creditor)
       : Math.max(0, d.amount - linked.reduce((sum, p) => sum + Number(p.amount), 0))
     remaining = Math.round(remaining * 100) / 100
@@ -286,6 +299,7 @@ export default function ReceiptDetail() {
     })) return
     const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
+    invalidateSearch(group.id)
     leaveWithoutPrompt()
     goBack('/receipts')
   }
@@ -294,6 +308,9 @@ export default function ReceiptDetail() {
     const { error } = await supabase.from('receipts').update({ deleted_at: null }).eq('id', receiptId)
     if (error) { await showAlert(error.message, { title: 'Could not restore' }); return }
     setReceipt(r => ({ ...r, deleted_at: null }))
+    // It counts toward balances again
+    bal.reload()
+    invalidateSearch(group.id)
   }
 
   async function copyLink() {
@@ -401,6 +418,12 @@ export default function ReceiptDetail() {
     {DialogUI}
     {unsavedDialog}
     <div className="max-w-xl mx-auto p-4 py-8">
+      {switchedTo && (
+        <div className="mb-4 flex items-center justify-between gap-3 text-sm text-accent-700 bg-accent-50 border border-accent-200 rounded-xl px-4 py-2.5">
+          <span>Switched to <span className="font-semibold">{switchedTo}</span> to show this receipt.</span>
+          <button onClick={() => setSwitchedTo(null)} aria-label="Dismiss" className="shrink-0 text-accent-700 hover:text-accent-600">✕</button>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between mb-1">
         <div className="min-w-0 flex-1 mr-3">
@@ -443,15 +466,15 @@ export default function ReceiptDetail() {
               </svg>
             )}
           </button>
-          <button
-            onClick={() => navigate(`/receipt/${receiptId}/edit`, { state: { fromReceipt: true } })}
+          <Link
+            to={`/receipt/${receiptId}/edit`} state={{ fromReceipt: true }}
             className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-400 hover:text-gray-600"
             title="Edit receipt"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
-          </button>
+          </Link>
           <button
             onClick={deleteReceipt}
             className="p-2 border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-200 transition text-gray-400 hover:text-red-400"
@@ -514,19 +537,19 @@ export default function ReceiptDetail() {
       {/* Items */}
       {items.length === 0 ? (
         <div className="py-8 flex flex-col items-center">
-          <button
-            onClick={() => navigate(`/receipt/${receiptId}/edit`, { state: { fromReceipt: true } })}
+          <Link
+            to={`/receipt/${receiptId}/edit`} state={{ fromReceipt: true }}
             className="flex flex-col items-center gap-3 w-full max-w-xs p-8 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 hover:border-accent-300 hover:text-accent-500 hover:bg-accent-50 transition-all"
           >
             <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
             <span className="text-base font-medium">Add items</span>
-          </button>
+          </Link>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6">
-          <ul className="divide-y divide-gray-100">
+        <TornPaper className="mb-6">
+          <ul className="tear-rows divide-y divide-gray-100">
             {ungroupedItems.map(item => renderItemRow(item))}
             {meals.map(meal => {
               const mealItems = itemsByMeal[meal.id] || []
@@ -601,7 +624,7 @@ export default function ReceiptDetail() {
               )
             })()}
           </ul>
-        </div>
+        </TornPaper>
       )}
 
       {/* Running total + save */}

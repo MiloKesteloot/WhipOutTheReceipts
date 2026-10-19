@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseAmount, amountOrZero } from './amount.js'
+import { parseAmount, amountOrZero, toggleSign } from './amount.js'
 
 describe('parseAmount', () => {
   it.each([
@@ -24,5 +24,18 @@ describe('parseAmount', () => {
     expect(amountOrZero('')).toBe(0)
     expect(amountOrZero('x')).toBe(0)
     expect(amountOrZero('2,50')).toBe(2.5)
+  })
+})
+
+describe('toggleSign', () => {
+  it('flips a price between positive and negative', () => {
+    expect(toggleSign('4.99')).toBe('-4.99')
+    expect(toggleSign('-4.99')).toBe('4.99')
+    expect(parseAmount(toggleSign('$5'))).toBe(-5)
+  })
+
+  it('starts a discount on an empty field', () => {
+    expect(toggleSign('')).toBe('-')
+    expect(toggleSign('-')).toBe('')
   })
 })

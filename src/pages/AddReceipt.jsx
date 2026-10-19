@@ -13,9 +13,10 @@ import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 import BackButton from '../components/BackButton.jsx'
 import LoadError from '../components/LoadError.jsx'
-import { parseAmount, amountOrZero } from '../lib/amount.js'
+import { parseAmount, amountOrZero, toggleSign } from '../lib/amount.js'
 import { useGoBack, canGoBack } from '../lib/useGoBack.js'
 import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
+import { invalidateSearch } from '../lib/search.jsx'
 import { UNGROUPED, containerFromDropId, SortableRow, DragHandle, DropZone, ItemDragPreview } from '../components/ItemDrag.jsx'
 
 function newItem(dbId = null) {
@@ -93,6 +94,8 @@ export default function AddReceipt() {
   const loadComplete = useRef(false)
   const formRef = useRef(null)
   const checkinResetPending = useRef(false)
+  // Picked by hand: a scan doesn't change it
+  const categoryPicked = useRef(false)
   const { confirm, showAlert, DialogUI } = useDialog()
   const unsavedDialog = useUnsavedChanges(isDirty, "Your changes to this receipt aren't saved. Leave without saving them?")
 
@@ -244,12 +247,17 @@ Rules:
         await showAlert('Add a Gemini API key in Settings to use receipt scanning.', { title: 'No API key set' })
         return
       }
-      const results = await Promise.all(Array.from(files).map(f => scanOneFile(f, apiKey)))
+      // One unreadable photo doesn't sink the others
+      const settled = await Promise.allSettled(Array.from(files).map(f => scanOneFile(f, apiKey)))
+      const results = settled.filter(r => r.status === 'fulfilled').map(r => r.value)
+      const failed = settled.filter(r => r.status === 'rejected')
+      if (!results.length) throw failed[0].reason
 
-      // Scanning adds to the receipt; it never removes what's already there.
-      // With items already entered, it only fills in fields that are empty.
+      // Scanning adds to the receipt; it never replaces what's there. Fields
+      // are only filled if they're still empty now (the user may have typed
+      // in them while the scan ran).
       const hasItems = lineItems.some(i => !isBlankItem(i))
-      const fillIfEmpty = (current, set, value) => { if (value && (!hasItems || !String(current).trim())) set(value) }
+      const fillIfEmpty = (current, set, value) => { if (value) set(cur => (String(cur).trim() ? cur : value)) }
 
       // Photos of the same receipt share a store name
       const groups = new Map()
@@ -263,7 +271,7 @@ Rules:
       const firstStore = results.find(r => r.store_name)
       const firstCat = results.find(r => r.category)
       if (firstStore?.store_name) { fillIfEmpty(storeName, setStoreName, toTitleCase(firstStore.store_name)); setErrors(v => ({ ...v, storeName: undefined })) }
-      if (firstCat?.category && ['Groceries', 'Dining', 'Transportation', 'Misc'].includes(firstCat.category) && !hasItems) {
+      if (firstCat?.category && ['Groceries', 'Dining', 'Transportation', 'Misc'].includes(firstCat.category) && !hasItems && !categoryPicked.current) {
         setCategory(firstCat.category)
       }
 
@@ -328,6 +336,9 @@ Rules:
         markDirty()
       } else {
         await showAlert('No items could be extracted from this image. Try a clearer photo or enter items manually.', { title: 'No items found' })
+      }
+      if (failed.length) {
+        await showAlert(`${failed.length} of ${settled.length} photos couldn't be read (${failed[0].reason?.message || 'unknown error'}). The rest were added; try those again or enter them by hand.`, { title: 'Some photos failed' })
       }
     } catch (err) {
       await showAlert(err?.message || String(err) || 'Unknown error', { title: 'Scan failed' })
@@ -695,6 +706,7 @@ Rules:
         setSaving(false)
         return
       }
+      invalidateSearch(group.id)
       leaveWithoutPrompt()
       leave()
       return
@@ -720,6 +732,7 @@ Rules:
       return
     }
     // The new receipt takes the form's place, so Back from it doesn't reopen the form
+    invalidateSearch(group.id)
     leaveWithoutPrompt()
     navigate(`/receipt/${receipt.id}`, { replace: true })
   }
@@ -733,6 +746,7 @@ Rules:
     const { error } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receiptId)
     if (error) { await showAlert(error.message, { title: 'Could not delete' }); return }
     // Skip the deleted receipt's page too: back to the screen before it
+    invalidateSearch(group.id)
     leaveWithoutPrompt()
     if (fromReceipt && canGoBack(2)) navigate(-2)
     else navigate('/receipts', { replace: true })
@@ -769,8 +783,20 @@ Rules:
               value={item.price}
               onChange={e => { updateItem(item.id, 'price', e.target.value); setErrors(v => ({ ...v, [`price-${item.id}`]: undefined })) }}
               placeholder="0.00"
-              className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors[`price-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
+              className={`w-full border rounded-lg pl-6 pr-8 sm:pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors[`price-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
             />
+            {/* Phones: the number keypad has no minus key, so this makes a price
+                negative (a discount). Keeps the keyboard open (no focus change). */}
+            <button
+              type="button"
+              tabIndex={-1}
+              onPointerDown={e => e.preventDefault()}
+              onClick={() => { updateItem(item.id, 'price', toggleSign(item.price)); setErrors(v => ({ ...v, [`price-${item.id}`]: undefined })) }}
+              aria-label="Make negative (discount)"
+              className="sm:hidden absolute right-0.5 top-1/2 -translate-y-1/2 w-7 h-8 flex items-center justify-center rounded-md text-gray-400 active:bg-gray-100 text-sm"
+            >
+              ±
+            </button>
           </div>
         </div>
         <button
@@ -921,7 +947,7 @@ Rules:
             onChange={e => { markDirty(); setStoreName(e.target.value); setErrors(v => ({ ...v, storeName: undefined })) }}
             placeholder="e.g. Costco"
             className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.storeName ? 'border-red-400' : 'border-gray-300'}`}
-            autoFocus={!isEditing}
+            autoFocus={!isEditing && window.matchMedia('(min-width: 640px)').matches}
           />
           {errors.storeName && <p className="text-xs text-red-500 mt-1">{errors.storeName}</p>}
         </div>
@@ -934,7 +960,7 @@ Rules:
               <button
                 key={label}
                 type="button"
-                onClick={() => { markDirty(); setCategory(label) }}
+                onClick={() => { markDirty(); categoryPicked.current = true; setCategory(label) }}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
                   category === label ? active : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600'
                 }`}
@@ -994,7 +1020,7 @@ Rules:
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">Items</label>
-            <span className="text-xs text-gray-400">🔒 splits with everyone who checks in · drag ⠿ to reorder</span>
+            <span className="text-xs text-gray-400">🔒 splits with everyone who checks in</span>
           </div>
           {errors.items && <p className="text-xs text-red-500 mb-2">{errors.items}</p>}
 

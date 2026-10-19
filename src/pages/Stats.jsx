@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useGroup } from '../lib/group.jsx'
 import { loadReceipts, loadItems, loadClaims, loadMeals } from '../lib/db.js'
-import { CATEGORIES, CHART_TRIP_NAME_LENGTH } from '../config.js'
+import { CATEGORIES } from '../config.js'
 import { calculateDebts } from '../lib/splitLogic.js'
 import LoadError from '../components/LoadError.jsx'
+import { dayValue, dateTicks, formatTick, formatDay } from '../lib/chartDates.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Legend, LineChart, Line, PieChart, Pie, Cell,
@@ -78,7 +79,8 @@ function SortedLineTooltip({ active, payload, label }) {
     .sort((a, b) => b.value - a.value)
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm min-w-[160px]">
-      <p className="font-medium text-gray-600 mb-2 text-xs">{label}</p>
+      {/* The cumulative chart's rows carry their own label (store · date) */}
+      <p className="font-medium text-gray-600 mb-2 text-xs">{payload[0]?.payload?.label ?? label}</p>
       {sorted.map(entry => (
         <div key={entry.dataKey} className="flex items-center justify-between gap-4 py-0.5">
           <div className="flex items-center gap-1.5">
@@ -147,29 +149,55 @@ export default function Stats() {
     load().catch(() => { setLoadError(true); setLoading(false) })
   }, [myName, retries])
 
-  // Initialize selectedPeople and selectedCategories once raw loads
+  // The people and categories picked are remembered per group. Someone (or a
+  // category) that's new since then starts out selected; anyone you
+  // deselected stays deselected.
+  const filtersKey = `stats-filters:${group.id}`
   useEffect(() => {
-    if (raw && selectedPeople === null) {
-      const saved = localStorage.getItem('stats-selected-people')
-      if (saved) {
-        try {
-          const restored = new Set(JSON.parse(saved))
-          // Add any default-selected people not in the saved set (e.g. newly pinned members)
-          for (const p of raw.defaultSelected) restored.add(p)
-          setSelectedPeople(restored)
-        } catch {
-          setSelectedPeople(raw.defaultSelected)
-        }
-      } else {
-        setSelectedPeople(raw.defaultSelected)
-      }
-    }
-    if (raw && selectedCategories === null) setSelectedCategories(new Set(raw.availableCategories))
+    if (!raw || selectedPeople !== null) return
+    let saved = null
+    try { saved = JSON.parse(localStorage.getItem(filtersKey)) } catch {}
+    const known = new Set(saved?.knownPeople || [])
+    const people = saved?.people ? new Set(saved.people) : new Set(raw.defaultSelected)
+    if (saved?.people) for (const p of raw.defaultSelected) if (!known.has(p)) people.add(p)
+    const knownCats = new Set(saved?.knownCategories || [])
+    const categories = saved?.categories
+      ? new Set(raw.availableCategories.filter(c => saved.categories.includes(c) || !knownCats.has(c)))
+      : new Set(raw.availableCategories)
+    setSelectedPeople(people)
+    setSelectedCategories(categories)
+  }, [raw, selectedPeople])
+
+  useEffect(() => {
+    if (!raw || selectedPeople === null || selectedCategories === null) return
+    try {
+      localStorage.setItem(filtersKey, JSON.stringify({
+        people: [...selectedPeople],
+        knownPeople: raw.allPeopleUnfiltered.map(p => p.toLowerCase()),
+        categories: [...selectedCategories],
+        knownCategories: raw.availableCategories,
+      }))
+    } catch {}
   }, [raw, selectedPeople, selectedCategories])
 
   if (loadError) return <LoadError onRetry={() => { setLoading(true); setRetries(n => n + 1) }} />
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
   if (!raw) return null
+  // A new group: nothing to chart yet
+  if (raw.receipts.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto p-4 py-8">
+        <h1 className="text-2xl font-bold text-gray-900">Household Stats</h1>
+        <div className="mt-8 bg-white border border-gray-200 rounded-xl px-6 py-10 text-center">
+          <p className="font-semibold text-gray-800">No stats yet</p>
+          <p className="text-sm text-gray-500 mt-1">Charts of who spent what show up here once your group has receipts.</p>
+          <Link to="/receipt/new" className="inline-block mt-4 px-4 py-2 text-sm font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700 transition">
+            Add a receipt
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   const { receipts, items, claims, meals, coreRoommatesLower, allPeopleUnfiltered, availableCategories } = raw
   const selected = selectedPeople || raw.defaultSelected
@@ -284,8 +312,9 @@ export default function Stats() {
       for (const [person, amt] of Object.entries(rConsumed)) {
         cumulativeByPerson[person] = (cumulativeByPerson[person] || 0) + amt
       }
-      const name = receipt.store_name || 'Receipt'
-      const row = { tripName: name.length > CHART_TRIP_NAME_LENGTH ? name.slice(0, CHART_TRIP_NAME_LENGTH - 1) + '…' : name }
+      // Plotted by date (the axis shows a few dates); the tooltip names the store
+      const t = dayValue(receipt.receipt_date)
+      const row = { t, label: `${receipt.store_name || 'Receipt'} · ${formatDay(t)}` }
       for (const person of allPeople) {
         row[person] = rConsumed[person] != null
           ? parseFloat((cumulativeByPerson[person] || 0).toFixed(2))
@@ -294,6 +323,11 @@ export default function Stats() {
       return row
     })
     .filter(Boolean)
+
+  const cumulativeSpan = {
+    first: cumulativeLineData[0]?.t ?? 0,
+    last: cumulativeLineData[cumulativeLineData.length - 1]?.t ?? 0,
+  }
 
   // Pin every person's final cumulative total to the last data point
   if (cumulativeLineData.length > 0) {
@@ -342,7 +376,6 @@ export default function Stats() {
     setSelectedPeople(prev => {
       const next = new Set(prev)
       next.has(nameLower) ? next.delete(nameLower) : next.add(nameLower)
-      localStorage.setItem('stats-selected-people', JSON.stringify([...next]))
       return next
     })
   }
@@ -366,9 +399,7 @@ export default function Stats() {
           {selected.size !== allPeople.length && (
             <button
               onClick={() => {
-              const all = new Set(allPeople.map(p => p.toLowerCase()))
-              localStorage.setItem('stats-selected-people', JSON.stringify([...all]))
-              setSelectedPeople(all)
+              setSelectedPeople(new Set(allPeople.map(p => p.toLowerCase())))
             }}
               className="text-xs text-accent-600 hover:text-accent-700 transition"
             >
@@ -434,8 +465,13 @@ export default function Stats() {
           <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of costs over time, across the categories shown</p>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 40 }}>
-                <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
+              <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 4 }}>
+                <XAxis
+                  dataKey="t" type="number" scale="time" domain={[cumulativeSpan.first, cumulativeSpan.last]}
+                  ticks={dateTicks(cumulativeSpan.first, cumulativeSpan.last)}
+                  tickFormatter={v => formatTick(v, cumulativeSpan.last - cumulativeSpan.first)}
+                  tick={{ fontSize: 11, fill: '#9ca3af' }} padding={{ left: 8, right: 8 }}
+                />
                 <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
                 <Tooltip content={<SortedLineTooltip />} />
                 <Legend formatter={v => toTitleCase(v)} verticalAlign="top" wrapperStyle={{ fontSize: 12, paddingBottom: 12 }} />

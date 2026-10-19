@@ -149,8 +149,9 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="bg-gray-50 border-y border-gray-100">
+      {/* How it works: a torn strip of receipt across the page */}
+      <div className="tear-band-wrap">
+      <section className="tear-band bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-center">How it works</h2>
           <ol className="mt-10 grid sm:grid-cols-3 gap-4">
@@ -164,6 +165,7 @@ export default function Landing() {
           </ol>
         </div>
       </section>
+      </div>
 
       {/* Features, alternating sides. On wider screens they're pulled together
           so each phone overlaps the previous one vertically (they're on
@@ -183,7 +185,8 @@ export default function Landing() {
       </div>
 
       {/* Stats */}
-      <section className="bg-gray-50 border-y border-gray-100">
+      <div className="tear-band-wrap">
+      <section className="tear-band bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="text-center max-w-2xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Spending stats</h2>
@@ -200,6 +203,7 @@ export default function Landing() {
           </div>
         </div>
       </section>
+      </div>
 
       {/* FAQ */}
       <section className="max-w-3xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20">

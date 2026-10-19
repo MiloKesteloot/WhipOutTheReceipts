@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useGroup } from './group.jsx'
 import { loadReceipts, loadItems, loadClaims, loadMeals } from './db.js'
 import { getItemEmoji } from './itemEmoji.js'
@@ -10,6 +11,12 @@ export const MIN_QUERY_LENGTH = 1
 // Cached per group for the session so revisiting the Receipts tab
 // shows results right away. Every mount still refetches in the background.
 const cache = new Map()
+
+// After a change to receipts or check-offs: the next visit loads fresh
+// results instead of showing the old ones while it refetches
+export function invalidateSearch(groupId) {
+  cache.delete(groupId)
+}
 
 async function fetchSearchData(groupId, nameOf, memberIds) {
   const [rawReceipts, rawItems, claims, meals] = await Promise.all([
@@ -131,26 +138,33 @@ export function searchAll(data, query) {
 }
 
 // ── Recent searches ──────────────────────────────────────────
-const RECENT_KEY = 'recent-searches'
+// Kept per account and group, so they don't show in another group or to
+// someone else signing in on the same device
 const RECENT_MAX = 6
 
-export function getRecentSearches() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || [] } catch { return [] }
+export function useRecentKey() {
+  const { group, myMember } = useGroup()
+  return `recent-searches:${myMember?.user_id || ''}:${group.id}`
 }
 
-export function addRecentSearch(query) {
+export function getRecentSearches(key) {
+  try { return JSON.parse(localStorage.getItem(key)) || [] } catch { return [] }
+}
+
+export function addRecentSearch(key, query) {
   const q = query.trim()
   if (q.length < MIN_QUERY_LENGTH) return
-  const next = [q, ...getRecentSearches().filter(r => r.toLowerCase() !== q.toLowerCase())].slice(0, RECENT_MAX)
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)) } catch {}
+  const next = [q, ...getRecentSearches(key).filter(r => r.toLowerCase() !== q.toLowerCase())].slice(0, RECENT_MAX)
+  try { localStorage.setItem(key, JSON.stringify(next)) } catch {}
 }
 
-export function clearRecentSearches() {
-  try { localStorage.removeItem(RECENT_KEY) } catch {}
+export function clearRecentSearches(key) {
+  try { localStorage.removeItem(key) } catch {}
 }
 
 export function RecentSearches({ onPick }) {
-  const [recent, setRecent] = useState(getRecentSearches)
+  const recentKey = useRecentKey()
+  const [recent, setRecent] = useState(() => getRecentSearches(recentKey))
   if (recent.length === 0) {
     return <p className="text-sm text-gray-400 px-1">Search items or stores, e.g. "bao" or "costco".</p>
   }
@@ -159,7 +173,7 @@ export function RecentSearches({ onPick }) {
       <div className="flex items-center justify-between mb-2 px-1">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Recent</p>
         <button
-          onClick={() => { clearRecentSearches(); setRecent([]) }}
+          onClick={() => { clearRecentSearches(recentKey); setRecent([]) }}
           className="text-xs text-gray-400 hover:text-gray-600"
         >
           Clear
@@ -228,14 +242,14 @@ function claimLabel(item) {
   return item.claimers.join(', ')
 }
 
-export function ItemRow({ item, terms, myName, onClick }) {
+export function ItemRow({ item, terms, myName, to, onClick }) {
   const me = myName.toLowerCase()
   const mine = item.always_split
     ? item.receipt.members.some(m => m.toLowerCase() === me)
     : item.claimers.some(c => c.toLowerCase() === me)
   const emoji = getItemEmoji(item.name)
   return (
-    <button onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
+    <Link to={to} onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
       <RowIcon>{emoji || '🛒'}</RowIcon>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
@@ -251,15 +265,15 @@ export function ItemRow({ item, terms, myName, onClick }) {
           {mine && <span className="text-xs font-semibold text-accent-600 shrink-0">✓ You</span>}
         </div>
       </div>
-    </button>
+    </Link>
   )
 }
 
-export function ReceiptRow({ receipt, terms, onClick }) {
+export function ReceiptRow({ receipt, terms, to, onClick }) {
   const logo = getStoreLogo(receipt.store_name)
   const others = receipt.members.filter(m => m.toLowerCase() !== (receipt.paid_by || '').toLowerCase())
   return (
-    <button onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
+    <Link to={to} onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
       <RowIcon>{logo ? <img src={logo} alt="" className="w-5 h-5 rounded object-contain" /> : '🧾'}</RowIcon>
       <div className="min-w-0 flex-1">
         <p className="text-gray-700 truncate">
@@ -274,7 +288,7 @@ export function ReceiptRow({ receipt, terms, onClick }) {
       {receipt.total > 0 && (
         <span className="text-sm font-semibold text-gray-700 shrink-0">${receipt.total.toFixed(2)}</span>
       )}
-    </button>
+    </Link>
   )
 }
 

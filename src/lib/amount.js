@@ -10,3 +10,9 @@ export function parseAmount(value) {
 
 // For totals and optional fields: blank or invalid counts as 0
 export const amountOrZero = value => parseAmount(value) || 0
+
+// The ± button: make a typed price negative (a discount) or positive again
+export function toggleSign(value) {
+  const s = String(value ?? '').trim()
+  return s.startsWith('-') ? s.slice(1) : `-${s}`
+}

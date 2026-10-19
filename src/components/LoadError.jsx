@@ -11,3 +11,14 @@ export default function LoadError({ onRetry }) {
     </div>
   )
 }
+
+// Shown above data that's already on screen when refreshing it failed, so
+// old amounts aren't mistaken for current ones
+export function StaleNotice({ onRetry }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+      <span>Couldn't refresh. These amounts may be out of date.</span>
+      <button onClick={onRetry} className="shrink-0 font-medium text-amber-900 hover:underline">Try again</button>
+    </div>
+  )
+}

@@ -176,17 +176,28 @@ export default function Auth({ initialMode = 'signin' }) {
   const { linkError } = useSession()
   const [error, setError] = useState(linkError)
   const [notice, setNotice] = useState('')
+  // An email whose confirmation link can be sent again
+  const [resendTo, setResendTo] = useState('')
 
-  function switchMode(m) { setMode(m); setError(''); setNotice('') }
+  function switchMode(m) { setMode(m); setError(''); setNotice(''); setResendTo('') }
+
+  async function resend() {
+    setBusy(true); setError('')
+    const { error } = await supabase.auth.resend({ type: 'signup', email: resendTo, options: { emailRedirectTo: appBaseUrl } })
+    setBusy(false)
+    if (error) setError(error.message)
+    else setNotice(`Sent another confirmation link to ${resendTo}.`)
+  }
 
   async function submit(e) {
     e.preventDefault()
-    setBusy(true); setError(''); setNotice('')
+    setBusy(true); setError(''); setNotice(''); setResendTo('')
     if (mode === 'signin') {
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-      if (error) setError(error.message === 'Email not confirmed'
-        ? 'Please confirm your email first — check your inbox for the link.'
-        : error.message)
+      if (error?.message === 'Email not confirmed') {
+        setError('Please confirm your email first — check your inbox for the link.')
+        setResendTo(email.trim())
+      } else if (error) setError(error.message)
     } else if (mode === 'signup') {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
@@ -198,7 +209,14 @@ export default function Auth({ initialMode = 'signin' }) {
         },
       })
       if (error) setError(error.message)
-      else if (!data.session) setNotice(`Almost done! We sent a confirmation link to ${email.trim()}.`)
+      // Supabase doesn't say an email is taken (it answers as if it sent a
+      // link); an existing account shows up as a user with no sign-in methods
+      else if (data.user && data.user.identities?.length === 0) {
+        setError(`There's already an account with this email. Sign in instead, or use "Forgot password?" if you don't remember it.`)
+      } else if (!data.session) {
+        setNotice(`Almost done! We sent a confirmation link to ${email.trim()}.`)
+        setResendTo(email.trim())
+      }
     } else {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: appBaseUrl })
       if (error) setError(error.message)
@@ -228,7 +246,7 @@ export default function Auth({ initialMode = 'signin' }) {
         {mode === 'signup' && (
           <div className="flex gap-2">
             <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" required autoComplete="given-name" className={inputClass} />
-            <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" required autoComplete="family-name" className={inputClass} />
+            <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name (optional)" autoComplete="family-name" className={inputClass} />
           </div>
         )}
         <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required autoComplete="email" className={inputClass} />
@@ -246,6 +264,12 @@ export default function Auth({ initialMode = 'signin' }) {
         )}
         {error && <p className="text-sm text-red-500">{error}</p>}
         {notice && <p className="text-sm text-accent-700 bg-accent-50 rounded-lg px-3 py-2">{notice}</p>}
+        {resendTo && (
+          <p className="text-sm text-gray-500">
+            No email? Check spam, or{' '}
+            <button type="button" onClick={resend} disabled={busy} className="text-accent-600 font-medium hover:text-accent-700 disabled:opacity-50">resend it</button>.
+          </p>
+        )}
         <button type="submit" disabled={busy} className={primaryButton}>
           {busy ? '…' : mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
         </button>
@@ -315,7 +339,7 @@ export function CompleteProfile({ profile, onDone }) {
       <form onSubmit={submit} className="space-y-3">
         <div className="flex gap-2">
           <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" required autoFocus className={inputClass} />
-          <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" required className={inputClass} />
+          <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name (optional)" className={inputClass} />
         </div>
         <button type="submit" disabled={busy || !firstName.trim()} className={primaryButton}>{busy ? '…' : 'Continue'}</button>
         {error && <p className="text-sm text-red-500">{error}</p>}

@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, appBaseUrl } from '../lib/supabase.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import { useGroup } from '../lib/group.jsx'
 import { copyText } from '../lib/clipboard.js'
+import { invalidateSearch } from '../lib/search.jsx'
 
 const card = 'bg-white border border-gray-200 rounded-xl p-4'
 const smallInput = 'flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400'
@@ -144,8 +145,26 @@ function PersonRow({ m }) {
   const [last, setLast] = useState(m.last_name)
   const [menuOpen, setMenuOpen] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
+  const menuRef = useRef(null)
   const isMe = m.id === myMember?.id
   const linked = !!m.user_id
+
+  // The ⋯ menu closes on a tap anywhere else (including another row's ⋯) or Escape
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = e => { if (!menuRef.current?.contains(e.target)) setMenuOpen(false) }
+    const onKey = e => { if (e.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('pointerdown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey) }
+  }, [menuOpen])
+
+  // Rename starts from the current name (not what was typed and cancelled last time)
+  function startRename() {
+    setFirst(m.first_name)
+    setLast(m.last_name)
+    setEditing(true)
+  }
 
   async function run(fn, args, okMessage) {
     setMenuOpen(false)
@@ -158,7 +177,8 @@ function PersonRow({ m }) {
 
   async function saveName() {
     const { error } = await supabase.from('group_members').update({ first_name: first.trim(), last_name: last.trim() }).eq('id', m.id)
-    if (error) await showAlert(error.message)
+    // On error, stay in the form so the typed name isn't lost
+    if (error) { await showAlert(error.message, { title: 'Could not rename' }); return }
     setEditing(false)
     refreshMembers()
   }
@@ -172,6 +192,7 @@ function PersonRow({ m }) {
   if (editing) {
     return (
       <li className="flex gap-2 py-2">
+        {DialogUI}
         <input value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" className={smallInput} autoFocus />
         <input value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" className={smallInput} />
         <button onClick={saveName} disabled={!first.trim()} className={primarySmall}>Save</button>
@@ -203,7 +224,7 @@ function PersonRow({ m }) {
   // between regular and guest; those go in the ⋯ menu too
   const menuActions = [
     ...(!linked && m.active ? [
-      ['Rename', () => setEditing(true)],
+      ['Rename', startRename],
       [m.is_guest ? 'Make regular' : 'Make guest', toggleGuest],
     ] : []),
     ...ownerActions,
@@ -226,7 +247,7 @@ function PersonRow({ m }) {
         <button onClick={() => setLinkOpen(o => !o)} className="text-xs text-accent-600 hover:text-accent-700 shrink-0">Guest link</button>
       )}
       {menuActions.length > 0 && (
-        <div className="relative shrink-0">
+        <div ref={menuRef} className="relative shrink-0">
           <button onClick={() => setMenuOpen(o => !o)} className="px-1.5 text-gray-400 hover:text-gray-600" aria-label="More actions">⋯</button>
           {menuOpen && (
             <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20">
@@ -248,6 +269,7 @@ function People() {
   const { showAlert, DialogUI } = useDialog()
   const [first, setFirst] = useState('')
   const [asGuest, setAsGuest] = useState(false)
+  const [adding, setAdding] = useState(false)
   const [showInactive, setShowInactive] = useState(false)
   const active = members.filter(m => m.active)
   const inactive = members.filter(m => !m.active)
@@ -257,8 +279,11 @@ function People() {
   async function add(e) {
     e.preventDefault()
     const name = first.trim().replace(/\b\w/g, c => c.toUpperCase())
-    if (!name) return
+    // A quick double tap shouldn't add them twice
+    if (!name || adding) return
+    setAdding(true)
     const { error } = await supabase.from('group_members').insert({ group_id: group.id, first_name: name, is_guest: asGuest })
+    setAdding(false)
     if (error) { await showAlert(error.message, { title: 'Could not add that person' }); return }
     setFirst('')
     refreshMembers()
@@ -289,7 +314,7 @@ function People() {
             <input type="checkbox" checked={asGuest} onChange={e => setAsGuest(e.target.checked)} className="accent-accent-600" />
             Guest
           </label>
-          <button type="submit" disabled={!first.trim()} className={smallButton}>Add</button>
+          <button type="submit" disabled={!first.trim() || adding} className={smallButton}>Add</button>
         </form>
       </div>
     </section>
@@ -297,7 +322,7 @@ function People() {
 }
 
 function MergePeople() {
-  const { members, refreshMembers } = useGroup()
+  const { group, members, refreshMembers } = useGroup()
   const { showAlert, DialogUI } = useDialog()
   const [from, setFrom] = useState('')
   const [into, setInto] = useState('')
@@ -313,6 +338,7 @@ function MergePeople() {
     setBusy(false)
     setConfirming(false)
     if (error) { await showAlert(error.message, { title: 'Could not merge' }); return }
+    invalidateSearch(group.id)
     setDone(`Merged "${byId[from].displayName}" into "${byId[into].displayName}"`)
     setFrom(''); setInto('')
     refreshMembers()

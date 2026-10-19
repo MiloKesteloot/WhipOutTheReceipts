@@ -31,9 +31,6 @@ export const CATEGORIES = [
 
 export const DEFAULT_CATEGORY = 'Groceries'
 
-// ── Stats chart settings ──────────────────────────────────────
-// Maximum characters to show for a trip name in bar/line charts.
-export const CHART_TRIP_NAME_LENGTH = 14
 
 // ── Receipt scanner ───────────────────────────────────────────
 // Gemini model used for receipt photo scanning (must accept images).

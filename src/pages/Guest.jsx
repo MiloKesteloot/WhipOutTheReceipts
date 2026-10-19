@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { computeDisplayNames } from '../lib/group.jsx'
 import { calculateDebts } from '../lib/splitLogic.js'
 import { receiptDebts, computeBalances } from '../lib/balances.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { LOGO_URL } from '../lib/logo.js'
+import { useGoBack } from '../lib/useGoBack.js'
+import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
+import TornPaper from '../components/TornPaper.jsx'
 
 // /guest/:token — check off items for someone without an account, from a
 // link the group shared with them. No login: everything goes through the
@@ -32,7 +35,14 @@ export default function Guest() {
   const { token } = useParams()
   const [view, setView] = useState(undefined) // undefined = loading, null = invalid link
   const [loadFailed, setLoadFailed] = useState(false)
-  const [openId, setOpenId] = useState(null)
+  // The open receipt is in the address (?r=…), so the phone's back gesture
+  // returns to the list instead of leaving the page
+  const [params, setParams] = useSearchParams()
+  const openId = params.get('r')
+  const goBack = useGoBack()
+  const { pathname } = useLocation()
+  const openReceipt = id => setParams({ r: id })
+  const closeReceipt = () => goBack(pathname)
   const [savedId, setSavedId] = useState(null)
 
   const load = useCallback(async () => {
@@ -108,8 +118,8 @@ export default function Guest() {
           receipt={open}
           token={token}
           guestName={shaped.name}
-          onBack={() => setOpenId(null)}
-          onSaved={async () => { await load(); setSavedId(open.id); setOpenId(null) }}
+          onBack={closeReceipt}
+          onSaved={async () => { await load(); setSavedId(open.id); leaveWithoutPrompt(); closeReceipt() }}
         />
       </Shell>
     )
@@ -129,7 +139,7 @@ export default function Guest() {
 
   const row = r => (
     <li key={r.id}>
-      <button onClick={() => { setSavedId(null); setOpenId(r.id) }} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 transition">
+      <button onClick={() => { setSavedId(null); openReceipt(r.id) }} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 transition">
         <div className="min-w-0">
           <p className="font-medium text-gray-900 truncate">{r.store_name}</p>
           <p className="text-xs text-gray-400">{fmtDate(r.receipt_date)} · Paid by {r.paid_by === shaped.name ? 'you' : r.paid_by}</p>
@@ -197,6 +207,9 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
   ))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [initial] = useState(() => [...checked].sort().join())
+  const dirty = [...checked].sort().join() !== initial
+  const unsavedDialog = useUnsavedChanges(dirty, "Your check-offs aren't saved yet. Leave without saving them?", { includeSearch: true })
 
   const toggle = item => {
     if (item.always_split) return
@@ -223,17 +236,25 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
 
   const mealName = Object.fromEntries(receipt.meals.map(m => [m.id, m.name]))
   const extras = receipt.tip + receipt.tax + receipt.fees
+  // Items without a meal first, then each meal under its name (like the
+  // receipt page), whatever order they were typed in
+  const ordered = [
+    ...receipt.items.filter(i => !i.meal_id),
+    ...receipt.meals.flatMap(m => receipt.items.filter(i => i.meal_id === m.id)),
+  ]
   let lastMeal
 
   return (
     <div className="pb-28">
+      {unsavedDialog}
       <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-800 mb-3">← All receipts</button>
       <h1 className="text-2xl font-bold text-gray-900">{receipt.store_name}</h1>
       <p className="text-sm text-gray-400 mt-0.5">{fmtDate(receipt.receipt_date)} · Paid by {receipt.paid_by === guestName ? 'you' : receipt.paid_by}</p>
       <p className="text-sm text-gray-500 mt-3">Check off everything you had. Shared items are split between everyone who checks them.</p>
 
-      <ul className="mt-4 bg-white border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
-        {receipt.items.map(item => {
+      <TornPaper className="mt-4">
+      <ul className="tear-rows-nested divide-y divide-gray-100">
+        {ordered.map(item => {
           const header = item.meal_id && item.meal_id !== lastMeal ? mealName[item.meal_id] : null
           lastMeal = item.meal_id
           const others = receipt.claims.filter(c => c.item_id === item.id && c.roommate !== guestName).map(c => c.roommate)
@@ -262,6 +283,7 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
           </li>
         )}
       </ul>
+      </TornPaper>
 
       {/* Your total + save, pinned to the bottom */}
       <div className="fixed bottom-0 left-0 right-0 p-4" style={{ paddingBottom: 'max(1rem, var(--safe-bottom))' }}>

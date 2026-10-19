@@ -5,7 +5,7 @@ import { useBalances } from '../lib/useBalances.js'
 import { deletePayment } from '../lib/db.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
-import LoadError from '../components/LoadError.jsx'
+import LoadError, { StaleNotice } from '../components/LoadError.jsx'
 import { isOnReceipt } from '../lib/receiptStatus.js'
 
 const fmtPaidAt = ts => ts ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
@@ -200,6 +200,7 @@ export default function Balances() {
       {DialogUI}
 
       <h1 className="text-2xl font-bold text-gray-900">Balances</h1>
+      {error && <StaleNotice onRetry={reload} />}
 
       {iOweEntries.length > 0 && (
         <BalanceSection title="People you owe" total={iOweTotal} totalClass="text-amber-600">

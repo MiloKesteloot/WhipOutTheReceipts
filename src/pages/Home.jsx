@@ -4,12 +4,13 @@ import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
 import { checkedInByReceipt, receiptsToCheckOff } from '../lib/receiptStatus.js'
 import BalanceRows from '../components/BalanceRows.jsx'
-import LoadError from '../components/LoadError.jsx'
+import LoadError, { StaleNotice } from '../components/LoadError.jsx'
+import GetStarted from '../components/GetStarted.jsx'
 
 // Home = what needs you: receipts to check off and where your balances stand.
 // Browsing receipts lives on /receipts, settling up on /balances.
 export default function Home() {
-  const { myName } = useGroup()
+  const { myName, myMember, members } = useGroup()
   const { loading, error, data, balances, reload } = useBalances()
 
   if (error && !data) return <LoadError onRetry={reload} />
@@ -20,12 +21,17 @@ export default function Home() {
   const myBalances = myName ? balances.forPerson(myName) : []
   const iOweTotal = myBalances.filter(e => e.iOwe).reduce((s, e) => s + e.amount, 0)
   const owedToMeTotal = myBalances.filter(e => !e.iOwe).reduce((s, e) => s + e.amount, 0)
-  const caughtUp = unchecked.length === 0 && myBalances.length === 0
+  // A new group: no receipts yet, or nobody else in it yet
+  const noReceipts = data.receipts.length === 0
+  const alone = !members.some(m => m.active && m.id !== myMember?.id)
+  const caughtUp = !noReceipts && unchecked.length === 0 && myBalances.length === 0
 
   const sortedBalances = [...myBalances].sort((a, b) => b.iOwe - a.iOwe || b.amount - a.amount)
 
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4 pb-8 space-y-4">
+      {error && <StaleNotice onRetry={reload} />}
+      {(noReceipts || alone) && <GetStarted showAddReceipt={noReceipts} />}
 
       {/* Receipts to check off */}
       {unchecked.length > 0 && (

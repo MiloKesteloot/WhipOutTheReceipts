@@ -88,10 +88,14 @@ export function Join() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const { user } = useSession()
+  const { user, profile, refreshProfile } = useSession()
+  // Joining as new would clash with someone's name: show the name form
+  const [fixingName, setFixingName] = useState(false)
+
+  const loadPreview = () => supabase.rpc('invite_preview', { p_code: code }).then(({ data }) => { setPreview(data ?? null); return data })
 
   useEffect(() => {
-    supabase.rpc('invite_preview', { p_code: code }).then(({ data }) => setPreview(data ?? null))
+    loadPreview()
     // The invite has been opened; stop redirecting here on future sign-ins
     if (user.user_metadata?.pending_invite) supabase.auth.updateUser({ data: { pending_invite: null } })
   }, [code])
@@ -108,6 +112,10 @@ export function Join() {
   async function join(claimMemberId = null) {
     setBusy(true); setError('')
     const { data, error } = await supabase.rpc('join_group', { p_code: code, p_claim_member: claimMemberId })
+    if (error?.hint === 'name_clash') {
+      // Someone joined with this name meanwhile: ask for a name now
+      await loadPreview(); setFixingName(true); setBusy(false); return
+    }
     if (error) { setError(error.message); setBusy(false); return }
     await refreshMemberships()
     switchGroup(data)
@@ -150,8 +158,29 @@ export function Join() {
     )
   }
 
+  if (fixingName && preview.name_clash) {
+    return (
+      <NameFix
+        clash={preview.name_clash}
+        groupName={preview.name}
+        profile={profile}
+        onCancel={() => setFixingName(false)}
+        onSaved={async () => {
+          await refreshProfile()
+          const next = await loadPreview()
+          if (next?.name_clash) return false
+          setFixingName(false)
+          join()
+          return true
+        }}
+      />
+    )
+  }
+
   const people = preview.unclaimed.filter(p => !p.is_guest)
   const guests = preview.unclaimed.filter(p => p.is_guest)
+  // Joining as someone new: first make sure the group can tell you apart
+  const joinAsNew = () => (preview.name_clash ? setFixingName(true) : join())
 
   return (
     <AuthShell title={`Join ${preview.name}`} subtitle={preview.unclaimed.length ? 'Are you already in this group?' : null}>
@@ -173,12 +202,58 @@ export function Join() {
           </div>
         </div>
       )}
-      <button onClick={() => join()} disabled={busy} className={primaryButton}>
+      <button onClick={joinAsNew} disabled={busy} className={primaryButton}>
         {preview.unclaimed.length ? "I'm new here" : 'Join group'}
       </button>
       {error && <p className="text-sm text-red-500 mt-3">{error}</p>}
       <div className="mt-4 text-center text-sm">
         <button onClick={() => goBack('/')} className="text-gray-400 hover:text-gray-600">Cancel</button>
+      </div>
+    </AuthShell>
+  )
+}
+
+// Someone in the group already has your name: add a last name or pick a
+// different first name before joining. Saves to your profile (so it's your
+// name in every group).
+function NameFix({ clash, groupName, profile, onCancel, onSaved }) {
+  const [first, setFirst] = useState(profile?.first_name || '')
+  const [last, setLast] = useState(profile?.last_name || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const theirs = `${clash.first_name}${clash.last_name ? ` ${clash.last_name}` : ''}`
+  const changed = first.trim() !== (profile?.first_name || '') || last.trim() !== (profile?.last_name || '')
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true); setError('')
+    const { error } = await supabase.from('profiles').update({ first_name: first.trim(), last_name: last.trim() }).eq('id', profile.id)
+    if (error) { setError(error.message); setBusy(false); return }
+    // Still clashes: say so here (the form stays open)
+    if (!await onSaved()) {
+      setError('That name is still taken in this group. Try a different one.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <AuthShell
+      title="Add your last name"
+      subtitle={clash.kind === 'needs_last'
+        ? `${groupName} already has someone called ${theirs}. Add your last name so everyone can tell you apart, or use a different first name, like a nickname.`
+        : `${groupName} already has someone called ${theirs}. Use a different name, like a nickname or your middle initial, so everyone can tell you apart.`}
+    >
+      <form onSubmit={save} className="space-y-3">
+        <div className="flex gap-2">
+          <input value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" required autoComplete="given-name" className={inputClass} />
+          <input value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" autoComplete="family-name" autoFocus className={inputClass} />
+        </div>
+        <p className="text-xs text-gray-400">This changes your name in all your groups. You can change it later in Settings.</p>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <button type="submit" disabled={busy || !first.trim() || !changed} className={primaryButton}>{busy ? 'Joining…' : 'Save and join'}</button>
+      </form>
+      <div className="mt-4 text-center text-sm">
+        <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">Back</button>
       </div>
     </AuthShell>
   )

@@ -17,7 +17,9 @@ export const hasUnsavedChanges = () => dirty
 export function leaveWithoutPrompt() { bypass = true }
 
 // Returns the dialog element to render
-export function useUnsavedChanges(isDirty, message) {
+// includeSearch: also ask when only the query string changes (a page that
+// keeps what's open in ?r=…)
+export function useUnsavedChanges(isDirty, message, { includeSearch = false } = {}) {
   const { confirm, DialogUI } = useDialog()
 
   useEffect(() => {
@@ -35,8 +37,9 @@ export function useUnsavedChanges(isDirty, message) {
     return () => window.removeEventListener('beforeunload', onUnload)
   }, [isDirty])
 
+  const where = loc => loc.pathname + (includeSearch ? loc.search : '')
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
-    isDirty && !bypass && currentLocation.pathname !== nextLocation.pathname)
+    isDirty && !bypass && where(currentLocation) !== where(nextLocation))
 
   useEffect(() => {
     if (blocker.state !== 'blocked') return

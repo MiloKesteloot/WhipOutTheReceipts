@@ -10,11 +10,15 @@ export default function SettleUpDialog({ from, to, amount, title, onSave, onClos
   const parsed = Number(value)
   const valid = parsed > 0 && /^\d*\.?\d{0,2}$/.test(value)
 
+  // While saving, the payment is already on its way: closing then would look
+  // like cancelling it, so the dialog stays until it's done
+  const close = () => { if (!saving) onClose() }
+
   useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape') onClose() }
+    const onKey = e => { if (e.key === 'Escape') close() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, saving])
 
   async function save(e) {
     e.preventDefault()
@@ -28,7 +32,7 @@ export default function SettleUpDialog({ from, to, amount, title, onSave, onClos
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={close}>
       <form onSubmit={save} onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
         <div>
           <h2 className="font-semibold text-gray-900">{title}</h2>
@@ -64,7 +68,7 @@ export default function SettleUpDialog({ from, to, amount, title, onSave, onClos
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition">Cancel</button>
+          <button type="button" onClick={close} disabled={saving} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 transition disabled:opacity-50">Cancel</button>
           <button type="submit" disabled={!valid || saving} className="px-4 py-2 text-sm font-medium rounded-lg bg-accent-600 text-white hover:bg-accent-700 transition disabled:opacity-50">
             {saving ? 'Saving…' : 'Save'}
           </button>

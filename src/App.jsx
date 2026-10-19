@@ -182,6 +182,24 @@ function FullPageLoading() {
 // (localStorage, so it survives the email-confirmation tab).
 const PENDING_INVITE = 'pending-invite'
 
+// Same for any other link (a receipt, Balances…): email confirmation, Google's
+// redirect sign-in and password reset all come back to the start page, so
+// the page you opened is remembered for a day and reopened after sign-in.
+const PENDING_PATH = 'pending-path'
+const PENDING_PATH_MS = 24 * 60 * 60 * 1000
+
+function rememberPath(path) {
+  try { localStorage.setItem(PENDING_PATH, JSON.stringify({ path, at: Date.now() })) } catch {}
+}
+
+function takePendingPath() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PENDING_PATH))
+    localStorage.removeItem(PENDING_PATH)
+    return saved && Date.now() - saved.at < PENDING_PATH_MS ? saved.path : null
+  } catch { return null }
+}
+
 function SignedInApp() {
   const { loading, memberships, group } = useGroup()
   const { user } = useSession()
@@ -190,10 +208,15 @@ function SignedInApp() {
 
   useEffect(() => {
     const code = localStorage.getItem(PENDING_INVITE) || user.user_metadata?.pending_invite
+    const path = takePendingPath()
     if (code) {
       localStorage.removeItem(PENDING_INVITE)
       // Already showing it (signed in on the invite link): don't add it again
       if (pathname !== `/join/${code}`) navigate(`/join/${code}`, { replace: true })
+    } else if (path && ['/', '/signin', '/signup'].includes(pathname)) {
+      // Signed in on the start or sign-in page (where email links, Google's
+      // redirect and the Landing page's buttons lead): back to the link
+      navigate(path, { replace: true })
     }
   }, [])
 
@@ -238,7 +261,7 @@ function Redirect({ to }) {
 
 function Gate() {
   const { session, loading, profile, refreshProfile, recovering, finishRecovery } = useSession()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
 
   // Guest links work for anyone with the link, signed in or not
   if (pathname.startsWith('/guest/')) {
@@ -249,6 +272,7 @@ function Gate() {
   if (!session) {
     const invite = pathname.match(/^\/join\/([A-Za-z0-9]+)/)
     if (invite) localStorage.setItem(PENDING_INVITE, invite[1])
+    else if (!['/', '/signin', '/signup'].includes(pathname)) rememberPath(pathname + search)
     // Signed-out home is the landing page; any other link asks to sign in
     if (pathname === '/') return <Landing />
     return <Auth key={pathname} initialMode={pathname === '/signup' ? 'signup' : 'signin'} />
