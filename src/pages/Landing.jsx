@@ -235,20 +235,24 @@ export default function Landing() {
       </div>
 
       <footer className="bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 grid gap-6 sm:grid-cols-[1fr_auto] items-start text-sm text-gray-500">
-          <div className="space-y-2 text-center sm:text-left">
-            <Link to="/" className="inline-flex items-center gap-2 font-bold text-base text-gray-900">
-              <img src={LOGO_URL} alt="" width={28} height={28} className="w-7 h-7" />
-              Receipts
-            </Link>
-            <p>Your group's receipts and payments are only visible to the people in your group (and to guests, through their own links).</p>
-            <p>Built by <a href="https://www.milo.games/" className="text-gray-700 hover:text-gray-900 underline-offset-2 hover:underline">Milo Kesteloot</a></p>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10 text-sm text-gray-500">
+          <div className="grid gap-6 sm:grid-cols-[1fr_auto]">
+            <div className="text-center sm:text-left">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-2">
+                <Link to="/" className="inline-flex items-center gap-2 font-bold text-base text-gray-900">
+                  <img src={LOGO_URL} alt="" width={28} height={28} className="w-7 h-7" />
+                  Receipts
+                </Link>
+                <span className="translate-y-px text-xs text-gray-400">Built by <a href="https://www.milo.games/" className="text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline">Milo Kesteloot</a></span>
+              </div>
+            </div>
+            <nav className="flex flex-wrap justify-center sm:justify-end sm:self-center gap-x-5 gap-y-2">
+              <a href={PORTFOLIO_URL} className="hover:text-gray-800">How it's built</a>
+              <a href={GITHUB_URL} className="hover:text-gray-800">GitHub</a>
+              <a href={`${GITHUB_URL}/issues`} className="hover:text-gray-800">Feedback</a>
+              <Link to="/privacy" className="hover:text-gray-800">Privacy</Link>
+            </nav>
           </div>
-          <nav className="flex justify-center sm:justify-end gap-5">
-            <a href={PORTFOLIO_URL} className="hover:text-gray-800">How it's built</a>
-            <a href={GITHUB_URL} className="hover:text-gray-800">GitHub</a>
-            <a href={`${GITHUB_URL}/issues`} className="hover:text-gray-800">Feedback</a>
-          </nav>
         </div>
       </footer>
     </div>

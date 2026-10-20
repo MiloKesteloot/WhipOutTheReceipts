@@ -12,6 +12,7 @@ import Settings from './pages/Settings.jsx'
 import GroupSettings from './pages/GroupSettings.jsx'
 import Receipts from './pages/Receipts.jsx'
 import Balances from './pages/Balances.jsx'
+import Privacy from './pages/Privacy.jsx'
 import { SessionProvider, useSession } from './lib/session.jsx'
 import { GroupProvider, useGroup } from './lib/group.jsx'
 import GlassTabBar from './components/GlassTabBar.jsx'
@@ -267,6 +268,7 @@ function Gate() {
   if (pathname.startsWith('/guest/')) {
     return <Routes><Route path="/guest/:token" element={<Guest />} /></Routes>
   }
+  if (pathname === '/privacy') return <Privacy />
   if (loading) return <FullPageLoading />
   if (recovering) return <SetNewPassword onDone={finishRecovery} />
   if (!session) {

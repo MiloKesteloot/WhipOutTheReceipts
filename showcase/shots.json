@@ -23,7 +23,7 @@
     { "name": "phone-split",      "device": "phone", "path": "/receipt/{thai}", "steps": [{ "scrollTo": "text=Who owes what" }, { "scrollBy": -100 }] },
 
     { "name": "phone-add",        "device": "phone", "path": "/receipt/{costco}/edit" },
-    { "name": "phone-dining",     "device": "phone", "path": "/receipt/{thai}" },
+    { "name": "phone-dining",     "device": "phone", "path": "/receipt/{thai}", "steps": [{ "click": "li.cursor-pointer:has-text(\"Milo\"):has-text(\"2 items\")" }] },
     { "name": "phone-days",       "device": "phone", "path": "/receipts", "localStorage": { "receipts-view": "days", "default-show-all-trips": "1" } },
 
     { "name": "phone-stats",      "device": "phone", "path": "/stats", "steps": [{ "scrollTo": "text=By person" }, { "scrollBy": -80 }], "settle": 2500 },
