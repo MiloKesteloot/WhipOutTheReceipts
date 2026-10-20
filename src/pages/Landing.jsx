@@ -145,7 +145,7 @@ const FAQ = [
 const REVIEWS = [
   { name: 'Niko', quote: 'Fantastic app for definitive record keeping and finantial accountability between roommates.' },
   { name: 'Alex', quote: 'We started using this app, and now we only fight about chores! No more fighting about receipt splitting!' },
-  { name: 'Milo', quote: 'Now I don\'t have to pay for my roommate\'s 4-ply toilet paper. 1-ply, here I come!' },
+  { name: 'Clouey', quote: 'Now I don\'t have to pay for my roommate\'s 4-ply toilet paper. 1-ply, here I come!' },
 ]
 
 const FEATURES = [
