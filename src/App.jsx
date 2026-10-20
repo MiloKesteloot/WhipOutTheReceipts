@@ -66,7 +66,7 @@ function TopNav() {
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-50 select-none" style={{ paddingTop: 'var(--safe-top)' }}>
       <div className="max-w-5xl mx-auto flex items-center px-4 h-14">
-        <Link to="/" aria-label="Receipts home" className="mr-4 shrink-0">
+        <Link to="/" aria-label="OurReceipts home" className="mr-4 shrink-0">
           <img src={LOGO_URL} alt="" width={32} height={32} className="w-8 h-8" />
         </Link>
         <div className="hidden sm:flex items-center">

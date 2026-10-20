@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { version as buildVersion } from '../buildVersion.json'
 import { LOGO_URL } from '../lib/logo.js'
 
-// Signed-out home page: what Receipts is, for people arriving from search or
+// Signed-out home page: what OurReceipts is, for people arriving from search or
 // a shared link. Images and the video come from `npm run screenshots`
 // (showcase/shots.json → appAssets), which writes them to public/landing.
 // ?v= changes every deploy, so browsers don't show cached images after a reshoot
@@ -99,7 +99,7 @@ function HeroVideo({ headerOverlayRef }) {
     }
   }, [headerOverlayRef])
   if (videoUnavailable) {
-    return <img src={poster} alt="A receipt being checked off in the Receipts app, with the running total updating" width={780} height={1688} className="block w-full h-auto" />
+    return <img src={poster} alt="A receipt being checked off in the OurReceipts app, with the running total updating" width={780} height={1688} className="block w-full h-auto" />
   }
   return (
     <video
@@ -123,9 +123,9 @@ function HeroVideo({ headerOverlayRef }) {
 }
 
 const STEPS = [
-  ['Add the receipt', 'Whoever paid types it in or takes a photo, and the photo gets read into items and prices.', 'phone-add-how', 'Receipt form with a scan button and store and category fields'],
-  ['Check off what you had', 'Everyone goes through the list on their own phone. Shared items, like paper towels, can be split between everyone.', 'phone-claim-how', 'Chocolate Hearts checked off by Milo and Sierra, with other receipt items above and below'],
-  ['See what you owe', 'Each item is split among the people who claimed it, and tax and tip are split by how much each person spent.', 'phone-debts-how', 'People who owe you shown above people you owe, with amounts and payment actions'],
+  ['Add the receipt', 'Whoever paid types it in or takes a photo, and the photo gets read into items and prices.', 'phone-add-how', "The Add Receipt form with a Scan receipt button, the date, and who's on the receipt"],
+  ['Check off what you had', 'Everyone goes through the list on their own phone. Shared items, like paper towels, can be split between everyone.', 'phone-claim-how', 'Receipt items with checkboxes, Sourdough Bread and Chocolate Hearts checked off and the names of who had each'],
+  ['See what you owe', 'Each item is split among the people who claimed it, and tax and tip are split by how much each person spent.', 'phone-debts-how', 'Totals for what you owe and are owed, then each person with their amount and a payment button'],
 ]
 
 // Kept true to how the app works: see receiptDebts (balances.js) for check-ins
@@ -179,7 +179,7 @@ export default function Landing() {
       <header className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 font-bold text-lg">
           <img src={LOGO_URL} alt="" width={32} height={32} className="w-8 h-8" />
-          Receipts
+          OurReceipts
         </Link>
         <nav className="flex items-center gap-2">
           <Link to="/signin" className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Sign in</Link>
@@ -227,7 +227,7 @@ export default function Landing() {
                 <h3 className="mt-4 text-lg font-semibold">{title}</h3>
                 <p className="mt-2 text-gray-600">{body}</p>
                 <div className="mt-4 w-full aspect-[7/5] overflow-hidden">
-                  <img src={asset(`${shot}.webp`)} alt={alt} width={585} height={480} loading="lazy" className="block h-full w-full rounded-xl border border-gray-100 object-cover object-center" />
+                  <img src={asset(`${shot}.webp`)} alt={alt} width={585} height={418} loading="lazy" className="block h-full w-full rounded-xl border border-gray-100 object-cover object-center" />
                 </div>
               </li>
             ))}
@@ -330,9 +330,9 @@ export default function Landing() {
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-2">
                 <Link to="/" className="inline-flex items-center gap-2 font-bold text-base text-gray-900">
                   <img src={LOGO_URL} alt="" width={28} height={28} className="w-7 h-7" />
-                  Receipts
+                  OurReceipts
                 </Link>
-                <span className="translate-y-px text-xs text-gray-400">Built by <a href="https://www.milo.games/" className="text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline">Milo Kesteloot</a></span>
+                <span className="translate-y-px text-xs text-gray-400">© {new Date().getFullYear()} OurReceipts · Built by <a href="https://www.milo.games/" className="text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline">Milo Kesteloot</a></span>
               </div>
             </div>
             <nav className="flex flex-wrap justify-center sm:justify-end sm:self-center gap-x-5 gap-y-2">

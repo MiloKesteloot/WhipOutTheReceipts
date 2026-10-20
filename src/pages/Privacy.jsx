@@ -39,7 +39,7 @@ export default function Privacy() {
         <div className="max-w-4xl mx-auto px-5 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="inline-flex items-center gap-2 font-bold text-base">
             <img src={LOGO_URL} alt="" width={28} height={28} className="w-7 h-7" />
-            Receipts
+            OurReceipts
           </Link>
           <Link to="/" className="text-sm text-gray-600 hover:text-gray-900">Back to home</Link>
         </div>
@@ -47,7 +47,7 @@ export default function Privacy() {
       <article className="max-w-3xl mx-auto px-5 sm:px-6 py-12 sm:py-16">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Privacy Policy</h1>
         <p className="mt-3 text-sm text-gray-500">Last updated October 20, 2026</p>
-        <p className="mt-6 text-gray-700 leading-7">This policy explains what information Whip Out the Receipts handles and how it is used when you use the app.</p>
+        <p className="mt-6 text-gray-700 leading-7">This policy explains what information OurReceipts handles and how it is used when you use the app.</p>
         <div className="mt-10 space-y-8">
           {sections.map(({ title, body }) => (
             <section key={title}>

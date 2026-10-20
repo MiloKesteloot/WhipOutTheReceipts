@@ -42,3 +42,8 @@ receipts it didn't create, unless you pass `--force-reset`.
   - `sessionStorage` / `localStorage`: values set before the page loads, e.g. `"home-view": "calendar"`
   - `steps`: `{ "click": selector }`, `{ "fill": [selector, text] }`, `{ "scrollTo": selector }`, `{ "scrollBy": pixels }`, `{ "wait": ms }`
   - `fullPage`, `element` (screenshot just that element), `viewport` (override the device size), `settle` (ms to wait before the shot)
+  - `clip`: `{ "from": selector, "pad": px or [x, y], "aspect": width / height }` crops to a region starting at that
+    element (scrolled just below the top bar), e.g. the landing page's 7:5 "How it works" images
+  - `demoData`: changes to featured receipts for just this shot, by key, e.g. `{ "tj": { "notCheckedIn": ["Milo"], "items": { "Bananas": { "price": 2.49 } } } }`.
+    Fields replace the receipt's own; `items` patches items by name. These shots get their own
+    reset + seed (before the others), so they can't be combined with `--no-reset`.

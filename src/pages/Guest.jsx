@@ -23,7 +23,7 @@ function Shell({ children }) {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-xl mx-auto px-4 h-14 flex items-center gap-2 font-bold text-gray-900">
           <img src={LOGO_URL} alt="" width={28} height={28} className="w-7 h-7" />
-          Receipts
+          OurReceipts
         </div>
       </header>
       <main className="max-w-xl mx-auto px-4 py-6">{children}</main>
@@ -157,7 +157,7 @@ export default function Guest() {
     <Shell>
       <h1 className="text-2xl font-bold text-gray-900">Hi, {shaped.name}</h1>
       <p className="text-sm text-gray-500 mt-1">
-        Check off what you had on {view.group.name}'s receipts, and Receipts works out what you owe.
+        Check off what you had on {view.group.name}'s receipts, and OurReceipts works out what you owe.
       </p>
 
       {owed.length > 0 && (

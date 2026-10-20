@@ -21,7 +21,7 @@ Production app URL: `https://milokesteloot.github.io/WhipOutTheReceipts/`
       - Port: `465`
       - Username and sender email: the Gmail address
       - Password: the 16-character app password
-      - Sender name: `Receipts`
+      - Sender name: `OurReceipts`
 
    Other options:
    - Brevo: free, 300 emails a day. You verify a sender email address instead of a domain.

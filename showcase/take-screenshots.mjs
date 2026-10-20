@@ -57,10 +57,19 @@ const today = new Date(data.today)
 const dateDaysAgo = n => new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate() - n)).toISOString().slice(0, 10)
 const round2 = n => Math.round(n * 100) / 100
 
+// A shot's "demoData": changes to some featured receipts, by key. Fields
+// replace the receipt's own; "items" patches items by name.
+function withOverrides(r, o) {
+  if (!o) return r
+  const { items: itemPatches = {}, ...fields } = o
+  return { ...r, ...fields, items: r.items.map(it => ({ ...it, ...itemPatches[it.name] })) }
+}
+
 // Turn demo-data.json into a flat list of receipts with every field filled in
-function buildReceipts() {
+function buildReceipts(overrides = {}) {
   const everyone = data.people.map(p => p.first)
-  const featured = data.receipts.map(r => {
+  const featured = data.receipts.map(base => {
+    const r = withOverrides(base, overrides[base.key])
     const members = r.members || everyone
     const checkedIn = members.filter(m => !(r.notCheckedIn || []).includes(m) || m === r.paidBy)
     const item = (it, meal) => ({
@@ -109,7 +118,7 @@ function buildReceipts() {
   return [...history, ...featured]
 }
 
-async function seed({ url, serviceKey }) {
+async function seed({ url, serviceKey }, overrides) {
   const db = createClient(url, serviceKey, { auth: { persistSession: false } })
   const check = ({ data, error }) => { if (error) throw new Error(error.message); return data }
   const at = (date, minutes) => new Date(Date.parse(`${date}T19:00:00Z`) + minutes * 60000).toISOString()
@@ -137,7 +146,7 @@ async function seed({ url, serviceKey }) {
   const memberIdOf = Object.fromEntries(memberRows.map(m => [m.first_name, m.id]))
   const userOfMember = name => userIdOf[name]
 
-  const receipts = buildReceipts()
+  const receipts = buildReceipts(overrides)
   const idByKey = {}
   for (const r of receipts) {
     const [row] = check(await db.from('receipts').insert({
@@ -240,7 +249,7 @@ async function startApp({ url, anonKey }) {
 }
 
 // ── Screenshots ──────────────────────────────────────────────
-async function takeShots({ url, anonKey }, base, idByKey) {
+async function takeShots({ url, anonKey }, base, idByKey, shots) {
   const auth = createClient(url, anonKey, { auth: { persistSession: false } })
   const { data: login, error } = await auth.auth.signInWithPassword({ email: `${data.viewer.toLowerCase()}@example.com`, password: PASSWORD })
   if (error) throw new Error(`Could not sign in as ${data.viewer}: ${error.message}`)
@@ -257,7 +266,6 @@ async function takeShots({ url, anonKey }, base, idByKey) {
 
   const outDir = resolve(here, config.outDir)
   mkdirSync(outDir, { recursive: true })
-  const shots = config.shots.filter(s => !onlyNames.length || onlyNames.includes(s.name))
   const browser = await chromium.launch()
   // Headless screencasts come out at CSS pixels unless Chrome's scale is forced
   const videoBrowsers = {}
@@ -359,6 +367,7 @@ async function takeShots({ url, anonKey }, base, idByKey) {
 
     const file = join(outDir, `${shot.name}.png`)
     if (shot.element) await page.locator(shot.element).first().screenshot({ path: file })
+    else if (shot.clip) await page.screenshot({ path: file, clip: await clipRegion(page, shot.clip) })
     else await page.screenshot({ path: file, fullPage: !!shot.fullPage })
     console.log(`  ✓ ${shot.name}`)
     await context.close()
@@ -366,6 +375,19 @@ async function takeShots({ url, anonKey }, base, idByKey) {
   await browser.close()
   for (const b of Object.values(videoBrowsers)) await (await b).close()
   console.log(`Saved ${shots.length} screenshots to ${outDir}`)
+}
+
+// "clip": a region starting at an element's top-left corner, "pad" px around
+// it (or [x, y]), cut to "aspect" (width / height) if given. The element is scrolled to
+// just below the app's fixed top bar first.
+async function clipRegion(page, { from, pad = 0, aspect }) {
+  const target = page.locator(from).first()
+  await target.evaluate((el, y) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - y), 120)
+  await page.waitForTimeout(300)
+  const box = await target.boundingBox()
+  const [padX, padY] = [pad].flat().concat([pad].flat())
+  const width = box.width + 2 * padX
+  return { x: box.x - padX, y: box.y - padY, width, height: aspect ? width / aspect : box.height + 2 * padY }
 }
 
 // Only wipe a local database that holds nothing but this script's demo data
@@ -445,7 +467,7 @@ async function startRecording(page) {
         const [w, h] = execSync('ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 main.mp4', { cwd: dir, encoding: 'utf8' }).trim().split(',').map(Number)
         const logo = Math.round(w * 0.3)
         const { fade, hold } = END_CARD
-        // Card in the app's background gray: the logo with "Receipts" under it,
+        // Card in the app's background gray: the logo with "OurReceipts" under it,
         // in the app's font (drawn by the browser rather than ffmpeg)
         const icon = `data:image/svg+xml;base64,${readFileSync(join(root, 'public', 'icon.svg')).toString('base64')}`
         const cardBrowser = await chromium.launch()
@@ -453,7 +475,7 @@ async function startRecording(page) {
         await cardPage.setContent(`<body style="margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
           gap:${Math.round(w * 0.04)}px;background:#${END_CARD.background};font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
           <img src="${icon}" style="width:${logo}px;height:${logo}px">
-          <div style="font-size:${Math.round(w * 0.085)}px;font-weight:700;color:#111827;letter-spacing:-0.01em">Receipts</div></body>`)
+          <div style="font-size:${Math.round(w * 0.085)}px;font-weight:700;color:#111827;letter-spacing:-0.01em">OurReceipts</div></body>`)
         await cardPage.screenshot({ path: join(dir, 'card.png') })
         await cardBrowser.close()
         const cardLength = fade + hold + fade
@@ -515,19 +537,37 @@ function checkSafeToReset() {
 }
 
 // ── Run ──────────────────────────────────────────────────────
-const supa = localSupabase()
-let idByKey
-if (reset) {
-  checkSafeToReset()
-  console.log('Resetting the local database…')
-  sh(`${SUPABASE} db reset --local`)
-  idByKey = await seed(supa)
-} else {
-  idByKey = await receiptKeys(supa)
+// Shots with their own "demoData" each get a freshly seeded database. They go
+// first, so the database ends up holding the plain demo data.
+const shots = config.shots.filter(s => !onlyNames.length || onlyNames.includes(s.name))
+const groups = []
+for (const shot of shots) {
+  const key = JSON.stringify(shot.demoData || null)
+  let group = groups.find(g => g.key === key)
+  if (!group) groups.push(group = { key, overrides: shot.demoData, shots: [] })
+  group.shots.push(shot)
 }
+groups.sort((a, b) => !a.overrides - !b.overrides)
+if (!reset && groups.some(g => g.overrides)) {
+  throw new Error(`These shots need their own demo data, which means resetting the database: ${groups.filter(g => g.overrides).flatMap(g => g.shots.map(s => s.name)).join(', ')}. ` +
+    'Leave them out, or drop --no-reset.')
+}
+
+const supa = localSupabase()
+if (reset) checkSafeToReset()
 const { server, base } = await startApp(supa)
 try {
-  await takeShots(supa, base, idByKey)
+  for (const group of groups) {
+    let idByKey
+    if (reset) {
+      console.log(group.overrides ? `Resetting the local database with ${group.shots.map(s => s.name).join(', ')}'s demo data…` : 'Resetting the local database…')
+      sh(`${SUPABASE} db reset --local`)
+      idByKey = await seed(supa, group.overrides)
+    } else {
+      idByKey = await receiptKeys(supa)
+    }
+    await takeShots(supa, base, idByKey, group.shots)
+  }
   await exportAppAssets()
 } finally {
   server.kill()

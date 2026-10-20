@@ -179,11 +179,11 @@ otp_expiry = 3600
 # device, unlike PKCE ?code= links). Paste the same templates into the
 # production dashboard: Authentication -> Emails.
 [auth.email.template.confirmation]
-subject = "Confirm your Receipts account"
+subject = "Confirm your OurReceipts account"
 content_path = "./supabase/templates/confirmation.html"
 
 [auth.email.template.recovery]
-subject = "Reset your Receipts password"
+subject = "Reset your OurReceipts password"
 content_path = "./supabase/templates/recovery.html"
 
 # [auth.email.template.invite]

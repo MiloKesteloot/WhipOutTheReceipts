@@ -1,6 +1,6 @@
 {
-  "name": "Receipts",
-  "short_name": "Receipts",
+  "name": "OurReceipts",
+  "short_name": "OurReceipts",
   "description": "Split grocery receipts with your roommates. Everyone checks off what they had, and the app works out what each person owes.",
   "start_url": "./",
   "scope": "./",

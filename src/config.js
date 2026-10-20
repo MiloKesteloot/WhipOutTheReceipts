@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 
 // ── Branding ─────────────────────────────────────────────────
-export const APP_NAME = 'Receipts'
+export const APP_NAME = 'OurReceipts'
 export const APP_TAGLINE = 'Fair grocery splits for roommates.'
 
 // ── Accent color ─────────────────────────────────────────────

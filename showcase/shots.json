@@ -7,7 +7,8 @@
     "files": {
       "phone-hero.mp4": null, "phone-hero-poster.png": 780,
       "phone-todo.png": 585, "phone-claim.png": 585, "phone-split.png": 585, "phone-dining.png": 585,
-      "phone-add.png": 585, "phone-payments.png": 585, "phone-stats.png": 585, "desktop-stats.png": 1600
+      "phone-add.png": 585, "phone-payments.png": 585, "phone-stats.png": 585, "desktop-stats.png": 1600,
+      "phone-add-how.png": 585, "phone-claim-how.png": 585, "phone-debts-how.png": 585
     }
   },
   "devices": {
@@ -30,7 +31,12 @@
     { "name": "phone-payments",   "device": "phone", "path": "/balances" },
     { "name": "phone-search",     "device": "phone", "path": "/receipts?q=chicken" },
 
+    { "name": "phone-add-how",    "device": "phone", "path": "/receipt/new", "clip": { "from": "div:has(> h1)", "pad": [12, 4], "aspect": 1.4 } },
+    { "name": "phone-claim-how",  "device": "phone", "path": "/receipt/{tj}", "clip": { "from": ".tear-wrap", "pad": 12, "aspect": 1.4 } },
+    { "name": "phone-debts-how",  "device": "phone", "path": "/", "clip": { "from": "section:has-text(\"You're owed\")", "pad": 12, "aspect": 1.4 } },
+
     { "name": "phone-hero", "device": "phone", "path": "/", "video": true, "endCard": true, "viewport": { "scale": 2 },
+      "demoData": { "tj": { "notCheckedIn": ["Milo"], "items": { "Chocolate Hearts": { "price": 4.49, "claimedBy": ["Sierra"] } } } },
       "localStorage": { "claimed-receipt-{tj}-{me}": "1" },
       "hide": ["[data-settle-button]"],
       "steps": [

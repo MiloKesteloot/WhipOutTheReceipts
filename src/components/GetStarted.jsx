@@ -23,7 +23,7 @@ export default function GetStarted({ showAddReceipt = true }) {
       {showAddReceipt && (
         <div>
           <h2 className="font-semibold text-gray-900 text-lg">Welcome to {group.name}</h2>
-          <p className="text-sm text-gray-500 mt-1">Add a receipt, then everyone checks off what they had and Receipts works out who owes what.</p>
+          <p className="text-sm text-gray-500 mt-1">Add a receipt, then everyone checks off what they had and OurReceipts works out who owes what.</p>
         </div>
       )}
       {showAddReceipt && (
