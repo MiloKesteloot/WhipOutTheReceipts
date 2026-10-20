@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { version as buildVersion } from '../buildVersion.json'
 import { LOGO_URL } from '../lib/logo.js'
@@ -35,6 +35,8 @@ function PhoneShot({ name, alt, className }) {
 // It only plays while on screen.
 function HeroVideo() {
   const ref = useRef(null)
+  const poster = asset('phone-hero-poster.webp')
+  const [videoUnavailable, setVideoUnavailable] = useState(false)
   useEffect(() => {
     const video = ref.current
     if (!video) return
@@ -47,11 +49,14 @@ function HeroVideo() {
     observer.observe(video)
     return () => observer.disconnect()
   }, [])
+  if (videoUnavailable) {
+    return <img src={poster} alt="A receipt being checked off in the Receipts app, with the running total updating" width={780} height={1688} className="block w-full h-auto" />
+  }
   return (
     <video
       ref={ref}
       src={asset('phone-hero.mp4')}
-      poster={asset('phone-hero-poster.webp')}
+      poster={poster}
       muted
       loop
       playsInline
@@ -60,6 +65,7 @@ function HeroVideo() {
       className="block w-full h-auto"
       width={780}
       height={1688}
+      onError={() => setVideoUnavailable(true)}
     />
   )
 }
@@ -118,7 +124,7 @@ export default function Landing() {
         </Link>
         <nav className="flex items-center gap-2">
           <Link to="/signin" className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Sign in</Link>
-          <Link to="/signup" className="px-4 py-2 rounded-lg bg-accent-600 text-white text-sm font-semibold hover:bg-accent-700 transition">Get started</Link>
+          <Link to="/signup" className="px-4 py-2 rounded-lg bg-accent-600 text-white text-sm font-semibold hover:bg-accent-700 transition">Create a group</Link>
         </nav>
       </header>
 
@@ -135,9 +141,10 @@ export default function Landing() {
               and the app figures out each person’s share, including tax and tip.
             </p>
             <div className="mt-6 sm:mt-8 flex gap-3 justify-center md:justify-start">
-              <Link to="/signup" className={`${primaryCta} flex-1 sm:flex-none`}>Get started</Link>
+              <Link to="/signup" className={`${primaryCta} flex-1 sm:flex-none`}>Create a group</Link>
               <Link to="/signin" className={`${secondaryCta} flex-1 sm:flex-none`}>Sign in</Link>
             </div>
+            <p className="mt-3 text-sm text-gray-500">Free, with no ads.</p>
           </div>
           <div className="relative flex justify-center">
             {/* Green glow centered behind the phone */}
@@ -226,7 +233,7 @@ export default function Landing() {
               <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Start splitting your next grocery run</h2>
               <p className="mt-4 text-lg text-gray-600">Create a group, invite your roommates, and add your first receipt.</p>
               <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-                <Link to="/signup" className={primaryCta}>Get started</Link>
+                <Link to="/signup" className={primaryCta}>Create a group</Link>
                 <Link to="/signin" className={secondaryCta}>I already have an account</Link>
               </div>
             </div>
