@@ -233,7 +233,8 @@ export default function Landing() {
         </div>
       </section>
 
-      <footer className="border-t border-gray-100 bg-gray-50">
+      <div className="tear-band-wrap">
+      <footer className="tear-top-band bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 grid gap-6 sm:grid-cols-[1fr_auto] items-start text-sm text-gray-500">
           <div className="space-y-2 text-center sm:text-left">
             <Link to="/" className="inline-flex items-center gap-2 font-bold text-base text-gray-900">
@@ -250,6 +251,7 @@ export default function Landing() {
           </nav>
         </div>
       </footer>
+      </div>
     </div>
   )
 }
