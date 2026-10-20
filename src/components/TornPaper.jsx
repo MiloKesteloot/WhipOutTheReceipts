@@ -6,12 +6,14 @@ const TEAR_COUNT_PHONE = 16
 const TEAR_COUNT_DESKTOP = 27
 const DESKTOP_QUERY = '(min-width: 640px)' // Tailwind's sm breakpoint
 
-// Mask tiles for one tooth w wide and h tall, each running 1px past the dips
-// so it overlaps the solid middle (no hairline seam at fractional zooms)
+// Mask tiles for one tooth w wide and h tall. Each tile has its peaks at the
+// sides, so the edge rises up the side of the box and then slopes down. It
+// runs 1px past the dips so it overlaps the solid middle (no hairline seam at
+// fractional zooms).
 function tearTile(w, h, bottom) {
   const d = bottom
-    ? `M0 1L${w / 2} ${h + 1}L${w} 1V0H0z`
-    : `M0 ${h}L${w / 2} 0L${w} ${h}V${h + 1}H0z`
+    ? `M0 ${h + 1}L${w / 2} 1L${w} ${h + 1}V0H0z`
+    : `M0 0L${w / 2} ${h}L${w} 0V${h + 1}H0z`
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${w} ${h + 1}' preserveAspectRatio='none'><path d='${d}'/></svg>`
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
 }

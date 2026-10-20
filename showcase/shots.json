@@ -16,7 +16,7 @@
   },
   "shots": [
     { "name": "desktop-calendar", "device": "desktop", "path": "/receipts", "localStorage": { "receipts-view": "calendar" } },
-    { "name": "desktop-stats",    "device": "desktop", "path": "/stats", "steps": [{ "scrollTo": "text=Cumulative food spending" }, { "scrollBy": -80 }], "settle": 3000 },
+    { "name": "desktop-stats",    "device": "desktop", "path": "/stats", "steps": [{ "scrollTo": "text=Cumulative spending" }, { "scrollBy": -80 }], "settle": 3000 },
 
     { "name": "phone-todo",       "device": "phone", "path": "/" },
     { "name": "phone-claim",      "device": "phone", "path": "/receipt/{tj}", "steps": [{ "click": "text=Bananas" }, { "click": "text=Avocados (4 pack)" }, { "click": "text=Oat Milk" }, { "click": "text=Frozen Mandarin Orange Chicken" }] },
