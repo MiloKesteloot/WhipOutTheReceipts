@@ -130,11 +130,11 @@ export default function Landing() {
 
       {/* Hero */}
       <section className="relative overflow-hidden">
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-16 sm:pt-16 sm:pb-24 grid md:grid-cols-[1.1fr_0.9fr] gap-10 md:gap-8 items-center">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-4 pb-10 sm:pt-16 sm:pb-24 grid md:grid-cols-[1.1fr_0.9fr] gap-7 md:gap-8 items-center">
           <div className="relative z-10 text-center md:text-left">
             <h1 className="font-extrabold tracking-tight">
-              <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08]">Split grocery bills</span>
-              <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08] text-accent-600">with your roommates</span>
+              <span className="block sm:whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08]">Split grocery bills</span>
+              <span className="block sm:whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08] text-accent-600">with your roommates</span>
             </h1>
             <p className="mt-4 sm:mt-6 text-lg sm:text-xl text-gray-600 max-w-xl mx-auto md:mx-0">
               One person pays and adds the receipt. Everyone else checks off what they had,
@@ -144,12 +144,12 @@ export default function Landing() {
               <Link to="/signup" className={`${primaryCta} flex-1 sm:flex-none`}>Create a group</Link>
               <Link to="/signin" className={`${secondaryCta} flex-1 sm:flex-none`}>Sign in</Link>
             </div>
-            <p className="mt-3 text-sm text-gray-500">Free, with no ads.</p>
+            <p className="mt-2 translate-x-0.5 text-sm text-gray-500">Free to use, no ads</p>
           </div>
           <div className="relative flex justify-center">
             {/* Green glow centered behind the phone */}
             <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[44rem] h-[44rem] max-w-[170vw] rounded-full bg-[radial-gradient(closest-side,rgb(var(--accent-200))_0%,rgb(var(--accent-100))_45%,transparent_100%)]" />
-            <PhoneFrame className="relative w-[260px] sm:w-[300px] -rotate-2">
+            <PhoneFrame className="relative w-[240px] sm:w-[300px] -rotate-2">
               <HeroVideo />
             </PhoneFrame>
           </div>
