@@ -17,7 +17,13 @@ const secondaryCta = 'inline-flex items-center justify-center px-6 py-3 rounded-
 function PhoneFrame({ children, className = '' }) {
   return (
     <div className={`rounded-[2.6rem] bg-gray-900 p-[9px] shadow-2xl shadow-gray-900/25 ring-1 ring-gray-800 ${className}`}>
-      <div className="rounded-[2.1rem] overflow-hidden bg-white">{children}</div>
+      <div className="rounded-[2.1rem] overflow-hidden bg-white">
+        <div className="relative">
+          <img src={asset('phone-header.png')} alt="" aria-hidden="true" width={1179} height={121} className="relative z-10 block h-auto w-full bg-white" />
+          <span aria-hidden="true" style={{ top: 'calc(50% + 5px)', height: 'calc(100% - 8px)' }} className="pointer-events-none absolute left-1/2 z-20 block w-[32%] max-w-[84px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-black" />
+        </div>
+        {children}
+      </div>
     </div>
   )
 }
