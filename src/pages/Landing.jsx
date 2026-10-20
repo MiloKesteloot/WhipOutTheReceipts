@@ -14,12 +14,13 @@ const GITHUB_URL = 'https://github.com/MiloKesteloot/WhipOutTheReceipts'
 const primaryCta = 'inline-flex items-center justify-center px-6 py-3 rounded-xl bg-accent-600 text-white font-semibold shadow-sm hover:bg-accent-700 transition'
 const secondaryCta = 'inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white border border-gray-200 text-gray-800 font-semibold hover:bg-gray-50 transition'
 
-function PhoneFrame({ children, className = '' }) {
+function PhoneFrame({ children, className = '', headerOverlayRef }) {
   return (
     <div className={`rounded-[2.6rem] bg-gray-900 p-[9px] shadow-2xl shadow-gray-900/25 ring-1 ring-gray-800 ${className}`}>
       <div className="rounded-[2.1rem] overflow-hidden bg-white">
         <div className="relative">
           <img src={asset('phone-header.png')} alt="" aria-hidden="true" width={1179} height={121} className="relative z-10 block h-auto w-full bg-white" />
+          <span ref={headerOverlayRef} aria-hidden="true" className="pointer-events-none absolute inset-0 z-[15] bg-[#f8fafa] opacity-0" />
           <span aria-hidden="true" style={{ top: 'calc(50% + 5px)', height: 'calc(100% - 8px)' }} className="pointer-events-none absolute left-1/2 z-20 block w-[32%] max-w-[84px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-black" />
         </div>
         {children}
@@ -39,7 +40,17 @@ function PhoneShot({ name, alt, className }) {
 // iOS only autoplays when the muted *attribute* is set, which React doesn't
 // always do, so set it on the element. Reduced-motion visitors get controls.
 // It only plays while on screen.
-function HeroVideo() {
+function heroHeaderTintAt(time) {
+  const smoothStep = value => {
+    const t = Math.max(0, Math.min(1, value))
+    return t * t * (3 - 2 * t)
+  }
+  const fadeIn = smoothStep((time - 12.8) / (13.3 - 12.8))
+  const fadeOut = smoothStep((time - 13.7) / (14.35 - 13.7))
+  return fadeIn * (1 - fadeOut)
+}
+
+function HeroVideo({ headerOverlayRef }) {
   const ref = useRef(null)
   const poster = asset('phone-hero-poster.webp')
   const [videoUnavailable, setVideoUnavailable] = useState(false)
@@ -55,6 +66,38 @@ function HeroVideo() {
     observer.observe(video)
     return () => observer.disconnect()
   }, [])
+  useEffect(() => {
+    const video = ref.current
+    if (!video || !headerOverlayRef) return
+    let frame = 0
+    const updateTint = () => {
+      if (headerOverlayRef.current) headerOverlayRef.current.style.opacity = String(heroHeaderTintAt(video.currentTime))
+    }
+    const tick = () => {
+      updateTint()
+      if (!video.paused && !video.ended) frame = requestAnimationFrame(tick)
+    }
+    const start = () => {
+      cancelAnimationFrame(frame)
+      tick()
+    }
+    const stop = () => {
+      cancelAnimationFrame(frame)
+      updateTint()
+    }
+    video.addEventListener('play', start)
+    video.addEventListener('pause', stop)
+    video.addEventListener('timeupdate', updateTint)
+    video.addEventListener('seeked', updateTint)
+    updateTint()
+    return () => {
+      cancelAnimationFrame(frame)
+      video.removeEventListener('play', start)
+      video.removeEventListener('pause', stop)
+      video.removeEventListener('timeupdate', updateTint)
+      video.removeEventListener('seeked', updateTint)
+    }
+  }, [headerOverlayRef])
   if (videoUnavailable) {
     return <img src={poster} alt="A receipt being checked off in the Receipts app, with the running total updating" width={780} height={1688} className="block w-full h-auto" />
   }
@@ -71,7 +114,10 @@ function HeroVideo() {
       className="block w-full h-auto"
       width={780}
       height={1688}
-      onError={() => setVideoUnavailable(true)}
+      onError={() => {
+        setVideoUnavailable(true)
+        if (headerOverlayRef?.current) headerOverlayRef.current.style.opacity = '0'
+      }}
     />
   )
 }
@@ -120,6 +166,7 @@ const FEATURES = [
 ]
 
 export default function Landing() {
+  const heroHeaderOverlayRef = useRef(null)
   return (
     <div className="min-h-screen bg-white text-gray-900">
       {/* Top bar */}
@@ -155,8 +202,8 @@ export default function Landing() {
           <div className="relative flex justify-center">
             {/* Green glow centered behind the phone */}
             <div aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[44rem] h-[44rem] max-w-[170vw] rounded-full bg-[radial-gradient(closest-side,rgb(var(--accent-200))_0%,rgb(var(--accent-100))_45%,transparent_100%)]" />
-            <PhoneFrame className="relative w-[240px] sm:w-[300px] -rotate-2">
-              <HeroVideo />
+            <PhoneFrame headerOverlayRef={heroHeaderOverlayRef} className="relative w-[240px] sm:w-[300px] -rotate-2">
+              <HeroVideo headerOverlayRef={heroHeaderOverlayRef} />
             </PhoneFrame>
           </div>
         </div>
