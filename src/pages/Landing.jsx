@@ -65,9 +65,9 @@ function HeroVideo() {
 }
 
 const STEPS = [
-  ['Add the receipt', 'Whoever paid types it in or takes a photo, and the photo gets read into items and prices.'],
-  ['Check off what you had', 'Everyone goes through the list on their own phone. Shared items, like paper towels, can be split between everyone.'],
-  ['See what you owe', 'Each item is split among the people who claimed it, and tax and tip are split by how much each person spent.'],
+  ['Add the receipt', 'Whoever paid types it in or takes a photo, and the photo gets read into items and prices.', 'phone-add-how', 'Receipt form with a scan button and store and category fields'],
+  ['Check off what you had', 'Everyone goes through the list on their own phone. Shared items, like paper towels, can be split between everyone.', 'phone-claim-how', 'Chocolate Hearts checked off by Milo and Sierra, with other receipt items above and below'],
+  ['See what you owe', 'Each item is split among the people who claimed it, and tax and tip are split by how much each person spent.', 'phone-debts-how', 'People who owe you shown above people you owe, with amounts and payment actions'],
 ]
 
 // Kept true to how the app works: see receiptDebts (balances.js) for check-ins
@@ -92,7 +92,7 @@ const FEATURES = [
   },
   {
     shot: 'phone-split', alt: 'Who owes what on a receipt, with an itemized breakdown per person',
-    title: 'Tax and tip',
+    title: 'Split tax and tip fairly',
     body: "If you bought more, you pay more of the tax and tip.",
   },
   {
@@ -155,11 +155,14 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-center">How it works</h2>
           <ol className="mt-10 grid sm:grid-cols-3 gap-4">
-            {STEPS.map(([title, body], i) => (
-              <li key={title} className="bg-white border border-gray-200 rounded-2xl p-6">
+            {STEPS.map(([title, body, shot, alt], i) => (
+              <li key={title} className="flex flex-col bg-white border border-gray-200 rounded-2xl p-6">
                 <span className="w-9 h-9 rounded-full bg-accent-600 text-white font-bold flex items-center justify-center">{i + 1}</span>
                 <h3 className="mt-4 text-lg font-semibold">{title}</h3>
                 <p className="mt-2 text-gray-600">{body}</p>
+                <div className="mt-4 w-full aspect-[7/5] overflow-hidden">
+                  <img src={asset(`${shot}.webp`)} alt={alt} width={585} height={480} loading="lazy" className="block h-full w-full rounded-xl border border-gray-100 object-cover object-center" />
+                </div>
               </li>
             ))}
           </ol>
@@ -170,7 +173,7 @@ export default function Landing() {
       {/* Features, alternating sides. On wider screens they're pulled together
           so each phone overlaps the previous one vertically (they're on
           opposite sides, so they nest instead of colliding). */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 md:py-20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 md:pt-20 md:pb-0">
         {FEATURES.map((f, i) => (
           <section key={f.shot} className={`py-10 md:py-0 grid md:grid-cols-2 gap-10 md:gap-16 items-center ${i > 0 ? 'md:-mt-[148px]' : ''}`}>
             <div className={`text-center md:text-left ${i % 2 ? 'md:order-2' : ''}`}>
@@ -184,57 +187,54 @@ export default function Landing() {
         ))}
       </div>
 
-      {/* Stats */}
-      <div className="tear-band-wrap">
-      <section className="tear-band bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-          <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Spending stats</h2>
-            <p className="mt-4 text-lg text-gray-600">See spending by month, category, and store, along with what gets bought most and how much each person paid versus used.</p>
+      {/* Stats stay with the feature tour, with the larger screenshot as a visual capstone. */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 md:pt-12 pb-16 sm:pb-20">
+        <div className="text-center max-w-2xl mx-auto">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Spending stats</h2>
+          <p className="mt-4 text-lg text-gray-600">See spending by month, category, and store, along with what gets bought most and how much each person paid versus used.</p>
+        </div>
+        <div className="mt-10 flex justify-center sm:hidden">
+          <PhoneShot name="phone-stats" alt="Stats on a phone: what each person paid compared to what they used" className="w-[240px]" />
+        </div>
+        <div className="hidden sm:block mt-10 rounded-xl overflow-hidden bg-gray-200 shadow-2xl shadow-gray-900/15 ring-1 ring-gray-200">
+          <div className="flex gap-1.5 px-3.5 py-3 bg-gray-100 border-b border-gray-200" aria-hidden="true">
+            <span className="w-2.5 h-2.5 rounded-full bg-gray-300" /><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /><span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
           </div>
-          <div className="mt-10 flex justify-center sm:hidden">
-            <PhoneShot name="phone-stats" alt="Stats on a phone: what each person paid compared to what they used" className="w-[240px]" />
-          </div>
-          <div className="hidden sm:block mt-10 rounded-xl overflow-hidden bg-gray-200 shadow-2xl shadow-gray-900/15 ring-1 ring-gray-200">
-            <div className="flex gap-1.5 px-3.5 py-3 bg-gray-100 border-b border-gray-200" aria-hidden="true">
-              <span className="w-2.5 h-2.5 rounded-full bg-gray-300" /><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /><span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
-            </div>
-            <img src={asset('desktop-stats.webp')} alt="Stats page with spending per month and each person's fair share" width={1600} height={1000} loading="lazy" className="block w-full h-auto" />
-          </div>
+          <img src={asset('desktop-stats.webp')} alt="Stats page with spending per month and each person's fair share" width={1600} height={1000} loading="lazy" className="block w-full h-auto" />
         </div>
       </section>
-      </div>
 
       {/* FAQ */}
-      <section className="max-w-3xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20">
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-center">Questions</h2>
-        <div className="mt-8 divide-y divide-gray-200 border-y border-gray-200">
-          {FAQ.map(([q, a]) => (
-            <details key={q} className="group py-4">
-              <summary className="flex items-center justify-between gap-4 cursor-pointer list-none font-semibold text-gray-900 [&::-webkit-details-marker]:hidden">
-                {q}
-                <svg className="w-5 h-5 shrink-0 text-gray-400 transition-transform group-open:rotate-45" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-                  <path strokeLinecap="round" d="M10 4v12M4 10h12" />
-                </svg>
-              </summary>
-              <p className="mt-2 text-gray-600">{a}</p>
-            </details>
-          ))}
-        </div>
-      </section>
-
-      {/* Closing call to action */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 text-center">
-        <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight">Start splitting your next grocery run</h2>
-        <p className="mt-4 text-lg text-gray-600">Create a group, invite your roommates, and add your first receipt.</p>
-        <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-          <Link to="/signup" className={primaryCta}>Get started</Link>
-          <Link to="/signin" className={secondaryCta}>I already have an account</Link>
-        </div>
-      </section>
-
       <div className="tear-band-wrap">
-      <footer className="tear-top-band bg-gray-50">
+        <section className="tear-band bg-gray-50">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-center">Questions</h2>
+            <div className="mt-8 divide-y divide-gray-200 border-y border-gray-200">
+              {FAQ.map(([q, a]) => (
+                <details key={q} className="group py-4">
+                  <summary className="flex items-center justify-between gap-4 cursor-pointer list-none font-semibold text-gray-900 [&::-webkit-details-marker]:hidden">
+                    {q}
+                    <svg className="w-5 h-5 shrink-0 text-gray-400 transition-transform group-open:rotate-45" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                      <path strokeLinecap="round" d="M10 4v12M4 10h12" />
+                    </svg>
+                  </summary>
+                  <p className="mt-2 text-gray-600">{a}</p>
+                </details>
+              ))}
+            </div>
+            <div className="mt-12 pt-10 text-center">
+              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Start splitting your next grocery run</h2>
+              <p className="mt-4 text-lg text-gray-600">Create a group, invite your roommates, and add your first receipt.</p>
+              <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+                <Link to="/signup" className={primaryCta}>Get started</Link>
+                <Link to="/signin" className={secondaryCta}>I already have an account</Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer className="bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 grid gap-6 sm:grid-cols-[1fr_auto] items-start text-sm text-gray-500">
           <div className="space-y-2 text-center sm:text-left">
             <Link to="/" className="inline-flex items-center gap-2 font-bold text-base text-gray-900">
@@ -251,7 +251,6 @@ export default function Landing() {
           </nav>
         </div>
       </footer>
-      </div>
     </div>
   )
 }
