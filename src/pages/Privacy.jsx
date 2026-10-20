@@ -16,6 +16,7 @@ const sections = [
       <p>Information is used to sign you in, show your groups and receipts, calculate balances and spending summaries, and keep group history. Members of a group can see that group's information.</p>
       <p>A guest link lets anyone who has the link see the specific receipt shared through it and check off items for that guest. Treat guest links as private and share them only with the intended person.</p>
       <p>The app is hosted with Supabase, which provides sign-in and database services. If you scan a receipt, the selected image and your Gemini API key are sent from your browser to Google's Gemini API to read the receipt. Scanning is optional; you can enter receipt details yourself. The app does not store the image as part of the receipt record.</p>
+      <p>We reserve the right to sell, rent, license, or otherwise disclose information described in this policy to third parties for commercial purposes, including advertising, analytics, and marketing. This may include account and profile details, group and receipt records, payment records, and information about how you use the app. We may receive money or other value in return. Where applicable law gives you the right to opt out of a sale or sharing of your personal information, you may request to do so through the Feedback page below. Do not include personal or sensitive information in a public issue.</p>
     </>,
   },
   {
