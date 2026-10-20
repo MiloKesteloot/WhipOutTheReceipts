@@ -66,8 +66,8 @@ function HeroVideo() {
 
 const STEPS = [
   ['Add the receipt', 'Whoever paid types it in or takes a photo, and the photo gets read into items and prices.'],
-  ['Check off what you had', 'Everyone goes through the list on their own phone. Things like paper towels can be set to split between everyone.'],
-  ['See what you owe', 'Each item is split between the people who checked it, and tax and tip are split by how much each person spent.'],
+  ['Check off what you had', 'Everyone goes through the list on their own phone. Shared items, like paper towels, can be split between everyone.'],
+  ['See what you owe', 'Each item is split among the people who claimed it, and tax and tip are split by how much each person spent.'],
 ]
 
 // Kept true to how the app works: see receiptDebts (balances.js) for check-ins
@@ -127,12 +127,12 @@ export default function Landing() {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-16 sm:pt-16 sm:pb-24 grid md:grid-cols-[1.1fr_0.9fr] gap-10 md:gap-8 items-center">
           <div className="relative z-10 text-center md:text-left">
             <h1 className="font-extrabold tracking-tight">
-              <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08]">Split grocery receipts</span>
+              <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08]">Split grocery bills</span>
               <span className="block whitespace-nowrap text-[clamp(1.75rem,8.4vw,3.25rem)] leading-[1.08] text-accent-600">with your roommates</span>
             </h1>
             <p className="mt-4 sm:mt-6 text-lg sm:text-xl text-gray-600 max-w-xl mx-auto md:mx-0">
               One person pays and adds the receipt. Everyone else checks off what they had,
-              and the app works out what each person owes, tax and tip included.
+              and the app figures out each person’s share, including tax and tip.
             </p>
             <div className="mt-6 sm:mt-8 flex gap-3 justify-center md:justify-start">
               <Link to="/signup" className={`${primaryCta} flex-1 sm:flex-none`}>Get started</Link>
@@ -190,7 +190,7 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="text-center max-w-2xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">Spending stats</h2>
-            <p className="mt-4 text-lg text-gray-600">Because every item is tracked, you can see spending by month, category and store, what gets bought most, and how much each person has paid compared to what they actually used.</p>
+            <p className="mt-4 text-lg text-gray-600">See spending by month, category, and store, along with what gets bought most and how much each person paid versus used.</p>
           </div>
           <div className="mt-10 flex justify-center sm:hidden">
             <PhoneShot name="phone-stats" alt="Stats on a phone: what each person paid compared to what they used" className="w-[240px]" />
@@ -225,8 +225,8 @@ export default function Landing() {
 
       {/* Closing call to action */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-20 text-center">
-        <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight">Try it with your roommates</h2>
-        <p className="mt-4 text-lg text-gray-600">Make a group, send everyone the invite link, and add your first receipt.</p>
+        <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight">Start splitting your next grocery run</h2>
+        <p className="mt-4 text-lg text-gray-600">Create a group, invite your roommates, and add your first receipt.</p>
         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
           <Link to="/signup" className={primaryCta}>Get started</Link>
           <Link to="/signin" className={secondaryCta}>I already have an account</Link>
@@ -242,7 +242,7 @@ export default function Landing() {
               Receipts
             </Link>
             <p>Your group's receipts and payments are only visible to the people in your group (and to guests, through their own links).</p>
-            <p>Made by <a href="https://www.milo.games/" className="text-gray-700 hover:text-gray-900 underline-offset-2 hover:underline">Milo Kesteloot</a></p>
+            <p>Built by <a href="https://www.milo.games/" className="text-gray-700 hover:text-gray-900 underline-offset-2 hover:underline">Milo Kesteloot</a></p>
           </div>
           <nav className="flex justify-center sm:justify-end gap-5">
             <a href={PORTFOLIO_URL} className="hover:text-gray-800">How it's built</a>
