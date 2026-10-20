@@ -142,6 +142,12 @@ const FAQ = [
   ['Does it work on my phone?', 'Yes, in any browser. Add it to your home screen and it opens like an app.'],
 ]
 
+const REVIEWS = [
+  'Everyone checks off what they picked up, and the app handles the math. No more spreadsheet after every grocery run.',
+  'It’s easy to see who owes what across several trips, so paying each other back feels straightforward.',
+  'We split the dinner bill by what each person ordered, and tax and tip follow each person’s share.',
+]
+
 const FEATURES = [
   {
     shot: 'phone-claim', alt: "A Trader Joe's receipt with items checked off and a running total",
@@ -264,9 +270,31 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* FAQ */}
       <div className="tear-band-wrap">
-        <section className="tear-band bg-gray-50">
+        <section aria-labelledby="reviews-heading" className="tear-band bg-gray-50 py-16 sm:py-20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="mx-auto max-w-2xl text-center">
+              <h2 id="reviews-heading" className="mt-2 text-3xl sm:text-4xl font-bold tracking-tight">Less math. Fewer awkward reminders.</h2>
+            </div>
+            <ul className="mt-9 grid gap-5 md:grid-cols-3">
+              {REVIEWS.map(quote => (
+                <li key={quote} className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white p-5 shadow-[0_8px_24px_rgba(17,24,39,0.05)]">
+                  <div role="img" aria-label="5 out of 5 stars" className="flex justify-center gap-1 text-amber-400">
+                    {Array.from({ length: 5 }, (_, i) => <svg key={i} aria-hidden="true" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1.75l2.55 5.16 5.7.83-4.13 4.03.98 5.68L10 14.77l-5.1 2.68.98-5.68L1.75 7.74l5.7-.83L10 1.75z" /></svg>)}
+                  </div>
+                  <blockquote className="mt-4 flex-1 text-[17px] leading-7 text-gray-800">“{quote}”</blockquote>
+                  <div className="mt-3 text-right">
+                    <p className="text-sm font-semibold text-gray-700">Name</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      {/* FAQ */}
+        <section className="bg-white">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-center">Questions</h2>
             <div className="mt-8 divide-y divide-gray-200 border-y border-gray-200">
@@ -292,10 +320,11 @@ export default function Landing() {
             </div>
           </div>
         </section>
-      </div>
 
-      <footer className="bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10 text-sm text-gray-500">
+      <div className="relative -mt-[13px] bg-white">
+        <div className="tear-band-wrap">
+      <footer className="tear-top-band bg-gray-50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-[45px] pb-8 sm:pt-[53px] sm:pb-10 text-sm text-gray-500">
           <div className="grid gap-6 sm:grid-cols-[1fr_auto]">
             <div className="text-center sm:text-left">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-2">
@@ -315,6 +344,8 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+        </div>
+      </div>
     </div>
   )
 }
