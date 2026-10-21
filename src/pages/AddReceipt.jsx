@@ -186,10 +186,11 @@ export default function AddReceipt() {
     })
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // The key goes in a header, not the URL, so it isn't kept in logs or history
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           contents: [{
             parts: [
