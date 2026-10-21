@@ -335,13 +335,8 @@ export default function ReceiptDetail() {
 
   const checkinNames = new Set(checkins.map(c => c.roommate.toLowerCase()))
   const receiptComplete = (receipt?.members || []).every(m => checkinNames.has(m.toLowerCase()))
-  const receiptMembers = (() => {
-    const base = receipt?.members || []
-    const payer = receipt?.paid_by
-    if (!payer || base.some(m => m.toLowerCase() === payer.toLowerCase())) return base
-    return [...base, payer]
-  })()
-  const waitingOn = receiptMembers.filter(m => !checkinNames.has(m.toLowerCase()))
+  // Only the members, like balances: a payer left off the list had nothing
+  const waitingOn = (receipt?.members || []).filter(m => !checkinNames.has(m.toLowerCase()))
 
   // People on this receipt who can't check in themselves: no account, or no
   // longer in the group. Anyone can check off for them.

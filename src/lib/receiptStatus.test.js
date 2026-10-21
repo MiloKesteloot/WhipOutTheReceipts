@@ -24,10 +24,12 @@ describe('check-in status', () => {
     expect(receiptsToCheckOff(data, checkedIn, 'Bob')).toEqual([])
   })
 
-  it('waits on the payer too, even when they are not listed as a member', () => {
+  it("doesn't wait on a payer who was taken off the receipt (like balances)", () => {
     const r = { ...receipt, members: ['Bob'] }
-    const checkedIn = checkedInByReceipt({ checkins: [{ receipt_id: 'r1', roommate: 'Bob' }] })
-    expect(waitingOn(r, checkedIn)).toEqual(['Alice'])
+    const data = { receipts: [r], items, claims, checkins: [{ receipt_id: 'r1', roommate: 'Bob' }] }
+    const checkedIn = checkedInByReceipt(data)
+    expect(waitingOn(r, checkedIn)).toEqual([])
+    expect(receiptsToCheckOff(data, checkedIn, 'Alice')).toEqual([])
   })
 })
 

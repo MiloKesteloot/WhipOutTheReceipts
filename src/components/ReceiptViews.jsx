@@ -233,15 +233,17 @@ export function ReceiptCalendar({ receipts, checkedIn, totals }) {
 
 export function ReceiptDays({ receipts, checkedIn, totals, myName, hiddenCount, onShowAll }) {
   const byDate = {}
-  for (const r of receipts) (byDate[r.receipt_date] ||= []).push(r)
+  // Receipts without a date go last, under "No date"
+  for (const r of receipts) (byDate[r.receipt_date || ''] ||= []).push(r)
   const sortedDays = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
   if (sortedDays.length === 0) return <EmptyState hiddenCount={hiddenCount} onShowAll={onShowAll} />
 
   return (
     <div className="space-y-6">
       {sortedDays.map(dateKey => {
-        const date = new Date(dateKey + 'T12:00:00')
-        const dayLabel = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+        const dayLabel = dateKey
+          ? new Date(dateKey + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+          : 'No date'
         const dayReceipts = byDate[dateKey]
         const dayTotal = dayReceipts.reduce((s, r) => s + (totals[r.id] || 0), 0)
         return (
@@ -285,7 +287,7 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName, hiddenCount, 
 }
 
 export function ReceiptList({ receipts, checkedIn, totals, myName, hiddenCount, onShowAll }) {
-  const sorted = [...receipts].sort((a, b) => b.receipt_date.localeCompare(a.receipt_date))
+  const sorted = [...receipts].sort((a, b) => (b.receipt_date || '').localeCompare(a.receipt_date || ''))
   if (sorted.length === 0) return <EmptyState hiddenCount={hiddenCount} onShowAll={onShowAll} />
 
   return (
@@ -293,7 +295,9 @@ export function ReceiptList({ receipts, checkedIn, totals, myName, hiddenCount, 
       {sorted.map(r => {
         const waiting = waitingOn(r, checkedIn)
         const total = totals[r.id] || 0
-        const date = new Date(r.receipt_date + 'T12:00:00')
+        const date = r.receipt_date
+          ? new Date(r.receipt_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'No date'
         return (
           <Link
             key={r.id}
@@ -305,7 +309,7 @@ export function ReceiptList({ receipts, checkedIn, totals, myName, hiddenCount, 
               <div className="min-w-0">
                 <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
                 <p className="text-xs text-gray-400">
-                  {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {date}
                   {waiting.length > 0 && <span className="text-amber-600 ml-2">· Waiting on {formatWaitingOn(waiting, myName)}</span>}
                 </p>
               </div>

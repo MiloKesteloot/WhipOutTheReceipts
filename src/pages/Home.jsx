@@ -17,7 +17,7 @@ export default function Home() {
   if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
 
   const unchecked = receiptsToCheckOff(data, checkedInByReceipt(data), myName)
-    .sort((a, b) => b.receipt_date.localeCompare(a.receipt_date))
+    .sort((a, b) => (b.receipt_date || '').localeCompare(a.receipt_date || ''))
   const myBalances = myName ? balances.forPerson(myName) : []
   const iOweTotal = myBalances.filter(e => e.iOwe).reduce((s, e) => s + e.amount, 0)
   const owedToMeTotal = myBalances.filter(e => !e.iOwe).reduce((s, e) => s + e.amount, 0)
@@ -43,7 +43,9 @@ export default function Home() {
           </div>
           <ul className="divide-y divide-gray-100">
             {unchecked.map(r => {
-              const date = new Date(r.receipt_date + 'T12:00:00')
+              const date = r.receipt_date
+                ? new Date(r.receipt_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                : 'No date'
               return (
                 <li key={r.id}>
                   <Link to={`/receipt/${r.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition">
@@ -52,7 +54,7 @@ export default function Home() {
                       <div className="min-w-0">
                         <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
                         <p className="text-xs text-gray-400">
-                          {date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · Paid by {r.paid_by}
+                          {date} · Paid by {r.paid_by}
                         </p>
                       </div>
                     </div>

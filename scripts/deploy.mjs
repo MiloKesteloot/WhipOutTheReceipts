@@ -62,8 +62,13 @@ writeFileSync(versionFile, JSON.stringify(data, null, 2) + '\n')
 
 console.log(`\nBuilding and deploying version ${data.version}...\n`)
 
+// Built in its own folder, not dist/, so another `vite build` running at the
+// same time (a preview, the showcase script, another agent) can't empty it
+// while gh-pages is copying it
+const outDir = 'node_modules/.deploy-build'
+
 try {
-  execSync('vite build && gh-pages -d dist', { stdio: 'inherit', shell: true })
+  execSync(`vite build --outDir ${outDir} --emptyOutDir && gh-pages -d ${outDir}`, { stdio: 'inherit', shell: true })
   console.log(`\n✓ Deployed version ${data.version}\n`)
 } catch {
   data.version -= 1

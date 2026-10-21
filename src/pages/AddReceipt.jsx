@@ -60,13 +60,13 @@ export default function AddReceipt() {
   const [paidBy, setPaidBy] = useState('')
   const { group, memberships, switchGroup, members, myName, myMember, coreNames: coreRoommates, nameOf, ensureMemberIds } = useGroup()
   const knownNames = members.filter(m => m.active).map(m => m.displayName)
-  const [paidByOpen, setPaidByOpen] = useState(false)
-  const paidByRef = useRef(null)
+  // A payer the form put on the receipt (not picked by hand): switching to
+  // another payer takes them off again
+  const autoAddedPayer = useRef(null)
   const [lineItems, setLineItems] = useState([newItem()])
   const [meals, setMeals] = useState([])
   const [originalDbIds, setOriginalDbIds] = useState(new Set())
   const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
-  const [originalMemberIds, setOriginalMemberIds] = useState([])
   const [category, setCategory] = useState('Groceries')
   const [receiptDate, setReceiptDate] = useState(() => {
     if (!receiptId) return searchParams.get('date') || localToday()
@@ -124,7 +124,6 @@ export default function AddReceipt() {
           setFees(receipt.fees ? String(receipt.fees) : '')
           if (receipt.receipt_date) setReceiptDate(receipt.receipt_date)
           setReceiptMembers(receipt.members || core)
-          setOriginalMemberIds(row.member_ids || [])
         }
 
         const [{ data: existingItems, error: itemsError }, { data: existingMeals, error: mealsError }] = await Promise.all([
@@ -165,16 +164,6 @@ export default function AddReceipt() {
     }
     load()
   }, [receiptId, isEditing, group.id, loadAttempt])
-
-  useEffect(() => {
-    function handleClick(e) {
-      if (paidByRef.current && !paidByRef.current.contains(e.target)) {
-        setPaidByOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
 
   function markDirty() {
     if (loadComplete.current) setIsDirty(true)
@@ -513,6 +502,26 @@ Rules:
     return [...receiptMembers, name]
   }
 
+  // The payer is put on the receipt; deselecting them afterwards means they
+  // paid but had nothing (nobody waits on them to check in)
+  function pickPayer(name) {
+    markDirty()
+    setErrors(v => ({ ...v, paidBy: undefined }))
+    setPaidBy(name)
+    setReceiptMembers(prev => {
+      let next = prev
+      if (autoAddedPayer.current && autoAddedPayer.current !== name) {
+        next = next.filter(m => m !== autoAddedPayer.current)
+      }
+      autoAddedPayer.current = null
+      if (name && !next.includes(name)) {
+        next = [...next, name]
+        autoAddedPayer.current = name
+      }
+      return next
+    })
+  }
+
   function addTypedMember() {
     const next = membersWithTyped()
     if (next !== receiptMembers) { markDirty(); setReceiptMembers(next) }
@@ -684,11 +693,14 @@ Rules:
         }
 
         // People taken off the receipt: their check-offs and check-in go too,
-        // so they don't keep owing on it
-        const removed = originalMemberIds.filter(id => !memberIds.includes(id) && id !== paidById)
-        if (removed.length > 0 && originalDbIds.size > 0) {
-          await must(supabase.from('claims').delete().in('member_id', removed).in('item_id', [...originalDbIds]), `Could not clear removed people's check-offs`)
-          await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).in('member_id', removed), `Could not clear removed people's check-ins`)
+        // so they don't keep owing on it. An empty list means everyone is on
+        // it, so nobody is taken off; otherwise anyone not on the new list is
+        // (including people who were on it only because the list was empty).
+        const onReceipt = [...new Set([...memberIds, paidById])]
+        if (memberIds.length > 0 && originalDbIds.size > 0) {
+          const notOn = `(${onReceipt.join(',')})`
+          await must(supabase.from('claims').delete().not('member_id', 'in', notOn).in('item_id', [...originalDbIds]), `Could not clear removed people's check-offs`)
+          await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).not('member_id', 'in', notOn), `Could not clear removed people's check-ins`)
         }
 
         // New items, or items newly locked 🔒 (split with everyone): everyone
@@ -901,6 +913,8 @@ Rules:
                   type="button"
                   onClick={() => {
                     markDirty()
+                    // Chosen by hand now: changing the payer leaves it alone
+                    if (autoAddedPayer.current === name) autoAddedPayer.current = null
                     setReceiptMembers(prev =>
                       prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]
                     )
@@ -974,45 +988,18 @@ Rules:
         {/* Paid by */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Paid by</label>
-          <div className="relative" ref={paidByRef}>
-            <input
-              type="text"
-              value={paidBy}
-              onChange={e => { markDirty(); setPaidBy(e.target.value); setErrors(v => ({ ...v, paidBy: undefined })); setPaidByOpen(true) }}
-              onFocus={() => setPaidByOpen(true)}
-              placeholder="Who paid?"
-              autoComplete="off"
-              className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'}`}
-            />
-            {paidByOpen && (() => {
-              const allSuggestions = [...new Set([...coreRoommates, ...knownNames])]
-              const isExactMatch = allSuggestions.some(n => n.toLowerCase() === paidBy.toLowerCase())
-              const suggestions = (paidBy === '' || isExactMatch)
-                ? allSuggestions
-                : allSuggestions.filter(n => n.toLowerCase().includes(paidBy.toLowerCase()))
-              return suggestions.length > 0 ? (
-                <ul className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                  {suggestions.map(name => (
-                    <li key={name}>
-                      <button
-                        type="button"
-                        onMouseDown={e => {
-                          e.preventDefault()
-                          markDirty()
-                          setPaidBy(name)
-                          setErrors(v => ({ ...v, paidBy: undefined }))
-                          setPaidByOpen(false)
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent-50 hover:text-accent-700 transition-colors"
-                      >
-                        {name}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null
-            })()}
-          </div>
+          {/* Only people on the receipt or in the group, so a typo can't make
+              up a new person. Someone new: "Add someone…" above first. */}
+          <select
+            value={paidBy}
+            onChange={e => pickPayer(e.target.value)}
+            className={`w-full border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'} ${paidBy ? 'text-gray-900' : 'text-gray-400'}`}
+          >
+            <option value="" disabled>Who paid?</option>
+            {[...new Set([...receiptMembers, ...knownNames, ...(paidBy ? [paidBy] : [])])].map(name => (
+              <option key={name} value={name} className="text-gray-900">{name}</option>
+            ))}
+          </select>
           {errors.paidBy && <p className="text-xs text-red-500 mt-1">{errors.paidBy}</p>}
         </div>
 

@@ -63,8 +63,10 @@ function computeConsumption(receipts, items, claims, meals) {
       + rMeals.reduce((s, m) => s + Number(m.fee || 0), 0)
     let owedToPayer = 0
     for (const d of calculateDebts([r], rItems, rClaims, rMeals)) {
-      add(d.debtor, d.amount)
-      owedToPayer += d.amount
+      // A negative share (mostly a discount) comes back as the payer owing them
+      const [person, amount] = d.debtor === r.paid_by ? [d.creditor, -d.amount] : [d.debtor, d.amount]
+      add(person, amount)
+      owedToPayer += amount
     }
     add(r.paid_by, Math.round((total - owedToPayer) * 100) / 100)
   }
@@ -396,7 +398,7 @@ export default function Stats() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Show people</h2>
-          {selected.size !== allPeople.length && (
+          {allPeople.some(p => !selected.has(p.toLowerCase())) && (
             <button
               onClick={() => {
               setSelectedPeople(new Set(allPeople.map(p => p.toLowerCase())))

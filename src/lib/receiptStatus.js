@@ -1,7 +1,9 @@
 // Per-receipt status shared by Home and the Receipts page: who's on it,
 // who has checked in, and its total. Inputs are useBalances() data (names).
 
-// Members plus the payer, who is always part of a receipt
+// Members plus the payer: the receipts that matter to you ("Mine"), since
+// people owe the payer on it. Check-ins only wait on the members, like
+// balances: a payer left off the list paid but had nothing themselves.
 export function effectiveMembers(receipt) {
   const members = receipt.members || []
   const payer = receipt.paid_by
@@ -44,7 +46,7 @@ export function receiptsToCheckOff({ receipts, items }, claimers, myName) {
   const me = myName.toLowerCase()
   const withItems = new Set(items.map(i => i.receipt_id))
   return receipts.filter(r =>
-    effectiveMembers(r).some(m => m.toLowerCase() === me)
+    (r.members || []).some(m => m.toLowerCase() === me)
     && withItems.has(r.id)
     && !claimers[r.id]?.has(me))
 }
@@ -53,5 +55,5 @@ export function receiptsToCheckOff({ receipts, items }, claimers, myName) {
 export function waitingOn(receipt, claimers) {
   const c = claimers[receipt.id]
   if (!c || c.size === 0) return []
-  return effectiveMembers(receipt).filter(m => !c.has(m.toLowerCase()))
+  return (receipt.members || []).filter(m => !c.has(m.toLowerCase()))
 }

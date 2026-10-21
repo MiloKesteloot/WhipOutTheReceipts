@@ -143,6 +143,22 @@ select pg_temp.check(count(*) = :receipt_count, 'after joining, stranger sees th
 select pg_temp.check(count(*) = 1, 'Milo''s profile is now visible to the stranger')
   from profiles where id = '00000000-0000-0000-0000-00000000000a';
 
+-- A receipt with no member list is everyone's (20261020000000): another
+-- member can't remove Milo's check-offs on it (someone else paid, so
+-- Milo is on it only through the empty list)
+select id as other_payer from group_members where first_name = 'Alex' \gset
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+insert into receipts (group_id, store_name, paid_by_member, member_ids, receipt_date)
+  values (:'gid', 'Everyone''s store', :'other_payer', '{}', current_date) returning id as open_receipt \gset
+insert into items (receipt_id, name, price) values (:'open_receipt', 'Shared Bread', 3) returning id as open_item \gset
+insert into claims (item_id, member_id) values (:'open_item', :'milo_member');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+delete from claims where item_id = :'open_item';
+reset role;
+select pg_temp.check(count(*) = 1, 'on a receipt with no member list, others cannot remove your check-offs')
+  from claims where item_id = :'open_item';
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+
 -- ── Payments ─────────────────────────────────────────────────
 select id as alex_member from group_members where group_id = :'gid' and first_name = 'Alex' \gset
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');

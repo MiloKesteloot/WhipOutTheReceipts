@@ -85,7 +85,7 @@ export default function Guest() {
       checkins: receipts.flatMap(r => r.checkins.map(id => ({ receipt_id: r.id, roommate: nameOf(id) }))),
     })
     const balances = computeBalances(debts, payments)
-    return { name: nameOf(me), meId: me, nameOf, receipts, balances }
+    return { name: nameOf(me), meId: me, nameOf, receipts, debts, balances }
   }, [view])
 
   if (loadFailed) {
@@ -131,6 +131,10 @@ export default function Guest() {
   const amountLabel = r => {
     if (r.paid_by === shaped.name) return null
     if (r.waitingOn.length) return <span className="text-xs text-gray-400">Waiting on {r.waitingOn.join(', ')}</span>
+    // Nothing of theirs on it (or it nets to nothing): there was nothing to pay
+    if (!shaped.debts.some(d => d.receiptId === r.id && d.debtor === shaped.name)) {
+      return <span className="text-xs text-gray-400">Nothing owed</span>
+    }
     const left = shaped.balances.remainingFor(r.id, shaped.name, r.paid_by)
     return left > 0
       ? <span className="text-sm font-semibold text-amber-600">${left.toFixed(2)}</span>

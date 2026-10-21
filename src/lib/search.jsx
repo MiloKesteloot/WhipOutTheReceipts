@@ -47,7 +47,7 @@ async function fetchSearchData(groupId, nameOf, memberIds) {
     const receipt = {
       ...r,
       date: r.receipt_date || r.created_at?.slice(0, 10) || '',
-      members: effectiveMembers(r),
+      members: r.members || [],
       total: (itemTotalByReceipt[r.id] || 0) + Number(r.tip || 0) + Number(r.tax || 0)
         + Number(r.fees || 0) + (mealFeesByReceipt[r.id] || 0),
     }
@@ -69,13 +69,6 @@ async function fetchSearchData(groupId, nameOf, memberIds) {
   items.sort((a, b) => newestFirst(a.receipt, b.receipt) || (b.created_at || '').localeCompare(a.created_at || ''))
 
   return { receipts, items }
-}
-
-function effectiveMembers(receipt) {
-  const members = receipt.members || []
-  const payer = receipt.paid_by
-  if (!payer || members.some(m => m.toLowerCase() === payer.toLowerCase())) return members
-  return [...members, payer]
 }
 
 function dedupeNames(names) {
