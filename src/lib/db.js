@@ -82,6 +82,28 @@ export async function loadCheckins(memberIds, nameOf) {
   return rows.map(c => checkinFromDb(c, nameOf))
 }
 
+// "Not mine" on unclaimed items (item_dismissals, migration 20261022000000)
+export async function loadDismissals(memberIds, nameOf) {
+  if (!memberIds.length) return []
+  const rows = await selectAll(() =>
+    supabase.from('item_dismissals').select('item_id, member_id').in('member_id', memberIds), 'item_id')
+  return rows.map(d => ({ ...d, roommate: nameOf(d.member_id) }))
+}
+
+// Say an unclaimed item isn't yours (no-op if already said)
+export async function dismissItem(memberId, itemId) {
+  const { error } = await supabase.from('item_dismissals')
+    .upsert({ item_id: itemId, member_id: memberId }, { onConflict: 'item_id,member_id', ignoreDuplicates: true })
+  if (error) throw error
+}
+
+// Claim one item ("It's mine"), keeping your other check-offs
+export async function claimItem(memberId, itemId) {
+  const { error } = await supabase.from('claims')
+    .upsert({ item_id: itemId, member_id: memberId }, { onConflict: 'item_id,member_id', ignoreDuplicates: true })
+  if (error) throw error
+}
+
 export async function loadPayments(groupId, nameOf) {
   const rows = await selectAll(() =>
     supabase.from('payments').select('*').eq('group_id', groupId).is('deleted_at', null))

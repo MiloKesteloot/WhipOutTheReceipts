@@ -157,6 +157,22 @@ delete from claims where item_id = :'open_item';
 reset role;
 select pg_temp.check(count(*) = 1, 'on a receipt with no member list, others cannot remove your check-offs')
   from claims where item_id = :'open_item';
+
+-- "Not mine" (20261022000000): for yourself (or a guest), not for someone with an account
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000a');
+insert into items (receipt_id, name, price) values (:'open_receipt', 'Mystery Ham', 9) returning id as ham \gset
+insert into item_dismissals (item_id, member_id) values (:'open_item', :'milo_member');
+select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
+select pg_temp.check(count(*) = 1, 'group members see who said "not mine"') from item_dismissals where item_id = :'open_item';
+select pg_temp.expect_error(format($$insert into item_dismissals (item_id, member_id) values (%L, %L)$$, :'ham', :'milo_member'),
+  'cannot say "not mine" for someone with an account');
+delete from item_dismissals where item_id = :'open_item';
+reset role;
+select pg_temp.check(count(*) = 1, 'cannot remove someone else''s "not mine"') from item_dismissals where item_id = :'open_item';
+set local role anon;
+select pg_temp.expect_error('select count(*) from item_dismissals', 'signed-out visitor cannot read "not mine"s');
+select pg_temp.expect_error(format($$select guest_dismiss_item('not-a-real-token-not-a-real-token', %L)$$, :'ham'), 'a bad guest link cannot dismiss items');
+reset role;
 select pg_temp.act_as('00000000-0000-0000-0000-00000000000b');
 
 -- ── Payments ─────────────────────────────────────────────────

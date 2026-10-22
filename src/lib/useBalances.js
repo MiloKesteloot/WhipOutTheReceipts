@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGroup } from './group.jsx'
-import { loadReceipts, loadItems, loadClaims, loadMeals, loadCheckins, loadPayments } from './db.js'
+import { loadReceipts, loadItems, loadClaims, loadMeals, loadCheckins, loadPayments, loadDismissals } from './db.js'
 import { receiptDebts, computeBalances } from './balances.js'
 
 // The last loaded data per group, shown at once while it's fetched again.
@@ -29,15 +29,16 @@ export function useBalances() {
   }, [group.id, nameOf])
 
   async function load() {
-    const [receipts, items, claims, meals, checkins, payments] = await Promise.all([
-      loadReceipts(group.id, nameOf, 'id, paid_by_member, member_ids, store_name, receipt_date, created_at, tip, tax, fees'),
-      loadItems(group.id, 'id, receipt_id, meal_id, price'),
+    const [receipts, items, claims, meals, checkins, payments, dismissals] = await Promise.all([
+      loadReceipts(group.id, nameOf, 'id, paid_by_member, member_ids, store_name, receipt_date, created_at, tip, tax, fees, splits_unclaimed'),
+      loadItems(group.id, 'id, receipt_id, meal_id, name, price, always_split'),
       loadClaims(memberIds, nameOf),
       loadMeals(group.id, 'id, receipt_id, fee'),
       loadCheckins(memberIds, nameOf),
       loadPayments(group.id, nameOf),
+      loadDismissals(memberIds, nameOf),
     ])
-    const data = { receipts, items, claims, meals, checkins, payments }
+    const data = { receipts, items, claims, meals, checkins, payments, dismissals }
     const debts = receiptDebts(data)
     return { loading: false, error: null, data, debts, balances: computeBalances(debts, payments) }
   }

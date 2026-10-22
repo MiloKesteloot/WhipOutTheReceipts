@@ -22,7 +22,7 @@ export function invalidateSearch(groupId) {
 
 async function fetchSearchData(groupId, nameOf, memberIds) {
   const [rawReceipts, rawItems, claims, meals] = await Promise.all([
-    loadReceipts(groupId, nameOf, 'id, store_name, receipt_date, created_at, paid_by_member, member_ids, tip, tax, fees'),
+    loadReceipts(groupId, nameOf, 'id, store_name, receipt_date, created_at, paid_by_member, member_ids, tip, tax, fees, splits_unclaimed'),
     loadItems(groupId, 'id, receipt_id, meal_id, name, price, always_split, created_at'),
     loadClaims(memberIds, nameOf),
     loadMeals(groupId, 'id, receipt_id, name, fee'),

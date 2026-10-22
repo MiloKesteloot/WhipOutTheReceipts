@@ -15,6 +15,8 @@ import LoadError from '../components/LoadError.jsx'
 import { PageLoading } from '../components/Loading.jsx'
 import { LockIcon, ChevronRight } from '../components/Icons.jsx'
 import { money } from '../lib/ui.js'
+import { unclaimedForMe } from '../lib/receiptStatus.js'
+import UnclaimedItems from '../components/UnclaimedItems.jsx'
 
 // /guest/:token — check off items for someone without an account, from a
 // link the group shared with them. No login: everything goes through the
@@ -91,8 +93,31 @@ export default function Guest() {
       checkins: receipts.flatMap(r => r.checkins.map(id => ({ receipt_id: r.id, roommate: nameOf(id) }))),
     })
     const balances = computeBalances(debts, payments)
-    return { name: nameOf(me), meId: me, nameOf, receipts, debts, balances }
+    // Items nobody claimed on finished receipts (the same banner as Home)
+    const unclaimed = unclaimedForMe({
+      receipts,
+      items: receipts.flatMap(r => r.items),
+      claims: receipts.flatMap(r => r.claims),
+      checkins: receipts.flatMap(r => r.checkins.map(id => ({ receipt_id: r.id, roommate: nameOf(id) }))),
+      dismissals: receipts.flatMap(r => (r.dismissals || []).map(d => ({ ...d, roommate: nameOf(d.member_id) }))),
+    }, nameOf(me))
+    return { name: nameOf(me), meId: me, nameOf, receipts, debts, balances, unclaimed }
   }, [view])
+
+  // "It's mine": the guest's check-offs on that receipt plus this item.
+  // "Not mine": hides it for them, and the others see they said so.
+  const [unclaimedError, setUnclaimedError] = useState('')
+  async function guestAct(rpc, args) {
+    setUnclaimedError('')
+    const { error } = await supabase.rpc(rpc, { p_token: token, ...args })
+    if (error) { setUnclaimedError(error.message); return }
+    await load()
+  }
+  const claimIt = ({ item, receipt }) => guestAct('guest_save_claims', {
+    p_receipt: receipt.id,
+    p_item_ids: [...new Set([...receipt.claims.filter(c => c.member_id === shaped.meId).map(c => c.item_id), item.id])],
+  })
+  const notMine = ({ item }) => guestAct('guest_dismiss_item', { p_item: item.id })
 
   if (loadFailed) return <Shell><LoadError onRetry={load} /></Shell>
   if (view === undefined) return <Shell><PageLoading /></Shell>
@@ -170,6 +195,19 @@ export default function Guest() {
             </li>
           ))}
         </ul>
+      )}
+
+      {shaped.unclaimed.length > 0 && (
+        <div className="mt-4">
+          <UnclaimedItems
+            entries={shaped.unclaimed}
+            myName={shaped.name}
+            onOpen={r => { setSavedId(null); openReceipt(r.id) }}
+            onMine={claimIt}
+            onNotMine={notMine}
+          />
+          {unclaimedError && <p className="mt-2 text-sm text-red-500">{unclaimedError}</p>}
+        </div>
       )}
 
       {shaped.receipts.length === 0 && (

@@ -46,6 +46,7 @@ export default function ReceiptDetail() {
   const [items, setItems] = useState([])
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
+  const [dismissals, setDismissals] = useState([]) // "Not mine" on unclaimed items
   const { group, memberships, switchGroup, myName, myMember, nameOf, idOf, members, refreshMembers } = useGroup()
   // { id, name } of the group this receipt belongs to, when it isn't the current one
   const [otherGroup, setOtherGroup] = useState(null)
@@ -115,12 +116,18 @@ export default function ReceiptDetail() {
     setMeals(mealRes.data || [])
 
     if (allItems.length > 0) {
-      const { data: claimData, error: claimError } = await supabase
-        .from('claims').select('*').in('item_id', allItems.map(i => i.id)).order('id')
+      const ids = allItems.map(i => i.id)
+      const [{ data: claimData, error: claimError }, { data: dismissData }] = await Promise.all([
+        supabase.from('claims').select('*').in('item_id', ids).order('id'),
+        // Who said an unclaimed item isn't theirs (only shown, so a failure isn't fatal)
+        supabase.from('item_dismissals').select('item_id, member_id').in('item_id', ids),
+      ])
       if (claimError) return failed()
       setClaims((claimData || []).map(c => claimFromDb(c, nameOf)))
+      setDismissals((dismissData || []).map(d => ({ ...d, roommate: nameOf(d.member_id) })))
     } else {
       setClaims([])
+      setDismissals([])
     }
 
     setLoadFailed(false)
@@ -432,9 +439,18 @@ export default function ReceiptDetail() {
             <p className="text-xs text-gray-400 truncate">{claimerList.join(', ')}</p>
           ) : !isMine && splitsUnclaimed(receipt) && (
             // Nobody's: it's split between everyone (and shows up in totals that way)
-            <p className="text-xs text-gray-400 truncate">
-              {receiptComplete ? 'Nobody claimed it · split by everyone' : 'Nobody yet · split by everyone if it stays that way'}
-            </p>
+            <>
+              <p className="text-xs text-gray-400 truncate">
+                {receiptComplete ? 'Nobody claimed it · split by everyone' : 'Nobody yet · split by everyone if it stays that way'}
+              </p>
+              {(() => {
+                // Who said it isn't theirs (Home's "Not mine")
+                const not = dismissals.filter(d => d.item_id === item.id).map(d => d.roommate)
+                if (!not.length) return null
+                const names = not.length > 1 ? `${not.slice(0, -1).join(', ')} and ${not.at(-1)}` : not[0]
+                return <p className="text-xs text-gray-400">{names} {not.length > 1 ? 'say' : 'says'} it's not theirs</p>
+              })()}
+            </>
           )}
         </div>
         <span className="text-sm font-medium text-gray-700 shrink-0 tabular-nums">

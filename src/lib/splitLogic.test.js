@@ -62,6 +62,13 @@ describe('calculateDebts', () => {
   // Created before UNCLAIMED_SPLIT_FROM: the payer kept unclaimed items
   const BEFORE_SPLIT = '2026-10-20T00:00:00Z'
 
+  it("follows the receipt's stored splits_unclaimed over its date", () => {
+    const old = receipt({ created_at: BEFORE_SPLIT, members: ['Alice', 'Bob'], splits_unclaimed: true })
+    expect(owed([old], [item('milk', 6)], [])).toEqual({ Bob: 3 })
+    const recent = receipt({ members: ['Alice', 'Bob'], splits_unclaimed: false })
+    expect(owed([recent], [item('milk', 6)], [])).toEqual({})
+  })
+
   it('leaves unclaimed items with the payer on receipts from before the split', () => {
     const r = receipt({ created_at: BEFORE_SPLIT, members: ['Alice', 'Bob'] })
     expect(owed([r], [item('milk', 6)], [])).toEqual({})

@@ -2,7 +2,11 @@ import { Link } from 'react-router-dom'
 import { version as buildVersion } from '../buildVersion.json'
 import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
-import { checkedInByReceipt, receiptsToCheckOff } from '../lib/receiptStatus.js'
+import { checkedInByReceipt, receiptsToCheckOff, unclaimedForMe } from '../lib/receiptStatus.js'
+import { claimItem, dismissItem } from '../lib/db.js'
+import { invalidateSearch } from '../lib/search.jsx'
+import { useDialog } from '../lib/useDialog.jsx'
+import UnclaimedItems from '../components/UnclaimedItems.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError, { StaleNotice } from '../components/LoadError.jsx'
 import GetStarted from '../components/GetStarted.jsx'
@@ -13,26 +17,40 @@ import { money } from '../lib/ui.js'
 // Home = what needs you: receipts to check off and where your balances stand.
 // Browsing receipts lives on /receipts, settling up on /balances.
 export default function Home() {
-  const { myName, myMember, members } = useGroup()
+  const { group, myName, myMember, members } = useGroup()
   const { loading, error, data, balances, reload } = useBalances()
+  const { showAlert, DialogUI } = useDialog()
 
   if (error && !data) return <LoadError onRetry={reload} />
   if (loading) return <PageLoading />
 
   const unchecked = receiptsToCheckOff(data, checkedInByReceipt(data), myName)
     .sort((a, b) => (b.receipt_date || '').localeCompare(a.receipt_date || ''))
+  const unclaimed = unclaimedForMe(data, myName)
+
+  // "It's mine" / "Not mine" on an unclaimed item, then fresh balances
+  async function save(fn, entry, what) {
+    try {
+      await fn(myMember.id, entry.item.id)
+      invalidateSearch(group.id)
+      await reload()
+    } catch (err) {
+      await showAlert(err.message, { title: `Couldn't ${what}` })
+    }
+  }
   const myBalances = myName ? balances.forPerson(myName) : []
   const iOweTotal = myBalances.filter(e => e.iOwe).reduce((s, e) => s + e.amount, 0)
   const owedToMeTotal = myBalances.filter(e => !e.iOwe).reduce((s, e) => s + e.amount, 0)
   // A new group: no receipts yet, or nobody else in it yet
   const noReceipts = data.receipts.length === 0
   const alone = !members.some(m => m.active && m.id !== myMember?.id)
-  const caughtUp = !noReceipts && unchecked.length === 0 && myBalances.length === 0
+  const caughtUp = !noReceipts && unchecked.length === 0 && unclaimed.length === 0 && myBalances.length === 0
 
   const sortedBalances = [...myBalances].sort((a, b) => b.iOwe - a.iOwe || b.amount - a.amount)
 
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4 pb-8 space-y-4">
+      {DialogUI}
       {error && <StaleNotice onRetry={reload} />}
       {(noReceipts || alone) && <GetStarted showAddReceipt={noReceipts} />}
 
@@ -69,6 +87,15 @@ export default function Home() {
           </ul>
         </section>
       )}
+
+      {/* Items nobody claimed on finished receipts: whoever bought it, claim it */}
+      <UnclaimedItems
+        entries={unclaimed}
+        myName={myName}
+        receiptLink={r => `/receipt/${r.id}`}
+        onMine={entry => save(claimItem, entry, 'claim it')}
+        onNotMine={entry => save(dismissItem, entry, 'save that')}
+      />
 
       {/* Where you stand: who you owe and who owes you */}
       {myBalances.length > 0 && (

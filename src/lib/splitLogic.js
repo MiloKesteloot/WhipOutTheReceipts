@@ -27,7 +27,16 @@ export const UNCLAIMED_FEES_FIX_FROM = '2026-10-18T20:45:00Z'
  * Set to null to apply it to every receipt.
  */
 export const UNCLAIMED_SPLIT_FROM = '2026-10-22T00:35:29Z'
-export const splitsUnclaimed = receipt => !createdBefore(receipt, UNCLAIMED_SPLIT_FROM)
+// Stored per receipt (receipts.splits_unclaimed, migration 20261022000000,
+// which also turned it on for two older receipts still open then); the date
+// is for rows without the column
+export const splitsUnclaimed = receipt =>
+  typeof receipt?.splits_unclaimed === 'boolean' ? receipt.splits_unclaimed : !createdBefore(receipt, UNCLAIMED_SPLIT_FROM)
+
+// Everyone an unclaimed item on this receipt is split between (see everyoneOn)
+export function everyoneOnReceipt(receipt, receiptItems, claims) {
+  return everyoneOn(receipt, receiptItems, claimersByItem(claims))
+}
 
 // Everyone on a receipt: its members, or with no member list (everyone's
 // receipt) the payer and everyone who checked something off. A payer left
