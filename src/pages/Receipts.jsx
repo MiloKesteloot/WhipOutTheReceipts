@@ -7,6 +7,7 @@ import {
 import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
 import LoadError from '../components/LoadError.jsx'
+import { PageLoading } from '../components/Loading.jsx'
 import { checkedInByReceipt, receiptTotals, isOnReceipt } from '../lib/receiptStatus.js'
 import { ReceiptCalendar, ReceiptDays, ReceiptList } from '../components/ReceiptViews.jsx'
 
@@ -25,21 +26,22 @@ function savedView() {
 function ShowMore({ remaining, onClick }) {
   if (remaining <= 0) return null
   return (
-    <button onClick={onClick} className="w-full px-4 py-3 text-sm font-medium text-accent-600 hover:bg-gray-50 transition">
+    <button onClick={onClick} className="w-full px-4 py-3 text-sm font-medium text-accent-600 hover:bg-gray-50 active:bg-gray-100 transition">
       Show more ({remaining})
     </button>
   )
 }
 
-// Segmented control used for the view and Mine/All switches
-function Segmented({ options, value, onChange, small }) {
+// Segmented control used for the view and Mine/All switches (one size for
+// both, taller on phones so they're easy to tap)
+function Segmented({ options, value, onChange }) {
   return (
     <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5 shrink-0">
       {options.map(([v, label]) => (
         <button
           key={v}
           onClick={() => onChange(v)}
-          className={`${small ? 'px-2.5 py-1 text-xs' : 'px-2 sm:px-3 py-1.5 text-xs sm:text-sm'} font-medium rounded-md transition-colors ${
+          className={`px-2.5 sm:px-3 py-2 sm:py-1.5 text-sm font-medium rounded-md transition-colors ${
             value === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -140,7 +142,7 @@ export default function Receipts() {
       {searching ? (
         <div className="max-w-2xl mx-auto space-y-6">
           {!searchData ? (
-            <p className="text-center py-12 text-sm text-gray-400">Loading…</p>
+            <PageLoading />
           ) : searchData.failed ? (
             <p className="text-center py-12 text-sm text-gray-400">Couldn't load search. Check your connection and refresh the page.</p>
           ) : (
@@ -175,13 +177,13 @@ export default function Receipts() {
         <>
           <div className="flex items-center justify-between gap-2 select-none">
             <Segmented options={VIEWS} value={view} onChange={changeView} />
-            <Segmented small options={[['mine', 'Mine'], ['all', 'All']]} value={showAll ? 'all' : 'mine'} onChange={v => setShowAll(v === 'all')} />
+            <Segmented options={[['mine', 'Mine'], ['all', 'All']]} value={showAll ? 'all' : 'mine'} onChange={v => setShowAll(v === 'all')} />
           </div>
 
           {error && !data ? (
             <LoadError onRetry={reload} />
           ) : loading ? (
-            <p className="text-center py-16 text-sm text-gray-400">Loading…</p>
+            <PageLoading />
           ) : view === 'calendar' ? (
             <ReceiptCalendar {...viewProps} />
           ) : view === 'days' ? (

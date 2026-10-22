@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 // A white box with torn-receipt zigzag top and bottom edges (see .tear-paper
 // in index.css). This many teeth span the box:
@@ -29,16 +29,20 @@ export default function TornPaper({ className = '', children }) {
     return () => mq.removeEventListener('change', onChange)
   }, [])
 
-  const [width, setWidth] = useState(0)
-  const observer = useRef(null)
-  const paperRef = useCallback(el => {
-    observer.current?.disconnect()
-    if (!el) return
-    observer.current = new ResizeObserver(([entry]) => setWidth(entry.borderBoxSize[0].inlineSize))
-    observer.current.observe(el)
+  // Measured before the first paint, so the teeth (and the rows padded by
+  // them) don't jump once the real width is known. The guess is the page
+  // width minus its padding, capped at the max-w-xl content width.
+  const [width, setWidth] = useState(() => Math.min(window.innerWidth - 32, 544))
+  const paperRef = useRef(null)
+  useLayoutEffect(() => {
+    const el = paperRef.current
+    setWidth(el.getBoundingClientRect().width)
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.borderBoxSize[0].inlineSize))
+    observer.observe(el)
+    return () => observer.disconnect()
   }, [])
 
-  const w = (width || 544) / (isDesktop ? TEAR_COUNT_DESKTOP : TEAR_COUNT_PHONE)
+  const w = width / (isDesktop ? TEAR_COUNT_DESKTOP : TEAR_COUNT_PHONE)
   const h = w / 2
   return (
     <div className={`tear-wrap ${className}`}>

@@ -7,6 +7,8 @@ import { useDialog } from '../lib/useDialog.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError, { StaleNotice } from '../components/LoadError.jsx'
 import { isOnReceipt } from '../lib/receiptStatus.js'
+import { PageLoading } from '../components/Loading.jsx'
+import { money } from '../lib/ui.js'
 
 const fmtPaidAt = ts => ts ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
 
@@ -15,7 +17,7 @@ function BalanceSection({ title, total, totalClass, children }) {
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold text-gray-800">{title}</h2>
-        <span className={`text-sm font-semibold ${totalClass}`}>${total.toFixed(2)}</span>
+        <span className={`text-sm font-semibold tabular-nums ${totalClass}`}>{money(total)}</span>
       </div>
       {children}
     </div>
@@ -66,12 +68,12 @@ function PaymentHistory({ data, myName, onRemove }) {
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">You sent</p>
-          <p className="text-2xl font-bold text-gray-900">${sentTotal.toFixed(2)}</p>
+          <p className="text-2xl font-bold tabular-nums text-gray-900">{money(sentTotal)}</p>
           <p className="text-xs text-gray-400 mt-0.5">to {sentList.length} {sentList.length === 1 ? 'person' : 'people'}</p>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">You received</p>
-          <p className="text-2xl font-bold text-accent-600">${receivedTotal.toFixed(2)}</p>
+          <p className="text-2xl font-bold tabular-nums text-accent-600">{money(receivedTotal)}</p>
           <p className="text-xs text-gray-400 mt-0.5">from {receivedList.length} {receivedList.length === 1 ? 'person' : 'people'}</p>
         </div>
       </div>
@@ -103,7 +105,7 @@ function PaymentHistory({ data, myName, onRemove }) {
               <li key={key} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <button
                   onClick={() => toggleExpanded(key)}
-                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition text-left"
+                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 active:bg-gray-100 transition text-left"
                 >
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
@@ -117,7 +119,7 @@ function PaymentHistory({ data, myName, onRemove }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2.5 shrink-0">
-                    <span className={`font-bold text-lg ${tab === 'sent' ? 'text-gray-900' : 'text-accent-600'}`}>${total.toFixed(2)}</span>
+                    <span className={`font-bold text-lg tabular-nums ${tab === 'sent' ? 'text-gray-900' : 'text-accent-600'}`}>{money(total)}</span>
                     <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d={open ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
                     </svg>
@@ -142,8 +144,8 @@ function PaymentHistory({ data, myName, onRemove }) {
                           </p>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
-                          <span className="text-sm font-semibold text-gray-900">${Number(p.amount).toFixed(2)}</span>
-                          <button onClick={() => onRemove(p)} className="text-gray-300 hover:text-red-400 transition" title="Remove this payment" aria-label="Remove this payment">
+                          <span className="text-sm font-semibold tabular-nums text-gray-900">{money(p.amount)}</span>
+                          <button onClick={() => onRemove(p)} className="p-1.5 -m-1.5 rounded-md text-gray-300 hover:text-red-400 active:text-red-500 active:bg-red-50 transition" title="Remove this payment" aria-label="Remove this payment">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
@@ -168,7 +170,7 @@ export default function Balances() {
   const { confirm, showAlert, DialogUI } = useDialog()
 
   if (error && !data) return <LoadError onRetry={reload} />
-  if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
+  if (loading) return <PageLoading />
 
   const myBalances = myName ? balances.forPerson(myName).sort((a, b) => b.amount - a.amount) : []
   const iOweEntries = myBalances.filter(e => e.iOwe)
@@ -184,7 +186,7 @@ export default function Balances() {
     && (r.members || []).some(m => !checkedIn[r.id]?.has(m.toLowerCase()))).length : 0
 
   async function removePayment(p) {
-    if (!await confirm(`$${Number(p.amount).toFixed(2)} from ${p.from} to ${p.to} will be removed, and balances will be worked out as if it never happened. This is recorded in the history.`, {
+    if (!await confirm(`${money(p.amount)} from ${p.from} to ${p.to} will be removed, and balances will be worked out as if it never happened. This is recorded in the history.`, {
       title: 'Remove this payment?', confirmLabel: 'Remove', danger: true,
     })) return
     try {

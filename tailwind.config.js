@@ -1,6 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
+  // hover: only on devices with a mouse. On phones a hover style sticks to
+  // whatever was last tapped (a removed chip looking half selected, a row
+  // staying gray), so taps get active: styles for feedback instead.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       colors: {

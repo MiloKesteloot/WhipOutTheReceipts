@@ -18,6 +18,52 @@ const usesOldRounding = receipt => createdBefore(receipt, ROUNDING_FIX_FROM)
  */
 export const UNCLAIMED_FEES_FIX_FROM = '2026-10-18T20:45:00Z'
 
+/**
+ * Receipts created from this moment on split an item nobody claimed between
+ * everyone on the receipt (with its share of tax, tip and fees), instead of
+ * leaving it all on the payer. A fee with nothing to split it by (a meal
+ * with no items) is split evenly between everyone. Older receipts keep the
+ * payer paying for them, so balances people already settled don't change.
+ * Set to null to apply it to every receipt.
+ */
+export const UNCLAIMED_SPLIT_FROM = '2026-10-22T00:35:29Z'
+export const splitsUnclaimed = receipt => !createdBefore(receipt, UNCLAIMED_SPLIT_FROM)
+
+// Everyone on a receipt: its members, or with no member list (everyone's
+// receipt) the payer and everyone who checked something off. A payer left
+// off the member list paid but had nothing, so isn't included.
+function everyoneOn(receipt, receiptItems, claimsByItem) {
+  if (receipt.members?.length) return receipt.members
+  const names = new Set([receipt.paid_by])
+  for (const item of receiptItems) for (const p of claimsByItem[item.id] || []) names.add(p)
+  return [...names]
+}
+
+// claimsByItem with every unclaimed item (on receipts that split them)
+// counted as claimed by everyone on the receipt. Everything downstream
+// (item shares, tax/tip/fees, meal fees, the breakdown) then splits it.
+function withUnclaimedSplit(receipts, itemsByReceipt, claimsByItem) {
+  const out = { ...claimsByItem }
+  for (const r of receipts) {
+    if (!splitsUnclaimed(r)) continue
+    const rItems = itemsByReceipt[r.id] || []
+    const everyone = everyoneOn(r, rItems, claimsByItem)
+    for (const item of rItems) if (!out[item.id]?.length) out[item.id] = everyone
+  }
+  return out
+}
+
+// A fee nothing on the receipt can split by (no items, or items netting to
+// $0): split evenly between everyone on the receipt, payer left out
+function evenSplit(receipt, feeCents, everyone) {
+  if (!splitsUnclaimed(receipt) || !feeCents || !everyone.length) return {}
+  const result = {}
+  for (const [person, cents] of splitItemCents(feeCents / 100, everyone)) {
+    if (person !== receipt.paid_by && cents !== 0) result[person] = cents
+  }
+  return result
+}
+
 // The old item split: the payer was skipped before taking a leftover cent
 function oldSplitItemCents(price, claimers, payer) {
   const priceInCents = Math.round(price * 100)
@@ -64,10 +110,16 @@ function oldDistributeProportionally(feeCents, relevantItems, claimsByItem, paye
 // Item split and proportional split for this receipt (old rounding for old receipts)
 const itemSplit = (receipt, price, claimers) =>
   usesOldRounding(receipt) ? oldSplitItemCents(price, claimers, receipt.paid_by) : splitItemCents(price, claimers)
-const proportional = (receipt, ...args) =>
-  usesOldRounding(receipt)
-    ? oldDistributeProportionally(...args)
-    : distributeProportionally(...args, !createdBefore(receipt, UNCLAIMED_FEES_FIX_FROM))
+// `everyone`: who shares a fee there's nothing to split by (see evenSplit)
+function proportional(receipt, feeCents, relevantItems, claimsByItem, payer, everyone = []) {
+  if (usesOldRounding(receipt)) return oldDistributeProportionally(feeCents, relevantItems, claimsByItem, payer)
+  if (splitsUnclaimed(receipt)) {
+    // Every item has claimers by now (withUnclaimedSplit), so this is the receipt's net
+    const basis = relevantItems.reduce((s, i) => s + ((claimsByItem[i.id] || []).length ? Math.round(i.price * 100) : 0), 0)
+    if (basis <= 0) return evenSplit(receipt, feeCents, everyone)
+  }
+  return distributeProportionally(feeCents, relevantItems, claimsByItem, payer, !createdBefore(receipt, UNCLAIMED_FEES_FIX_FROM))
+}
 
 /**
  * Split an item's price between its claimers, in cents. Leftover cents go
@@ -151,16 +203,17 @@ function claimersByItem(claims) {
 
 function distributeTipTaxFees(receipt, receiptItems, claimsByItem) {
   const cents = Math.round(((receipt.tip || 0) + (receipt.tax || 0) + (receipt.fees || 0)) * 100)
-  return proportional(receipt, cents, receiptItems, claimsByItem, receipt.paid_by)
+  return proportional(receipt, cents, receiptItems, claimsByItem, receipt.paid_by, everyoneOn(receipt, receiptItems, claimsByItem))
 }
 
 /**
  * Calculate debts from items + claims + tip/tax + meal fees.
  *
  * Returns an array of { debtor, creditor, amount } objects.
- * Unclaimed items fall entirely on the payer.
- * Tip and tax are distributed proportionally to each person's item share;
- * the share of unclaimed items stays with the payer (see UNCLAIMED_FEES_FIX_FROM).
+ * Unclaimed items are split between everyone on the receipt (older
+ * receipts: they fall on the payer; see UNCLAIMED_SPLIT_FROM).
+ * Tip and tax are distributed proportionally to each person's item share,
+ * unclaimed items counting as everyone's.
  * Meal fees are distributed the same way over the items in that meal.
  *
  * @param {Array} receipts  - [{ id, paid_by, tip, tax }]
@@ -173,13 +226,13 @@ export function calculateDebts(receipts, items, claims, meals = []) {
   const receiptById = {}
   for (const r of receipts) { payerByReceipt[r.id] = r.paid_by; receiptById[r.id] = r }
 
-  const claimsByItem = claimersByItem(claims)
-
   const itemsByReceipt = {}
   for (const item of items) {
     if (!itemsByReceipt[item.receipt_id]) itemsByReceipt[item.receipt_id] = []
     itemsByReceipt[item.receipt_id].push(item)
   }
+
+  const claimsByItem = withUnclaimedSplit(receipts, itemsByReceipt, claimersByItem(claims))
 
   const itemsByMeal = {}
   for (const item of items) {
@@ -221,7 +274,8 @@ export function calculateDebts(receipts, items, claims, meals = []) {
     const payer = payerByReceipt[meal.receipt_id]
     if (!payer) continue
     const mealItems = itemsByMeal[meal.id] || []
-    const shares = proportional(receiptById[meal.receipt_id], feeCents, mealItems, claimsByItem, payer)
+    const r = receiptById[meal.receipt_id]
+    const shares = proportional(r, feeCents, mealItems, claimsByItem, payer, everyoneOn(r, itemsByReceipt[r.id] || [], claimsByItem))
     for (const [debtor, cents] of Object.entries(shares)) {
       if (!rawDebts[debtor]) rawDebts[debtor] = {}
       rawDebts[debtor][payer] = (rawDebts[debtor][payer] || 0) + cents
@@ -256,8 +310,6 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
     tipTaxByReceipt[r.id] = { tip: r.tip || 0, tax: r.tax || 0, fees: r.fees || 0 }
   }
 
-  const claimsByItem = claimersByItem(claims)
-
   const itemsByReceipt = {}
   const itemsByMeal = {}
   for (const item of items) {
@@ -268,6 +320,8 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
       itemsByMeal[item.meal_id].push(item)
     }
   }
+
+  const claimsByItem = withUnclaimedSplit(receipts, itemsByReceipt, claimersByItem(claims))
 
   const breakdown = {}
 
@@ -305,7 +359,8 @@ export function getItemizedBreakdown(receipts, items, claims, meals = []) {
     const store = storeByReceipt[meal.receipt_id]
     if (!payer) continue
     const mealItems = itemsByMeal[meal.id] || []
-    const shares = proportional(receiptById[meal.receipt_id], feeCents, mealItems, claimsByItem, payer)
+    const r = receiptById[meal.receipt_id]
+    const shares = proportional(r, feeCents, mealItems, claimsByItem, payer, everyoneOn(r, itemsByReceipt[r.id] || [], claimsByItem))
     for (const [person, cents] of Object.entries(shares)) {
       if (!breakdown[person]) breakdown[person] = []
       breakdown[person].push({ itemName: `${meal.name} fee`, storeName: store, payer, share: cents / 100 })

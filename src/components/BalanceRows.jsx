@@ -4,6 +4,8 @@ import { useGroup } from '../lib/group.jsx'
 import { recordPayment } from '../lib/db.js'
 import { useDialog } from '../lib/useDialog.jsx'
 import SettleUpDialog from './SettleUpDialog.jsx'
+import { ChevronRight } from './Icons.jsx'
+import { money, SETTLE_SENT, SETTLE_RECEIVED, SETTLE_SMALL } from '../lib/ui.js'
 
 const fmtShort = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 
@@ -30,7 +32,7 @@ function PersonBalance({ entry, showDirection, expanded, onToggle, onSettle, onM
   return (
     <li className="border border-gray-100 rounded-lg overflow-hidden">
       <div
-        className="flex items-center justify-between gap-2 px-3 py-2.5 hover:bg-gray-50 transition cursor-pointer select-none"
+        className="flex items-center justify-between gap-2 px-3 py-2.5 hover:bg-gray-50 active:bg-gray-100 transition cursor-pointer select-none"
         // Selecting text (to copy an amount) shouldn't open/close the row; a
         // selection left over from before still lets a plain click through
         onMouseDown={() => { selectionAtPress.current = window.getSelection()?.toString() || '' }}
@@ -48,40 +50,47 @@ function PersonBalance({ entry, showDirection, expanded, onToggle, onSettle, onM
           <ReceiptCountToggle receipts={entry.open.length} overpaid={entry.fromPayments > 0} expanded={expanded} />
         </div>
         <div className="flex items-center gap-2.5 shrink-0">
-          <span onClick={e => e.stopPropagation()} className={`font-semibold select-text cursor-text ${entry.iOwe ? 'text-amber-600' : showDirection ? 'text-accent-600' : 'text-gray-900'}`}>${entry.amount.toFixed(2)}</span>
+          <span onClick={e => e.stopPropagation()} className={`font-semibold tabular-nums select-text cursor-text ${entry.iOwe ? 'text-amber-600' : 'text-accent-600'}`}>{money(entry.amount)}</span>
           <button
             data-settle-button
             onClick={e => { e.stopPropagation(); onSettle() }}
             disabled={busy}
-            className={`text-xs px-2 py-0.5 rounded-md transition disabled:opacity-50 font-medium ${entry.iOwe
-              ? 'bg-accent-600 text-white hover:bg-accent-700'
-              : 'border border-accent-200 text-accent-600 hover:bg-accent-50'}`}
+            className={entry.iOwe ? SETTLE_SENT : SETTLE_RECEIVED}
           >
             {entry.iOwe ? 'Mark sent' : 'Mark received'}
           </button>
         </div>
       </div>
       {expanded && (
-        <div className="border-t border-gray-100 px-3 py-2 space-y-1.5">
+        <div className="border-t border-gray-100 p-1.5 space-y-0.5">
           {entry.open.map(o => (
-            <div key={o.receiptId} className="flex items-center justify-between text-sm gap-2">
-              <div className="min-w-0">
-                <Link to={`/receipt/${o.receiptId}`} className="text-gray-700 hover:underline">{o.label}</Link>
-                <span className="text-gray-400 text-xs ml-1.5">{fmtShort(o.date)}</span>
-                {o.remaining < o.cents && <span className="text-gray-400 text-xs ml-1.5">(${(o.cents / 100).toFixed(2)} total, partly paid)</span>}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-gray-900 select-text">${(o.remaining / 100).toFixed(2)}</span>
-                {entry.iOwe && (
-                  <button data-settle-button onClick={() => onMarkReceipt(o)} disabled={busy} className="text-xs px-2 py-0.5 border border-accent-200 text-accent-600 rounded-md hover:bg-accent-50 transition disabled:opacity-50">Mark sent</button>
-                )}
-              </div>
+            <div key={o.receiptId} className="flex items-center gap-1.5">
+              {/* The whole row opens the receipt (with a › so it reads as a link) */}
+              <Link
+                to={`/receipt/${o.receiptId}`}
+                className="flex-1 min-w-0 flex items-center justify-between gap-2 rounded-md px-1.5 py-1.5 text-sm transition-colors hover:bg-gray-50 active:bg-gray-100"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-gray-800 font-medium">{o.label}</span>
+                  <span className="block text-xs text-gray-400">
+                    {fmtShort(o.date)}
+                    {o.remaining < o.cents && ` · ${money(o.cents / 100)} total, partly paid`}
+                  </span>
+                </span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-gray-900 tabular-nums">{money(o.remaining / 100)}</span>
+                  <ChevronRight className="w-4 h-4 text-gray-300" />
+                </span>
+              </Link>
+              {entry.iOwe && (
+                <button data-settle-button onClick={() => onMarkReceipt(o)} disabled={busy} className={SETTLE_SMALL}>Mark sent</button>
+              )}
             </div>
           ))}
           {entry.fromPayments > 0 && (
-            <div className="flex items-center justify-between text-sm gap-2">
+            <div className="flex items-center justify-between text-sm gap-2 px-1.5 py-1.5">
               <span className="text-gray-700">Overpaid earlier <span className="text-gray-400 text-xs">(from payments, not a receipt)</span></span>
-              <span className="text-gray-900 shrink-0">${entry.fromPayments.toFixed(2)}</span>
+              <span className="text-gray-900 shrink-0 tabular-nums">{money(entry.fromPayments)}</span>
             </div>
           )}
         </div>

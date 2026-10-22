@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { formatWaitingOn } from '../lib/group.jsx'
 import { waitingOn } from '../lib/receiptStatus.js'
+import Modal from './Modal.jsx'
+import { ChevronRight } from './Icons.jsx'
+import { money } from '../lib/ui.js'
 
 // Calendar / Days / list views of a group's receipts (the Receipts tab).
 // Each takes already-filtered receipts plus checked-in and totals maps.
@@ -28,40 +31,31 @@ function EmptyState({ hiddenCount, onShowAll }) {
 // Opens when a calendar day has 2+ receipts
 function DayPicker({ day, onClose }) {
   const navigate = useNavigate()
-  useEffect(() => {
-    const onKey = e => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-        <h2 className="font-semibold text-gray-900 text-lg mb-0.5">
-          {day.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-        </h2>
-        <p className="text-sm text-gray-400 mb-4">Choose one</p>
-        <ul className="space-y-2 mb-4">
-          {day.items.map(item => (
-            <li key={item.id}>
-              <Link
-                to={item.url}
-                onClick={onClose}
-                className="block w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-accent-300 hover:bg-accent-50 transition text-sm font-medium text-gray-800"
-              >
-                {item.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-        <button
-          onClick={() => { onClose(); navigate(`/receipt/new?date=${fmtDate(day.date)}`) }}
-          className="w-full py-2 border border-dashed border-gray-300 text-sm text-gray-500 rounded-xl hover:border-accent-400 hover:text-accent-600 transition"
-        >
-          + Add another receipt
-        </button>
-      </div>
-    </div>
+    <Modal title={day.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} onClose={onClose}>
+      <p className="text-sm text-gray-400 mt-0.5 mb-4">Choose one</p>
+      <ul className="space-y-2 mb-4">
+        {day.items.map(item => (
+          <li key={item.id}>
+            <Link
+              to={item.url}
+              onClick={onClose}
+              className="flex items-center justify-between gap-2 w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:border-accent-300 hover:bg-accent-50 active:bg-accent-50 transition text-sm font-medium text-gray-800"
+            >
+              <span className="truncate">{item.label}</span>
+              <ChevronRight className="w-4 h-4 text-gray-300" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <button
+        onClick={() => { onClose(); navigate(`/receipt/new?date=${fmtDate(day.date)}`) }}
+        className="w-full h-10 border border-dashed border-gray-300 text-sm text-gray-500 rounded-xl hover:border-accent-400 hover:text-accent-600 active:bg-gray-50 transition"
+      >
+        + Add another receipt
+      </button>
+    </Modal>
   )
 }
 
@@ -131,26 +125,27 @@ export function ReceiptCalendar({ receipts, checkedIn, totals }) {
       {pickerDay && <DayPicker day={pickerDay} onClose={() => setPickerDay(null)} />}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <button onClick={() => shiftMonth(-1)} aria-label="Previous month" className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600">
+        {/* Phones: tighter, and the month never wraps (the Today pill sits beside it) */}
+        <div className="flex items-center justify-between gap-1 px-2 sm:px-5 py-3 sm:py-4 border-b border-gray-100">
+          <button onClick={() => shiftMonth(-1)} aria-label="Previous month" className="p-2 hover:bg-gray-100 active:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-gray-800">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-800 whitespace-nowrap">
               {firstDay.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </h2>
             {!isCurrentMonth && (
               <button
                 onClick={() => setCalMonth({ year: now.getFullYear(), month: now.getMonth() })}
-                className="text-xs text-accent-600 hover:text-accent-700 font-medium border border-accent-300 hover:border-accent-400 px-2 py-0.5 rounded-md transition"
+                className="shrink-0 whitespace-nowrap text-xs text-accent-600 hover:text-accent-700 font-medium border border-accent-300 hover:border-accent-400 active:bg-accent-50 px-2 py-1 rounded-md transition"
               >
-                ↩ Jump to today
+                Today
               </button>
             )}
           </div>
-          <button onClick={() => shiftMonth(1)} aria-label="Next month" className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600">
+          <button onClick={() => shiftMonth(1)} aria-label="Next month" className="p-2 hover:bg-gray-100 active:bg-gray-100 rounded-lg transition text-gray-400 hover:text-gray-600">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
@@ -183,11 +178,12 @@ export function ReceiptCalendar({ receipts, checkedIn, totals }) {
               <div
                 key={`${key}-${i}`}
                 onClick={handleCellClick}
-                className={`relative h-[94px] overflow-hidden sm:h-auto sm:overflow-visible sm:min-h-28 px-1 py-1.5 sm:p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 select-none ${
+                className={`relative h-[94px] overflow-hidden sm:h-auto sm:overflow-visible sm:min-h-28 px-1 py-1.5 sm:p-2.5 transition-colors group cursor-pointer hover:bg-gray-50/80 active:bg-gray-100 select-none ${
                   !isCurrent ? 'bg-gray-50/60' : ''
                 } ${isToday ? 'ring-2 ring-inset ring-accent-600' : ''}`}
               >
-                {/* Phones: the day's total goes under the date (no room beside it) */}
+                {/* Phones: the day's total goes under the date (no room beside it).
+                    Gray, not green: green means "owed to you" elsewhere. */}
                 <div className="flex flex-col items-start sm:flex-row sm:justify-between mb-1 sm:mb-2">
                   <div className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full leading-none ${
                     isToday ? 'bg-accent-600 text-white' : isCurrent ? 'text-gray-700' : 'text-gray-300'
@@ -195,7 +191,7 @@ export function ReceiptCalendar({ receipts, checkedIn, totals }) {
                     {date.getDate()}
                   </div>
                   {dayTotal > 0 && isCurrent && (
-                    <span className="text-[10px] sm:text-xs font-semibold text-accent-600 leading-tight mt-0.5 sm:mt-0">${dayTotal.toFixed(2)}</span>
+                    <span className="text-[10px] sm:text-xs font-medium text-gray-500 tabular-nums leading-tight mt-0.5 sm:mt-0">{money(dayTotal)}</span>
                   )}
                 </div>
                 {/* Desktop: every receipt, with a dot (amber = waiting on someone) */}
@@ -238,19 +234,23 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName, hiddenCount, 
   const sortedDays = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
   if (sortedDays.length === 0) return <EmptyState hiddenCount={hiddenCount} onShowAll={onShowAll} />
 
+  const thisYear = new Date().getFullYear()
+
   return (
     <div className="space-y-6">
       {sortedDays.map(dateKey => {
-        const dayLabel = dateKey
-          ? new Date(dateKey + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+        // "Saturday, October 17", with the year only when it isn't this year
+        const day = dateKey && new Date(dateKey + 'T12:00:00')
+        const dayLabel = day
+          ? day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', ...(day.getFullYear() !== thisYear && { year: 'numeric' }) })
           : 'No date'
         const dayReceipts = byDate[dateKey]
         const dayTotal = dayReceipts.reduce((s, r) => s + (totals[r.id] || 0), 0)
         return (
           <div key={dateKey}>
             <div className="flex items-baseline justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{dayLabel}</h3>
-              {dayTotal > 0 && <span className="text-sm font-semibold text-accent-600">${dayTotal.toFixed(2)}</span>}
+              <h3 className="text-sm font-medium text-gray-500">{dayLabel}</h3>
+              {dayTotal > 0 && <span className="text-sm font-semibold text-gray-900 tabular-nums">{money(dayTotal)}</span>}
             </div>
             <div className="space-y-2">
               {dayReceipts.map(r => {
@@ -260,7 +260,7 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName, hiddenCount, 
                   <Link
                     key={r.id}
                     to={`/receipt/${r.id}`}
-                    className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm transition text-left select-none"
+                    className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm active:bg-gray-50 transition text-left select-none"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${waiting.length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
@@ -272,8 +272,8 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName, hiddenCount, 
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0 ml-3">
-                      {total > 0 && <span className="text-sm font-semibold text-gray-700">${total.toFixed(2)}</span>}
-                      <span className="text-gray-300">›</span>
+                      {total > 0 && <span className="text-sm font-semibold text-gray-700 tabular-nums">{money(total)}</span>}
+                      <ChevronRight className="w-4 h-4 text-gray-300" />
                     </div>
                   </Link>
                 )
@@ -302,7 +302,7 @@ export function ReceiptList({ receipts, checkedIn, totals, myName, hiddenCount, 
           <Link
             key={r.id}
             to={`/receipt/${r.id}`}
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition text-left"
           >
             <div className="flex items-center gap-3 min-w-0">
               <span className={`w-2 h-2 rounded-full shrink-0 ${waiting.length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
@@ -315,8 +315,8 @@ export function ReceiptList({ receipts, checkedIn, totals, myName, hiddenCount, 
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0 ml-3">
-              {total > 0 && <span className="text-sm font-semibold text-gray-700">${total.toFixed(2)}</span>}
-              <span className="text-gray-300">›</span>
+              {total > 0 && <span className="text-sm font-semibold text-gray-700 tabular-nums">{money(total)}</span>}
+              <ChevronRight className="w-4 h-4 text-gray-300" />
             </div>
           </Link>
         )

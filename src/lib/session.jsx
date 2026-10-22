@@ -74,9 +74,14 @@ export function SessionProvider({ children }) {
   }, [session])
 
   const userId = session?.user?.id
+  // A failed load (offline) is an error to retry, not "no name yet", which
+  // would ask you to type your name again. PGRST116 = no profile row.
+  const [profileError, setProfileError] = useState(false)
   const refreshProfile = useCallback(async () => {
     if (!userId) { setProfile(null); return }
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    setProfileError(false)
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    if (error && error.code !== 'PGRST116') { setProfileError(true); return }
     setProfile(data || { id: userId, first_name: '', last_name: '' })
   }, [userId])
 
@@ -94,8 +99,9 @@ export function SessionProvider({ children }) {
     <SessionContext.Provider value={{
       session,
       user: session?.user || null,
-      loading: verifying || session === undefined || (!!userId && profile === null),
+      loading: verifying || session === undefined || (!!userId && profile === null && !profileError),
       profile,
+      profileError,
       refreshProfile,
       recovering,
       finishRecovery: () => setRecovering(false),

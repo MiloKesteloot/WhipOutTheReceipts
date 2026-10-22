@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { useGroup } from './group.jsx'
 import { loadReceipts, loadItems, loadClaims, loadMeals } from './db.js'
 import { getItemEmoji } from './itemEmoji.js'
+import { splitsUnclaimed } from './splitLogic.js'
 import { STORE_DOMAINS } from '../config.js'
+import { money } from './ui.js'
 
 export const MIN_QUERY_LENGTH = 1
 
@@ -177,7 +179,7 @@ export function RecentSearches({ onPick }) {
           <button
             key={r}
             onClick={() => onPick(r)}
-            className="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-sm text-gray-700 transition"
+            className="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 active:bg-gray-200 text-sm text-gray-700 transition"
           >
             {r}
           </button>
@@ -231,7 +233,10 @@ export function Highlight({ text, terms }) {
 
 function claimLabel(item) {
   if (item.always_split) return 'Split by all'
-  if (item.claimers.length === 0) return item.receipt.paid_by ? `Unclaimed (${item.receipt.paid_by})` : 'Unclaimed'
+  if (item.claimers.length === 0) {
+    if (splitsUnclaimed(item.receipt)) return 'Unclaimed (split by all)'
+    return item.receipt.paid_by ? `Unclaimed (${item.receipt.paid_by})` : 'Unclaimed'
+  }
   return item.claimers.join(', ')
 }
 
@@ -242,12 +247,12 @@ export function ItemRow({ item, terms, myName, to, onClick }) {
     : item.claimers.some(c => c.toLowerCase() === me)
   const emoji = getItemEmoji(item.name)
   return (
-    <Link to={to} onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
+    <Link to={to} onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition text-left">
       <RowIcon>{emoji || '🛒'}</RowIcon>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-gray-700 truncate"><Highlight text={item.name} terms={terms} /></p>
-          <span className="text-sm font-semibold text-gray-700 shrink-0">${Number(item.price || 0).toFixed(2)}</span>
+          <span className="text-sm font-semibold text-gray-700 tabular-nums shrink-0">{money(item.price)}</span>
         </div>
         <div className="flex items-baseline justify-between gap-3 mt-0.5">
           <p className="text-xs text-gray-400 truncate">
@@ -266,8 +271,8 @@ export function ReceiptRow({ receipt, terms, to, onClick }) {
   const logo = getStoreLogo(receipt.store_name)
   const others = receipt.members.filter(m => m.toLowerCase() !== (receipt.paid_by || '').toLowerCase())
   return (
-    <Link to={to} onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left">
-      <RowIcon>{logo ? <img src={logo} alt="" className="w-5 h-5 rounded object-contain" /> : '🧾'}</RowIcon>
+    <Link to={to} onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition text-left">
+      <RowIcon>{logo ? <img src={logo} alt="" width={20} height={20} className="w-5 h-5 rounded object-contain" /> : '🧾'}</RowIcon>
       <div className="min-w-0 flex-1">
         <p className="text-gray-700 truncate">
           <Highlight text={receipt.store_name || 'Receipt'} terms={terms} />
@@ -279,7 +284,7 @@ export function ReceiptRow({ receipt, terms, to, onClick }) {
         </p>
       </div>
       {receipt.total > 0 && (
-        <span className="text-sm font-semibold text-gray-700 shrink-0">${receipt.total.toFixed(2)}</span>
+        <span className="text-sm font-semibold text-gray-700 tabular-nums shrink-0">{money(receipt.total)}</span>
       )}
     </Link>
   )
@@ -335,7 +340,7 @@ export function SearchInput({ value, onChange, onKeyDown, onFocus, onBlur, autoF
           aria-label="Clear search"
           onMouseDown={e => e.preventDefault()}
           onClick={() => onChange('')}
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 active:bg-gray-100 transition"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

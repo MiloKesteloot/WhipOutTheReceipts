@@ -17,13 +17,24 @@ export function GroupProvider({ children }) {
   const [memberships, setMemberships] = useState(null) // null = loading
   const [groupId, setGroupId] = useState(null)
   const [members, setMembers] = useState(null)
+  // A failed load: shown as "couldn't load" (not as having no groups, which
+  // would send you to "Set up your group")
+  const [loadError, setLoadError] = useState(false)
+  // Already loaded: a failed refresh keeps showing what we have
+  const loaded = useRef({})
+  loaded.current = { memberships, members }
 
   const loadMemberships = useCallback(async () => {
     if (!uid) { setMemberships(null); return [] }
-    const { data } = await supabase
+    setLoadError(false)
+    const { data, error } = await supabase
       .from('group_members')
       .select('id, role, group_id, groups(id, name, invite_code, created_at)')
       .eq('user_id', uid).eq('active', true)
+    if (error) {
+      if (!loaded.current.memberships) setLoadError(true)
+      return loaded.current.memberships || []
+    }
     const list = (data || []).filter(m => m.groups).sort((a, b) => a.groups.name.localeCompare(b.groups.name))
     setMemberships(list)
     return list
@@ -44,8 +55,10 @@ export function GroupProvider({ children }) {
   groupIdRef.current = groupId
   const loadMembers = useCallback(async () => {
     if (!groupId) { setMembers(null); return }
-    const { data } = await supabase.from('group_members').select('*').eq('group_id', groupId).order('created_at')
-    if (groupIdRef.current === groupId) setMembers(data || [])
+    const { data, error } = await supabase.from('group_members').select('*').eq('group_id', groupId).order('created_at')
+    if (groupIdRef.current !== groupId) return
+    if (error) { if (!loaded.current.members) setLoadError(true); return }
+    setMembers(data || [])
   }, [groupId])
 
   useEffect(() => { setMembers(null); loadMembers() }, [loadMembers])
@@ -96,6 +109,8 @@ export function GroupProvider({ children }) {
     return {
       // Also loading while a group exists but hasn't been picked/loaded yet
       loading: memberships === null || (memberships.length > 0 && (!membership || members === null)),
+      loadError,
+      retryLoad: () => { loadMemberships(); loadMembers() },
       memberships: memberships || [],
       group: membership?.groups || null,
       isOwner: membership?.role === 'owner',
@@ -112,7 +127,7 @@ export function GroupProvider({ children }) {
       idOf,
       ensureMemberIds,
     }
-  }, [members, memberships, groupId, uid, loadMembers, loadMemberships])
+  }, [members, memberships, groupId, uid, loadMembers, loadMemberships, loadError])
 
   return <GroupContext.Provider value={value}>{children}</GroupContext.Provider>
 }

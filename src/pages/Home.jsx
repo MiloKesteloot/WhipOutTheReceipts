@@ -6,6 +6,9 @@ import { checkedInByReceipt, receiptsToCheckOff } from '../lib/receiptStatus.js'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError, { StaleNotice } from '../components/LoadError.jsx'
 import GetStarted from '../components/GetStarted.jsx'
+import { PageLoading } from '../components/Loading.jsx'
+import { ChevronRight } from '../components/Icons.jsx'
+import { money } from '../lib/ui.js'
 
 // Home = what needs you: receipts to check off and where your balances stand.
 // Browsing receipts lives on /receipts, settling up on /balances.
@@ -14,7 +17,7 @@ export default function Home() {
   const { loading, error, data, balances, reload } = useBalances()
 
   if (error && !data) return <LoadError onRetry={reload} />
-  if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
+  if (loading) return <PageLoading />
 
   const unchecked = receiptsToCheckOff(data, checkedInByReceipt(data), myName)
     .sort((a, b) => (b.receipt_date || '').localeCompare(a.receipt_date || ''))
@@ -48,7 +51,7 @@ export default function Home() {
                 : 'No date'
               return (
                 <li key={r.id}>
-                  <Link to={`/receipt/${r.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition">
+                  <Link to={`/receipt/${r.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition">
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="w-2 h-2 rounded-full shrink-0 bg-amber-400" />
                       <div className="min-w-0">
@@ -58,7 +61,7 @@ export default function Home() {
                         </p>
                       </div>
                     </div>
-                    <span className="text-gray-300 shrink-0 ml-3">›</span>
+                    <ChevronRight className="w-4 h-4 text-gray-300 ml-3" />
                   </Link>
                 </li>
               )
@@ -73,11 +76,11 @@ export default function Home() {
           <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
             <div className="px-4 py-3.5">
               <p className="text-xs font-medium text-gray-400">You owe</p>
-              <p className={`text-2xl font-bold ${iOweTotal > 0 ? 'text-amber-600' : 'text-gray-300'}`}>${iOweTotal.toFixed(2)}</p>
+              <p className={`text-2xl font-bold tabular-nums ${iOweTotal > 0 ? 'text-amber-600' : 'text-gray-300'}`}>{money(iOweTotal)}</p>
             </div>
             <div className="px-4 py-3.5">
               <p className="text-xs font-medium text-gray-400">You're owed</p>
-              <p className={`text-2xl font-bold ${owedToMeTotal > 0 ? 'text-accent-600' : 'text-gray-300'}`}>${owedToMeTotal.toFixed(2)}</p>
+              <p className={`text-2xl font-bold tabular-nums ${owedToMeTotal > 0 ? 'text-accent-600' : 'text-gray-300'}`}>{money(owedToMeTotal)}</p>
             </div>
           </div>
           <div className="p-2">

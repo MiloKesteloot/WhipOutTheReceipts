@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useGroup } from '../lib/group.jsx'
 
-const money = v => `$${Number(v || 0).toFixed(2)}`
+import { money } from '../lib/ui.js'
+
 const fmtWhen = ts => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 const MERGE_WINDOW_MS = 5 * 60 * 1000
 // Most history rows loaded for one receipt (its own changes / check-off changes)

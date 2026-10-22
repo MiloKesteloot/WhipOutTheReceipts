@@ -6,9 +6,10 @@ import { useSession } from '../lib/session.jsx'
 import { version as buildVersion } from '../buildVersion.json'
 import DevTestLogin from '../components/DevTestLogin.jsx'
 import { LOGO_URL } from '../lib/logo.js'
+import StableLabel from '../components/StableLabel.jsx'
 
 const inputClass = 'w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-accent-400 text-gray-900'
-const primaryButton = 'w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50'
+const primaryButton = 'w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 active:bg-accent-700 transition disabled:opacity-50'
 
 // Short version of the landing page, under the sign-in form
 const PITCH = [
@@ -150,7 +151,7 @@ function GoogleButton() {
         <button
           type="button"
           onClick={redirectSignIn}
-          className="w-full py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition flex items-center justify-center gap-2"
+          className="w-full py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition flex items-center justify-center gap-2"
         >
           <svg className="w-5 h-5" viewBox="0 0 48 48" aria-hidden="true">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -173,6 +174,8 @@ export default function Auth({ initialMode = 'signin' }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+  // Separate from busy, so resending doesn't make the main button say "Signing in…"
+  const [resending, setResending] = useState(false)
   const { linkError } = useSession()
   const [error, setError] = useState(linkError)
   const [notice, setNotice] = useState('')
@@ -182,9 +185,9 @@ export default function Auth({ initialMode = 'signin' }) {
   function switchMode(m) { setMode(m); setError(''); setNotice(''); setResendTo('') }
 
   async function resend() {
-    setBusy(true); setError('')
+    setResending(true); setError('')
     const { error } = await supabase.auth.resend({ type: 'signup', email: resendTo, options: { emailRedirectTo: appBaseUrl } })
-    setBusy(false)
+    setResending(false)
     if (error) setError(error.message)
     else setNotice(`Sent another confirmation link to ${resendTo}.`)
   }
@@ -230,6 +233,12 @@ export default function Auth({ initialMode = 'signin' }) {
     signup: ['Create an account', 'Split receipts with your roommates.'],
     forgot: ['Reset your password', "Enter your email and we'll send you a link."],
   }
+  // [label, busy label] for the main button
+  const submitLabels = {
+    signin: ['Sign in', 'Signing in…'],
+    signup: ['Create account', 'Creating account…'],
+    forgot: ['Send reset link', 'Sending…'],
+  }[mode]
 
   return (
     <AuthShell title={titles[mode][0]} subtitle={titles[mode][1]} pitch>
@@ -244,18 +253,20 @@ export default function Auth({ initialMode = 'signin' }) {
 
       <form onSubmit={submit} className="space-y-3">
         {mode === 'signup' && (
-          <div className="flex gap-2">
-            <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" required autoComplete="given-name" className={inputClass} />
-            <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name (optional)" autoComplete="family-name" className={inputClass} />
+          // Stacked on phones: side by side, "Last name (optional)" is cut off
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" aria-label="First name" required autoComplete="given-name" className={inputClass} />
+            <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name (optional)" aria-label="Last name (optional)" autoComplete="family-name" className={inputClass} />
           </div>
         )}
-        <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required autoComplete="email" className={inputClass} />
+        <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" aria-label="Email" required autoComplete="email" className={inputClass} />
         {mode !== 'forgot' && (
           <input
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             placeholder="Password"
+            aria-label="Password"
             required
             minLength={6}
             autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
@@ -267,11 +278,11 @@ export default function Auth({ initialMode = 'signin' }) {
         {resendTo && (
           <p className="text-sm text-gray-500">
             No email? Check spam, or{' '}
-            <button type="button" onClick={resend} disabled={busy} className="text-accent-600 font-medium hover:text-accent-700 disabled:opacity-50">resend it</button>.
+            <button type="button" onClick={resend} disabled={busy || resending} className="text-accent-600 font-medium hover:text-accent-700 disabled:opacity-50">resend it</button>.
           </p>
         )}
-        <button type="submit" disabled={busy} className={primaryButton}>
-          {busy ? '…' : mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
+        <button type="submit" disabled={busy || resending} className={primaryButton}>
+          <StableLabel current={submitLabels[busy ? 1 : 0]} labels={submitLabels} />
         </button>
       </form>
 
@@ -308,10 +319,12 @@ export function SetNewPassword({ onDone }) {
   return (
     <AuthShell title="Choose a new password">
       <form onSubmit={submit} className="space-y-3">
-        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="New password"
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="New password" aria-label="New password"
           required minLength={6} autoComplete="new-password" autoFocus className={inputClass} />
         {error && <p className="text-sm text-red-500">{error}</p>}
-        <button type="submit" disabled={busy} className={primaryButton}>{busy ? '…' : 'Save password'}</button>
+        <button type="submit" disabled={busy} className={primaryButton}>
+          <StableLabel current={busy ? 'Saving…' : 'Save password'} labels={['Save password', 'Saving…']} />
+        </button>
       </form>
     </AuthShell>
   )
@@ -337,12 +350,14 @@ export function CompleteProfile({ profile, onDone }) {
   return (
     <AuthShell title="What's your name?" subtitle="Your roommates will see your first name.">
       <form onSubmit={submit} className="space-y-3">
-        <div className="flex gap-2">
-          <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" required autoFocus className={inputClass} />
-          <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name (optional)" className={inputClass} />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" aria-label="First name" required autoFocus autoComplete="given-name" className={inputClass} />
+          <input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name (optional)" aria-label="Last name (optional)" autoComplete="family-name" className={inputClass} />
         </div>
-        <button type="submit" disabled={busy || !firstName.trim()} className={primaryButton}>{busy ? '…' : 'Continue'}</button>
         {error && <p className="text-sm text-red-500">{error}</p>}
+        <button type="submit" disabled={busy || !firstName.trim()} className={primaryButton}>
+          <StableLabel current={busy ? 'Saving…' : 'Continue'} labels={['Continue', 'Saving…']} />
+        </button>
       </form>
       <div className="mt-4 text-center text-sm">
         <button onClick={signOut} className="text-gray-400 hover:text-gray-600">Sign out</button>

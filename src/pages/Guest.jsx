@@ -2,13 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { computeDisplayNames } from '../lib/group.jsx'
-import { calculateDebts } from '../lib/splitLogic.js'
+import { calculateDebts, splitsUnclaimed } from '../lib/splitLogic.js'
 import { receiptDebts, computeBalances } from '../lib/balances.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { LOGO_URL } from '../lib/logo.js'
 import { useGoBack } from '../lib/useGoBack.js'
 import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
 import TornPaper from '../components/TornPaper.jsx'
+import BackButton from '../components/BackButton.jsx'
+import StableLabel from '../components/StableLabel.jsx'
+import LoadError from '../components/LoadError.jsx'
+import { PageLoading } from '../components/Loading.jsx'
+import { LockIcon, ChevronRight } from '../components/Icons.jsx'
+import { money } from '../lib/ui.js'
 
 // /guest/:token — check off items for someone without an account, from a
 // link the group shared with them. No login: everything goes through the
@@ -88,17 +94,8 @@ export default function Guest() {
     return { name: nameOf(me), meId: me, nameOf, receipts, debts, balances }
   }, [view])
 
-  if (loadFailed) {
-    return (
-      <Shell>
-        <div className="text-center py-12">
-          <p className="font-semibold text-gray-800">Couldn't load this page</p>
-          <button onClick={load} className="mt-4 px-4 py-2 text-sm font-medium rounded-lg bg-accent-600 text-white hover:bg-accent-700 transition">Try again</button>
-        </div>
-      </Shell>
-    )
-  }
-  if (view === undefined) return <Shell><p className="text-sm text-gray-400">Loading…</p></Shell>
+  if (loadFailed) return <Shell><LoadError onRetry={load} /></Shell>
+  if (view === undefined) return <Shell><PageLoading /></Shell>
   if (view === null) {
     return (
       <Shell>
@@ -137,13 +134,13 @@ export default function Guest() {
     }
     const left = shaped.balances.remainingFor(r.id, shaped.name, r.paid_by)
     return left > 0
-      ? <span className="text-sm font-semibold text-amber-600">${left.toFixed(2)}</span>
+      ? <span className="text-sm font-semibold text-amber-600 tabular-nums">{money(left)}</span>
       : <span className="text-xs text-accent-600 font-medium">Paid ✓</span>
   }
 
   const row = r => (
     <li key={r.id}>
-      <button onClick={() => { setSavedId(null); openReceipt(r.id) }} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 transition">
+      <button onClick={() => { setSavedId(null); openReceipt(r.id) }} className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 active:bg-gray-100 transition">
         <div className="min-w-0">
           <p className="font-medium text-gray-900 truncate">{r.store_name}</p>
           <p className="text-xs text-gray-400">{fmtDate(r.receipt_date)} · Paid by {r.paid_by === shaped.name ? 'you' : r.paid_by}</p>
@@ -151,7 +148,7 @@ export default function Guest() {
         <div className="flex items-center gap-2 shrink-0">
           {r.checkedIn && amountLabel(r)}
           {savedId === r.id && <span className="text-xs text-accent-600 font-medium">Saved ✓</span>}
-          <span className="text-gray-300">›</span>
+          <ChevronRight className="w-4 h-4 text-gray-300" />
         </div>
       </button>
     </li>
@@ -169,7 +166,7 @@ export default function Guest() {
           {owed.map(o => (
             <li key={o.person} className="flex items-center justify-between px-4 py-3 text-sm">
               <span className="text-gray-700">{o.iOwe ? `You owe ${o.person}` : `${o.person} owes you`}</span>
-              <span className={`font-semibold ${o.iOwe ? 'text-amber-600' : 'text-accent-600'}`}>${o.amount.toFixed(2)}</span>
+              <span className={`font-semibold tabular-nums ${o.iOwe ? 'text-amber-600' : 'text-accent-600'}`}>{money(o.amount)}</span>
             </li>
           ))}
         </ul>
@@ -251,7 +248,7 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
   return (
     <div className="pb-28">
       {unsavedDialog}
-      <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-800 mb-3">← All receipts</button>
+      <BackButton onClick={onBack} className="mb-3">All receipts</BackButton>
       <h1 className="text-2xl font-bold text-gray-900">{receipt.store_name}</h1>
       <p className="text-sm text-gray-400 mt-0.5">{fmtDate(receipt.receipt_date)} · Paid by {receipt.paid_by === guestName ? 'you' : receipt.paid_by}</p>
       <p className="text-sm text-gray-500 mt-3">Check off everything you had. Shared items are split between everyone who checks them.</p>
@@ -265,17 +262,27 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
           return (
             <li key={item.id}>
               {header && <p className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50">{header}</p>}
-              <button onClick={() => toggle(item)} className={`w-full flex items-center gap-3 px-4 py-3 text-left ${item.always_split ? '' : 'hover:bg-gray-50'}`}>
-                <input type="checkbox" readOnly checked={checked.has(item.id)} disabled={item.always_split} className="h-4 w-4 rounded accent-accent-600" />
+              <button
+                onClick={() => toggle(item)}
+                role="checkbox"
+                aria-checked={checked.has(item.id)}
+                aria-disabled={item.always_split || undefined}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left ${item.always_split ? 'cursor-default' : 'hover:bg-gray-50 active:bg-gray-100'}`}
+              >
+                <input type="checkbox" readOnly tabIndex={-1} aria-hidden="true" checked={checked.has(item.id)} disabled={item.always_split} className="h-4 w-4 rounded accent-accent-600 pointer-events-none" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {item.name}
                     {getItemEmoji(item.name) && <span className="ml-1.5">{getItemEmoji(item.name)}</span>}
-                    {item.always_split && <span className="ml-1.5 text-xs text-gray-400">🔒</span>}
+                    {item.always_split && <LockIcon className="w-3.5 h-3.5 text-gray-400 inline ml-1.5 -mt-0.5" />}
                   </p>
-                  {others.length > 0 && <p className="text-xs text-gray-400 truncate">{others.join(', ')}</p>}
+                  {others.length > 0
+                    ? <p className="text-xs text-gray-400 truncate">{others.join(', ')}</p>
+                    : !checked.has(item.id) && splitsUnclaimed(receipt) && (
+                      <p className="text-xs text-gray-400 truncate">Nobody yet · split by everyone if it stays that way</p>
+                    )}
                 </div>
-                <span className="text-sm font-medium text-gray-700 shrink-0">${item.price.toFixed(2)}</span>
+                <span className="text-sm font-medium text-gray-700 shrink-0 tabular-nums">{money(item.price)}</span>
               </button>
             </li>
           )
@@ -283,7 +290,7 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
         {extras > 0 && (
           <li className="flex items-center gap-3 px-4 py-3 bg-gray-50/60">
             <span className="flex-1 text-sm text-gray-400">Tax, tip and fees · split by what each person had</span>
-            <span className="text-sm text-gray-400">${extras.toFixed(2)}</span>
+            <span className="text-sm text-gray-400 tabular-nums">{money(extras)}</span>
           </li>
         )}
       </ul>
@@ -294,10 +301,11 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
         <div className="max-w-xl mx-auto bg-white border border-gray-200 shadow-lg rounded-2xl px-4 py-3 flex items-center justify-between gap-3">
           <div>
             <p className="text-xs text-gray-400">{receipt.paid_by === guestName ? 'You paid for this one' : 'Your share'}</p>
-            <p className="text-xl font-bold text-accent-600">${total.toFixed(2)}</p>
+            <p className="text-xl font-bold text-gray-900 tabular-nums">{money(total)}</p>
           </div>
-          <button onClick={save} disabled={saving} className="px-5 py-2 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save'}
+          {/* As wide as the receipt page's "Save my claims" */}
+          <button onClick={save} disabled={saving} className="px-5 py-2 min-w-[150px] bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 active:bg-accent-700 transition disabled:opacity-50 whitespace-nowrap">
+            <StableLabel current={saving ? 'Saving…' : 'Save'} labels={['Save', 'Saving…']} />
           </button>
         </div>
         {error && <p className="max-w-xl mx-auto mt-2 text-sm text-red-500 text-center">{error}</p>}

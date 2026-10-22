@@ -5,6 +5,9 @@ import { loadReceipts, loadItems, loadClaims, loadMeals } from '../lib/db.js'
 import { CATEGORIES } from '../config.js'
 import { calculateDebts } from '../lib/splitLogic.js'
 import LoadError from '../components/LoadError.jsx'
+import { PageLoading } from '../components/Loading.jsx'
+import { CheckOrPlus } from '../components/Icons.jsx'
+import { money, toggleChip } from '../lib/ui.js'
 import { dayValue, dateTicks, formatTick, formatDay } from '../lib/chartDates.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -39,6 +42,14 @@ function colorFor(index) {
   return `hsl(${hue.toFixed(0)}, 65%, 52%)`
 }
 const toTitleCase = s => s.replace(/\b\w/g, c => c.toUpperCase())
+// "+$12.34" / "−$181.82" (a real minus sign) / "$0.00"
+const signedMoney = n => (n > 0.01 ? '+' : n < -0.01 ? '−' : '') + money(Math.abs(n) > 0.01 ? Math.abs(n) : 0)
+// Y axis ticks: "$1,200"
+const axisMoney = v => '$' + v.toLocaleString()
+
+// The last loaded data per group, shown at once while it's fetched again, so
+// coming Back to Stats doesn't show a spinner and keeps its scroll position
+const cache = new Map()
 
 // What each person actually consumed, using the same split as Balances:
 // a person's share of a receipt is what they owe the payer for it, and the
@@ -89,7 +100,7 @@ function SortedLineTooltip({ active, payload, label }) {
             <div className="w-2 h-2 rounded-full shrink-0" style={{ background: entry.color }} />
             <span className="text-gray-700">{toTitleCase(entry.dataKey)}</span>
           </div>
-          <span className="font-semibold text-gray-900">${Number(entry.value).toFixed(2)}</span>
+          <span className="font-semibold text-gray-900 tabular-nums">{money(entry.value)}</span>
         </div>
       ))}
     </div>
@@ -99,10 +110,10 @@ function SortedLineTooltip({ active, payload, label }) {
 export default function Stats() {
   const { group, nameOf, memberIds, coreNames, myName: myDisplayName } = useGroup()
   const myName = myDisplayName.toLowerCase()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !cache.has(group.id))
   const [loadError, setLoadError] = useState(false)
   const [retries, setRetries] = useState(0)
-  const [raw, setRaw] = useState(null)
+  const [raw, setRaw] = useState(() => cache.get(group.id) || null)
   const [selectedPeople, setSelectedPeople] = useState(null)
   const [selectedCategories, setSelectedCategories] = useState(null)
   const [showAllStores, setShowAllStores] = useState(false)
@@ -144,11 +155,14 @@ export default function Stats() {
           .map(p => p.toLowerCase())
       )
 
-      setRaw({ receipts, items, claims, meals, coreRoommatesLower, defaultSelected, allPeopleUnfiltered, availableCategories })
+      const next = { receipts, items, claims, meals, coreRoommatesLower, defaultSelected, allPeopleUnfiltered, availableCategories }
+      cache.set(group.id, next)
+      setRaw(next)
       setLoading(false)
     }
     setLoadError(false)
-    load().catch(() => { setLoadError(true); setLoading(false) })
+    // A failed refetch keeps showing what's cached
+    load().catch(() => { if (!cache.has(group.id)) setLoadError(true); setLoading(false) })
   }, [myName, retries])
 
   // The people and categories picked are remembered per group. Someone (or a
@@ -183,13 +197,13 @@ export default function Stats() {
   }, [raw, selectedPeople, selectedCategories])
 
   if (loadError) return <LoadError onRetry={() => { setLoading(true); setRetries(n => n + 1) }} />
-  if (loading) return <div className="max-w-2xl mx-auto p-8 text-gray-400">Loading…</div>
+  if (loading) return <PageLoading />
   if (!raw) return null
   // A new group: nothing to chart yet
   if (raw.receipts.length === 0) {
     return (
       <div className="max-w-2xl mx-auto p-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900">Household Stats</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Stats</h1>
         <div className="mt-8 bg-white border border-gray-200 rounded-xl px-6 py-10 text-center">
           <p className="font-semibold text-gray-800">No stats yet</p>
           <p className="text-sm text-gray-500 mt-1">Charts of who spent what show up here once your group has receipts.</p>
@@ -392,7 +406,7 @@ export default function Stats() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 py-8 space-y-10">
-      <h1 className="text-2xl font-bold text-gray-900">Household Stats</h1>
+      <h1 className="text-2xl font-bold text-gray-900">Stats</h1>
 
       {/* Person filter */}
       <section>
@@ -416,10 +430,10 @@ export default function Stats() {
               <button
                 key={person}
                 onClick={() => togglePerson(person.toLowerCase())}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  isSelected ? 'bg-accent-50 border-accent-300 text-accent-700' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
-                }`}
+                aria-pressed={isSelected}
+                className={toggleChip(isSelected)}
               >
+                <CheckOrPlus on={isSelected} />
                 {toTitleCase(person)}
               </button>
             )
@@ -448,10 +462,10 @@ export default function Stats() {
                 <button
                   key={label}
                   onClick={() => toggleCategory(label)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                    isSelected ? 'bg-accent-50 border-accent-300 text-accent-700' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
-                  }`}
+                  aria-pressed={isSelected}
+                  className={toggleChip(isSelected)}
                 >
+                  <CheckOrPlus on={isSelected} />
                   {label}
                 </button>
               )
@@ -467,14 +481,14 @@ export default function Stats() {
           <p className="text-xs text-gray-400 mb-3">Running total of each person's actual share of costs over time, across the categories shown</p>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: -10, bottom: 4 }}>
+              <LineChart data={cumulativeLineData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
                 <XAxis
                   dataKey="t" type="number" scale="time" domain={[cumulativeSpan.first, cumulativeSpan.last]}
                   ticks={dateTicks(cumulativeSpan.first, cumulativeSpan.last)}
                   tickFormatter={v => formatTick(v, cumulativeSpan.last - cumulativeSpan.first)}
                   tick={{ fontSize: 11, fill: '#9ca3af' }} padding={{ left: 8, right: 8 }}
                 />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
+                <YAxis width={44} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={axisMoney} />
                 <Tooltip content={<SortedLineTooltip />} />
                 <Legend formatter={v => toTitleCase(v)} verticalAlign="top" wrapperStyle={{ fontSize: 12, paddingBottom: 12 }} />
                 {visiblePeople.map((person) => (
@@ -484,8 +498,9 @@ export default function Stats() {
                     dataKey={person}
                     stroke={colorFor(allPeople.indexOf(person))}
                     strokeWidth={2}
-                    dot={{ r: 3 }}
-                    activeDot={{ r: 5 }}
+                    // Dozens of dots would overlap into blobs on a phone
+                    dot={false}
+                    activeDot={{ r: 4 }}
                     connectNulls
                   />
                 ))}
@@ -518,7 +533,7 @@ export default function Stats() {
                         <Cell key={entry.name} fill={CATEGORIES.find(c => c.label === entry.name)?.chartColor ?? '#9ca3af'} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v) => `$${v.toFixed(2)}`} />
+                    <Tooltip formatter={v => money(v)} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -535,7 +550,7 @@ export default function Stats() {
                           <span className="text-gray-700 font-medium truncate">{name}</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-500 shrink-0">
-                          <span>${value.toFixed(2)}</span>
+                          <span className="tabular-nums">{money(value)}</span>
                           <span className="text-xs text-gray-400">{pct.toFixed(0)}%</span>
                         </div>
                       </div>
@@ -572,7 +587,7 @@ export default function Stats() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-1">
                       <span className="font-medium text-gray-800 truncate">{store.name}</span>
-                      <span className="text-sm font-semibold text-gray-900 ml-2 shrink-0">${store.total.toFixed(2)}</span>
+                      <span className="text-sm font-semibold text-gray-900 tabular-nums ml-2 shrink-0">{money(store.total)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
@@ -609,7 +624,7 @@ export default function Stats() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-1">
                       <span className="font-medium text-gray-800 truncate capitalize">{item.name}</span>
-                      <span className="text-sm text-gray-500 ml-2 shrink-0">${item.total.toFixed(2)} total</span>
+                      <span className="text-sm text-gray-500 tabular-nums ml-2 shrink-0">{money(item.total)} total</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
@@ -642,16 +657,16 @@ export default function Stats() {
                   <div className="space-y-1.5 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-500">Paid</span>
-                      <span className="font-medium text-gray-800">${p.paid.toFixed(2)}</span>
+                      <span className="font-medium text-gray-800 tabular-nums">{money(p.paid)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Consumed</span>
-                      <span className="font-medium text-gray-800">${p.consumed.toFixed(2)}</span>
+                      <span className="font-medium text-gray-800 tabular-nums">{money(p.consumed)}</span>
                     </div>
                     <div className="flex justify-between border-t border-gray-100 pt-1.5 mt-1.5">
-                      <span className="text-gray-500" title="Paid minus consumed, over all receipts. Payments between people aren't included, so this isn't what anyone owes now (see Balances).">Paid − consumed</span>
-                      <span className={`font-semibold ${p.net > 0.01 ? 'text-accent-600' : p.net < -0.01 ? 'text-amber-600' : 'text-gray-500'}`}>
-                        {p.net > 0.01 ? '+' : ''}{p.net.toFixed(2)}
+                      <span className="text-gray-500" title="Paid minus consumed, over all receipts. Payments between people aren't included, so this isn't what anyone owes now (see Balances).">Net</span>
+                      <span className={`font-semibold tabular-nums ${p.net > 0.01 ? 'text-accent-600' : p.net < -0.01 ? 'text-amber-600' : 'text-gray-500'}`}>
+                        {signedMoney(p.net)}
                       </span>
                     </div>
                   </div>
@@ -668,10 +683,10 @@ export default function Stats() {
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Spending per month</h2>
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={spendingByMonth} margin={{ top: 4, right: 4, left: -10, bottom: 40 }}>
+              <BarChart data={spendingByMonth} margin={{ top: 4, right: 4, left: 0, bottom: 40 }}>
                 <XAxis dataKey="tripName" tick={{ fontSize: 11, fill: '#9ca3af' }} angle={-35} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `$${v}`} />
-                <Tooltip formatter={(v, name) => [`$${v.toFixed(2)}`, toTitleCase(name)]} />
+                <YAxis width={44} tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={axisMoney} />
+                <Tooltip formatter={(v, name) => [money(v), toTitleCase(name)]} />
                 <Legend formatter={v => toTitleCase(v)} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
                 {visiblePayers.map((payer, i) => (
                   <Bar key={payer} dataKey={payer} stackId="a" fill={colorFor(allPeople.indexOf(payer))} radius={i === visiblePayers.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />

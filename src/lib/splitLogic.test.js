@@ -31,14 +31,46 @@ describe('calculateDebts', () => {
     expect(owed([receipt()], [item('milk', 6)], [claim('milk', 'Alice')])).toEqual({})
   })
 
-  it('leaves unclaimed items with the payer', () => {
-    expect(owed([receipt()], [item('milk', 6)], [])).toEqual({})
+  it('splits an item nobody claimed between everyone on the receipt', () => {
+    const r = receipt({ members: ['Alice', 'Bob', 'Carol'] })
+    expect(owed([r], [item('milk', 6)], [])).toEqual({ Bob: 2, Carol: 2 })
   })
 
-  it('keeps the tax on unclaimed items with the payer', () => {
+  it('with no member list, splits it between the payer and everyone who checked something off', () => {
+    const items = [item('milk', 6), item('bread', 4)]
+    expect(owed([receipt()], items, [claim('bread', 'Bob')])).toEqual({ Bob: 7 })
+  })
+
+  it("doesn't charge a payer left off the member list for unclaimed items", () => {
+    const r = receipt({ members: ['Bob', 'Carol'] })
+    expect(owed([r], [item('milk', 6)], [])).toEqual({ Bob: 3, Carol: 3 })
+  })
+
+  it('splits the tax on an unclaimed item the same way as the item', () => {
+    // Steak is nobody's, so $45 each: Bob has $55 of $100, so 55% of the $10 tax
+    const r = receipt({ tax: 10, members: ['Alice', 'Bob'] })
+    const items = [item('milk', 10), item('steak', 90)]
+    expect(owed([r], items, [claim('milk', 'Bob')])).toEqual({ Bob: 60.5 })
+  })
+
+  it('splits a meal fee evenly when the meal has no items', () => {
+    const r = receipt({ members: ['Alice', 'Bob'] })
+    const meals = [{ id: 'm1', receipt_id: 'r1', fee: 4, name: 'Dinner' }]
+    expect(owed([r], [item('milk', 6)], [claim('milk', 'Alice')], meals)).toEqual({ Bob: 2 })
+  })
+
+  // Created before UNCLAIMED_SPLIT_FROM: the payer kept unclaimed items
+  const BEFORE_SPLIT = '2026-10-20T00:00:00Z'
+
+  it('leaves unclaimed items with the payer on receipts from before the split', () => {
+    const r = receipt({ created_at: BEFORE_SPLIT, members: ['Alice', 'Bob'] })
+    expect(owed([r], [item('milk', 6)], [])).toEqual({})
+  })
+
+  it('keeps the tax on unclaimed items with the payer on receipts from before the split', () => {
     // Bob claims $10 of a $100 receipt, so he pays 10% of the $10 tax
     const items = [item('milk', 10), item('steak', 90)]
-    expect(owed([receipt({ tax: 10 })], items, [claim('milk', 'Bob')])).toEqual({ Bob: 11 })
+    expect(owed([receipt({ tax: 10, created_at: BEFORE_SPLIT })], items, [claim('milk', 'Bob')])).toEqual({ Bob: 11 })
   })
 
   it('keeps the old fee split on receipts created before the fix', () => {
@@ -90,9 +122,16 @@ describe('calculateDebts', () => {
     ]))
   })
 
-  it('splits a meal fee over that meal\'s items, unclaimed ones staying with the payer', () => {
+  it('splits a meal fee over that meal\'s items (unclaimed ones staying with the payer, before the split)', () => {
     const items = [item('pizza', 10, { meal_id: 'm1' }), item('wings', 10, { meal_id: 'm1' })]
     const meals = [{ id: 'm1', receipt_id: 'r1', fee: 4, name: 'Dinner' }]
-    expect(owed([receipt()], items, [claim('pizza', 'Bob')], meals)).toEqual({ Bob: 12 })
+    expect(owed([receipt({ created_at: '2026-10-20T00:00:00Z' })], items, [claim('pizza', 'Bob')], meals)).toEqual({ Bob: 12 })
+  })
+
+  it('splits a meal fee over that meal\'s items, unclaimed ones counted as everyone\'s', () => {
+    // Wings are nobody's: $5 each. Bob has $15 of the meal's $20, so 75% of the $4 fee
+    const items = [item('pizza', 10, { meal_id: 'm1' }), item('wings', 10, { meal_id: 'm1' })]
+    const meals = [{ id: 'm1', receipt_id: 'r1', fee: 4, name: 'Dinner' }]
+    expect(owed([receipt({ members: ['Alice', 'Bob'] })], items, [claim('pizza', 'Bob')], meals)).toEqual({ Bob: 18 })
   })
 })

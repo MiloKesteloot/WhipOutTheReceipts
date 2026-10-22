@@ -7,6 +7,8 @@ import { AuthShell, inputClass, primaryButton } from './Auth.jsx'
 import BackButton from '../components/BackButton.jsx'
 import { useGoBack } from '../lib/useGoBack.js'
 import { useDialog } from '../lib/useDialog.jsx'
+import StableLabel from '../components/StableLabel.jsx'
+import { PageLoading } from '../components/Loading.jsx'
 
 // Accepts a bare code or a full invite link (…#/join/ABCD2345)
 function parseInviteCode(input) {
@@ -50,8 +52,10 @@ export default function Onboarding() {
     >
       <form onSubmit={create} className="space-y-3">
         <p className="text-sm font-medium text-gray-700">Start a new group</p>
-        <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="e.g. 4th Street Apartment" required className={inputClass} />
-        <button type="submit" disabled={busy || !groupName.trim()} className={primaryButton}>Create group</button>
+        <input value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="e.g. 4th Street Apartment" aria-label="Group name" required autoComplete="off" className={inputClass} />
+        <button type="submit" disabled={busy || !groupName.trim()} className={primaryButton}>
+          <StableLabel current={busy ? 'Creating…' : 'Create group'} labels={['Create group', 'Creating…']} />
+        </button>
       </form>
 
       <div className="flex items-center gap-3 my-5 text-xs text-gray-400">
@@ -60,8 +64,9 @@ export default function Onboarding() {
 
       <form onSubmit={join} className="space-y-3">
         <p className="text-sm font-medium text-gray-700">Join with an invite</p>
-        <input value={code} onChange={e => setCode(e.target.value)} placeholder="Invite link or code" required className={inputClass} />
-        <button type="submit" disabled={!code.trim()} className="w-full py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
+        <input value={code} onChange={e => setCode(e.target.value)} placeholder="Invite link or code" aria-label="Invite link or code" required
+          autoCapitalize="characters" autoCorrect="off" spellCheck={false} autoComplete="off" className={inputClass} />
+        <button type="submit" disabled={!code.trim()} className="w-full py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition disabled:opacity-50">
           Join group
         </button>
       </form>
@@ -122,7 +127,7 @@ export function Join() {
     navigate('/', { replace: true })
   }
 
-  if (preview === undefined) return <AuthShell><p className="text-sm text-gray-400">Loading…</p></AuthShell>
+  if (preview === undefined) return <AuthShell><PageLoading className="py-6" /></AuthShell>
 
   if (preview === null) {
     return (
@@ -152,7 +157,9 @@ export function Join() {
   if (preview.rejoining) {
     return (
       <AuthShell title={`Rejoin ${preview.name}`} subtitle="Welcome back. Your past receipts and payments are still there.">
-        <button onClick={() => join()} disabled={busy} className={primaryButton}>{busy ? 'Joining…' : `Rejoin ${preview.name}`}</button>
+        <button onClick={() => join()} disabled={busy} className={primaryButton}>
+          <StableLabel current={busy ? 'Joining…' : `Rejoin ${preview.name}`} labels={[`Rejoin ${preview.name}`, 'Joining…']} />
+        </button>
         {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
       </AuthShell>
     )
@@ -244,13 +251,15 @@ function NameFix({ clash, groupName, profile, onCancel, onSaved }) {
         : `${groupName} already has someone called ${theirs}. Use a different name, like a nickname or your middle initial, so everyone can tell you apart.`}
     >
       <form onSubmit={save} className="space-y-3">
-        <div className="flex gap-2">
-          <input value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" required autoComplete="given-name" className={inputClass} />
-          <input value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" autoComplete="family-name" autoFocus className={inputClass} />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input value={first} onChange={e => setFirst(e.target.value)} placeholder="First name" aria-label="First name" required autoComplete="given-name" className={inputClass} />
+          <input value={last} onChange={e => setLast(e.target.value)} placeholder="Last name" aria-label="Last name" autoComplete="family-name" autoFocus className={inputClass} />
         </div>
         <p className="text-xs text-gray-400">This changes your name in all your groups. You can change it later in Settings.</p>
         {error && <p className="text-sm text-red-500">{error}</p>}
-        <button type="submit" disabled={busy || !first.trim() || !changed} className={primaryButton}>{busy ? 'Joining…' : 'Save and join'}</button>
+        <button type="submit" disabled={busy || !first.trim() || !changed} className={primaryButton}>
+          <StableLabel current={busy ? 'Joining…' : 'Save and join'} labels={['Save and join', 'Joining…']} />
+        </button>
       </form>
       <div className="mt-4 text-center text-sm">
         <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">Back</button>

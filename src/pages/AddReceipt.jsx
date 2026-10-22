@@ -12,7 +12,12 @@ import { fetchGeminiKey } from './Settings.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
 import { CATEGORIES, GEMINI_MODEL } from '../config.js'
 import BackButton from '../components/BackButton.jsx'
+import Select from '../components/Select.jsx'
 import LoadError from '../components/LoadError.jsx'
+import { PageLoading } from '../components/Loading.jsx'
+import StableLabel from '../components/StableLabel.jsx'
+import { CheckOrPlus, LockIcon, XIcon } from '../components/Icons.jsx'
+import { money, FIELD, FIELD_ERROR, toggleChip, choiceChip } from '../lib/ui.js'
 import { parseAmount, amountOrZero, toggleSign } from '../lib/amount.js'
 import { useGoBack, canGoBack } from '../lib/useGoBack.js'
 import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
@@ -31,6 +36,13 @@ function localToday() {
 
 const isBlankItem = item => !item.name.trim() && item.price === ''
 const containerOf = item => item.meal_local_id || UNGROUPED
+
+// On blur, a typed amount shows as money ("5" -> "5.00"); blank or
+// unreadable text is left as typed, so the error still points at it
+function formatAmount(value) {
+  const n = parseAmount(value)
+  return String(value).trim() && !isNaN(n) ? n.toFixed(2) : value
+}
 
 // Every list (ungrouped and each meal) ends with one empty row to type into.
 // Lists show their items in array order, so moving the empty rows to the end
@@ -83,6 +95,8 @@ export default function AddReceipt() {
   const [isDirty, setIsDirty] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const [loadAttempt, setLoadAttempt] = useState(0)
+  // Editing: no form until the receipt is in (a blank one could be saved over it)
+  const [loaded, setLoaded] = useState(!isEditing)
   const scanInputRef = useRef(null)
   const [activeDragId, setActiveDragId] = useState(null)
   const itemsBeforeDrag = useRef(null)
@@ -161,6 +175,7 @@ export default function AddReceipt() {
         setReceiptMembers([...new Set([...core, ...(myName ? [myName] : [])])])
       }
       loadComplete.current = true
+      setLoaded(true)
     }
     load()
   }, [receiptId, isEditing, group.id, loadAttempt])
@@ -363,6 +378,11 @@ Rules:
     })
   }
 
+  // Not an edit (same amount), so it doesn't mark the form changed
+  function formatItemPrice(itemId) {
+    setLineItems(prev => prev.map(item => item.id === itemId ? { ...item, price: formatAmount(item.price) } : item))
+  }
+
   function removeItem(itemId) {
     markDirty()
     setLineItems(prev => withBlankRows(prev.filter(i => i.id !== itemId), mealIdsRef.current))
@@ -552,8 +572,8 @@ Rules:
   function validate() {
     const errs = {}
     if (!receiptDate) errs.receiptDate = 'Pick the date of the receipt.'
-    if (!storeName.trim()) errs.storeName = 'Store name is required.'
-    if (!paidBy.trim()) errs.paidBy = 'Payer name is required.'
+    if (!storeName.trim()) errs.storeName = 'Add the store name.'
+    if (!paidBy.trim()) errs.paidBy = 'Pick who paid.'
     if (filledItems().length === 0) errs.items = 'Add at least one item.'
     filledItems().forEach(item => {
       if (!item.name.trim()) errs[`name-${item.id}`] = 'Required'
@@ -561,7 +581,7 @@ Rules:
       if (isNaN(p)) errs[`price-${item.id}`] = 'Invalid'
     })
     meals.forEach(meal => {
-      if (!meal.name.trim()) errs[`meal-${meal.local_id}`] = 'Meal name required'
+      if (!meal.name.trim()) errs[`meal-${meal.local_id}`] = 'Name this meal'
       if (!validExtra(meal.fee)) errs[`mealfee-${meal.local_id}`] = 'Invalid'
     })
     if (!validExtra(tip)) errs.tip = 'Invalid'
@@ -632,7 +652,8 @@ Rules:
       setErrors(errs)
       // The first problem may be far up the page: bring it into view
       requestAnimationFrame(() => {
-        const field = formRef.current?.querySelector('.border-red-400, .placeholder-red-400, .text-red-500')
+        // (FIELD_ERROR is the "!border-red-400" class)
+        const field = formRef.current?.querySelector('.\\!border-red-400, .border-red-400, .placeholder-red-400, p.text-red-500')
         field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
         if (field?.matches('input')) field.focus({ preventScroll: true })
       })
@@ -774,19 +795,20 @@ Rules:
     return (
       <SortableRow key={item.id} id={item.id} disabled={!canDrag}>
         {handleProps => (
-      <div className="flex gap-2 items-start">
+      <div className="flex gap-1.5 sm:gap-2 items-start">
         <DragHandle handleProps={handleProps} disabled={!canDrag} />
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <input
             type="text"
             value={item.name}
             enterKeyHint="next"
+            autoComplete="off"
             onChange={e => { updateItem(item.id, 'name', e.target.value); setErrors(v => ({ ...v, [`name-${item.id}`]: undefined })) }}
             placeholder="Item name"
-            className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors[`name-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
+            className={`${FIELD} ${errors[`name-${item.id}`] ? FIELD_ERROR : ''}`}
           />
         </div>
-        <div className="w-28">
+        <div className="w-24 sm:w-28 shrink-0">
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
             <input
@@ -795,8 +817,9 @@ Rules:
               enterKeyHint="next"
               value={item.price}
               onChange={e => { updateItem(item.id, 'price', e.target.value); setErrors(v => ({ ...v, [`price-${item.id}`]: undefined })) }}
+              onBlur={() => formatItemPrice(item.id)}
               placeholder="0.00"
-              className={`w-full border rounded-lg pl-6 pr-8 sm:pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors[`price-${item.id}`] ? 'border-red-400' : 'border-gray-300'}`}
+              className={`${FIELD} pl-6 pr-9 sm:pr-2 ${errors[`price-${item.id}`] ? FIELD_ERROR : ''}`}
             />
             {/* Phones: the number keypad has no minus key, so this makes a price
                 negative (a discount). Keeps the keyboard open (no focus change). */}
@@ -806,30 +829,33 @@ Rules:
               onPointerDown={e => e.preventDefault()}
               onClick={() => { updateItem(item.id, 'price', toggleSign(item.price)); setErrors(v => ({ ...v, [`price-${item.id}`]: undefined })) }}
               aria-label="Make negative (discount)"
-              className="sm:hidden absolute right-0.5 top-1/2 -translate-y-1/2 w-7 h-8 flex items-center justify-center rounded-md text-gray-400 active:bg-gray-100 text-sm"
+              className="sm:hidden absolute right-0.5 top-1/2 -translate-y-1/2 w-8 h-9 flex items-center justify-center rounded-md text-gray-400 active:bg-gray-100 text-sm"
             >
               ±
             </button>
           </div>
         </div>
+        {/* An icon, not 🔒/🔓: emoji ignore text color, so every row showed
+            the same full-color padlock whether it was on or off */}
         <button
           type="button"
           tabIndex={-1}
           onClick={() => updateItem(item.id, 'always_split', !item.always_split)}
           title={item.always_split ? 'Split with everyone who checks in — click to unlock' : 'Click to split with everyone who checks in'}
-          className={`w-8 h-10 -my-0.5 shrink-0 flex items-center justify-center text-base transition ${item.always_split ? 'text-accent-500' : 'text-gray-300 hover:text-gray-400'}`}
-          aria-label="Toggle always split"
+          className={`w-8 h-11 sm:h-10 shrink-0 flex items-center justify-center rounded-md transition active:bg-gray-100 ${item.always_split ? 'text-accent-600' : 'text-gray-300 hover:text-gray-400'}`}
+          aria-label="Split with everyone who checks in"
+          aria-pressed={item.always_split}
         >
-          {item.always_split ? '🔒' : '🔓'}
+          <LockIcon locked={item.always_split} />
         </button>
         <button
           type="button"
           tabIndex={-1}
           onClick={() => removeItem(item.id)}
-          className="w-8 h-10 -my-0.5 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500 transition text-sm"
+          className="w-8 h-11 sm:h-10 shrink-0 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 active:bg-gray-100 active:text-red-500 transition"
           aria-label="Remove item"
         >
-          ✕
+          <XIcon />
         </button>
       </div>
         )}
@@ -838,6 +864,7 @@ Rules:
   }
 
   if (loadError) return <LoadError onRetry={() => setLoadAttempt(n => n + 1)} />
+  if (!loaded) return <PageLoading />
 
   return (
     <>
@@ -897,7 +924,7 @@ Rules:
             type="date"
             value={receiptDate}
             onChange={e => { markDirty(); setReceiptDate(e.target.value); setErrors(v => ({ ...v, receiptDate: undefined })) }}
-            className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.receiptDate ? 'border-red-400' : 'border-gray-300'}`}
+            className={`${FIELD} ${errors.receiptDate ? FIELD_ERROR : ''}`}
           />
           {errors.receiptDate && <p className="text-xs text-red-500 mt-1">{errors.receiptDate}</p>}
         </div>
@@ -920,10 +947,12 @@ Rules:
                       prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]
                     )
                   }}
-                  className={`px-3 py-1 rounded-full text-sm font-medium border transition ${
-                    selected ? 'bg-accent-600 text-white border-accent-600' : 'bg-white text-gray-500 border-gray-300 hover:border-accent-400'
-                  }`}
+                  aria-pressed={selected}
+                  // Color alone didn't say which is which: on = filled with ✓,
+                  // off = white with + (same width either way, so nothing jumps)
+                  className={toggleChip(selected)}
                 >
+                  <CheckOrPlus on={selected} />
                   {name}
                 </button>
               )
@@ -941,12 +970,15 @@ Rules:
                 }
               }}
               placeholder="Add someone…"
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400"
+              autoCapitalize="words"
+              autoComplete="off"
+              enterKeyHint="done"
+              className={`${FIELD} flex-1 min-w-0`}
             />
             <button
               type="button"
               onClick={addTypedMember}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition text-gray-600"
+              className="h-11 sm:h-10 px-4 shrink-0 text-sm font-medium border border-gray-300 rounded-lg bg-white hover:bg-gray-50 active:bg-gray-100 transition text-gray-600"
             >
               Add
             </button>
@@ -961,7 +993,10 @@ Rules:
             value={storeName}
             onChange={e => { markDirty(); setStoreName(e.target.value); setErrors(v => ({ ...v, storeName: undefined })) }}
             placeholder="e.g. Costco"
-            className={`w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.storeName ? 'border-red-400' : 'border-gray-300'}`}
+            autoComplete="off"
+            autoCapitalize="words"
+            enterKeyHint="next"
+            className={`${FIELD} ${errors.storeName ? FIELD_ERROR : ''}`}
             autoFocus={!isEditing && window.matchMedia('(min-width: 640px)').matches}
           />
           {errors.storeName && <p className="text-xs text-red-500 mt-1">{errors.storeName}</p>}
@@ -971,14 +1006,13 @@ Rules:
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
           <div className="flex gap-2 flex-wrap">
-            {CATEGORIES.map(({ label, color: active }) => (
+            {CATEGORIES.map(({ label }) => (
               <button
                 key={label}
                 type="button"
                 onClick={() => { markDirty(); categoryPicked.current = true; setCategory(label) }}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
-                  category === label ? active : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300 hover:text-gray-600'
-                }`}
+                aria-pressed={category === label}
+                className={choiceChip(category === label)}
               >
                 {label}
               </button>
@@ -991,16 +1025,14 @@ Rules:
           <label className="block text-sm font-medium text-gray-700 mb-1">Paid by</label>
           {/* Only people on the receipt or in the group, so a typo can't make
               up a new person. Someone new: "Add someone…" above first. */}
-          <select
+          <Select
             value={paidBy}
-            onChange={e => pickPayer(e.target.value)}
-            className={`w-full border rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.paidBy ? 'border-red-400' : 'border-gray-300'} ${paidBy ? 'text-gray-900' : 'text-gray-400'}`}
-          >
-            <option value="" disabled>Who paid?</option>
-            {[...new Set([...receiptMembers, ...knownNames, ...(paidBy ? [paidBy] : [])])].map(name => (
-              <option key={name} value={name} className="text-gray-900">{name}</option>
-            ))}
-          </select>
+            onChange={pickPayer}
+            placeholder="Who paid?"
+            ariaLabel="Paid by"
+            invalid={!!errors.paidBy}
+            options={[...new Set([...receiptMembers, ...knownNames, ...(paidBy ? [paidBy] : [])])].map(name => ({ value: name, label: name }))}
+          />
           {errors.paidBy && <p className="text-xs text-red-500 mt-1">{errors.paidBy}</p>}
         </div>
 
@@ -1008,7 +1040,7 @@ Rules:
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="block text-sm font-medium text-gray-700">Items</label>
-            <span className="text-xs text-gray-400">🔒 splits with everyone who checks in</span>
+            <span className="flex items-center gap-1 text-xs text-gray-400"><LockIcon className="w-3.5 h-3.5" /> splits with everyone who checks in</span>
           </div>
           {errors.items && <p className="text-xs text-red-500 mb-2">{errors.items}</p>}
 
@@ -1042,33 +1074,41 @@ Rules:
               >
                 {/* Meal header */}
                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-200">
+                  {/* The error shows in the field itself (red placeholder and
+                      border): a message beside it pushed the row off a phone */}
                   <input
                     type="text"
                     value={meal.name}
                     onChange={e => updateMeal(meal.local_id, 'name', e.target.value)}
-                    placeholder="Meal name (e.g. Dinner)"
-                    className={`flex-1 bg-transparent text-sm font-semibold text-gray-700 border-none outline-none focus:outline-none ${errors[`meal-${meal.local_id}`] ? 'placeholder-red-400' : 'placeholder-gray-400'}`}
+                    placeholder={errors[`meal-${meal.local_id}`] || 'Meal name (e.g. Dinner)'}
+                    aria-label="Meal name"
+                    aria-invalid={!!errors[`meal-${meal.local_id}`]}
+                    autoComplete="off"
+                    enterKeyHint="next"
+                    className={`flex-1 min-w-0 h-9 rounded px-1 -mx-1 bg-transparent text-sm font-semibold text-gray-700 border outline-none focus:outline-none focus:bg-white focus:ring-2 focus:ring-accent-400 ${errors[`meal-${meal.local_id}`] ? 'border-red-400 placeholder-red-400' : 'border-transparent placeholder-gray-400'}`}
                   />
-                  {errors[`meal-${meal.local_id}`] && (
-                    <span className="text-xs text-red-500">{errors[`meal-${meal.local_id}`]}</span>
-                  )}
                   <div className="relative shrink-0 w-24">
-                    <span className="absolute left-2 top-1.5 text-gray-400 text-xs">fee $</span>
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-xs">fee $</span>
                     <input
                       type="text"
                       inputMode="decimal"
+                      enterKeyHint="next"
                       value={meal.fee}
                       onChange={e => { updateMeal(meal.local_id, 'fee', e.target.value); setErrors(v => ({ ...v, [`mealfee-${meal.local_id}`]: undefined })) }}
+                      onBlur={() => setMeals(prev => prev.map(m => m.local_id === meal.local_id ? { ...m, fee: formatAmount(m.fee) } : m))}
                       placeholder="0.00"
-                      className={`w-full border rounded-md pl-9 pr-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-accent-400 ${errors[`mealfee-${meal.local_id}`] ? 'border-red-400' : 'border-gray-200'}`}
+                      aria-label="Meal fee"
+                      className={`w-full h-9 border rounded-md bg-white pl-9 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors[`mealfee-${meal.local_id}`] ? 'border-red-400' : 'border-gray-200'}`}
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => removeMeal(meal.local_id)}
-                    className="text-xs text-gray-400 hover:text-red-500 transition shrink-0"
+                    aria-label="Remove meal group"
+                    title="Remove meal group"
+                    className="w-8 h-8 -mr-1 shrink-0 flex items-center justify-center rounded-md text-gray-400 hover:text-red-500 active:bg-gray-200 active:text-red-500 transition"
                   >
-                    Remove
+                    <XIcon />
                   </button>
                 </div>
 
@@ -1108,10 +1148,12 @@ Rules:
               <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
                 type="text" inputMode="decimal"
+                enterKeyHint="next"
                 value={tip}
                 onChange={e => { markDirty(); setTip(e.target.value); setErrors(v => ({ ...v, tip: undefined })) }}
+                onBlur={() => setTip(formatAmount)}
                 placeholder="0.00"
-                className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.tip ? 'border-red-400' : 'border-gray-300'}`}
+                className={`${FIELD} pl-6 pr-2 ${errors.tip ? FIELD_ERROR : ''}`}
               />
             </div>
           </div>
@@ -1121,10 +1163,12 @@ Rules:
               <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
                 type="text" inputMode="decimal"
+                enterKeyHint="next"
                 value={tax}
                 onChange={e => { markDirty(); setTax(e.target.value); setErrors(v => ({ ...v, tax: undefined })) }}
+                onBlur={() => setTax(formatAmount)}
                 placeholder="0.00"
-                className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.tax ? 'border-red-400' : 'border-gray-300'}`}
+                className={`${FIELD} pl-6 pr-2 ${errors.tax ? FIELD_ERROR : ''}`}
               />
             </div>
           </div>
@@ -1134,10 +1178,12 @@ Rules:
               <span className="absolute left-3 top-1/2 -translate-y-1/2 leading-none text-gray-400 text-sm">$</span>
               <input
                 type="text" inputMode="decimal"
+                enterKeyHint="done"
                 value={fees}
                 onChange={e => { markDirty(); setFees(e.target.value); setErrors(v => ({ ...v, fees: undefined })) }}
+                onBlur={() => setFees(formatAmount)}
                 placeholder="0.00"
-                className={`w-full border rounded-lg pl-6 pr-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-400 ${errors.fees ? 'border-red-400' : 'border-gray-300'}`}
+                className={`${FIELD} pl-6 pr-2 ${errors.fees ? FIELD_ERROR : ''}`}
               />
             </div>
           </div>
@@ -1156,15 +1202,15 @@ Rules:
             <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-500">Receipt total</span>
-                <span className="font-semibold text-gray-900">${grandTotal.toFixed(2)}</span>
+                <span className="font-semibold text-gray-900 tabular-nums">{money(grandTotal)}</span>
               </div>
               {hasExtras && (
-                <p className="text-xs text-gray-400 mt-0.5 text-right">
-                  ${itemsTotal.toFixed(2)} items
-                  {tipAmt > 0 && ` + $${tipAmt.toFixed(2)} tip`}
-                  {taxAmt > 0 && ` + $${taxAmt.toFixed(2)} tax`}
-                  {feesAmt > 0 && ` + $${feesAmt.toFixed(2)} fees`}
-                  {mealFeesAmt > 0 && ` + $${mealFeesAmt.toFixed(2)} meal fees`}
+                <p className="text-xs text-gray-400 mt-0.5 text-right tabular-nums">
+                  {money(itemsTotal)} items
+                  {tipAmt > 0 && ` + ${money(tipAmt)} tip`}
+                  {taxAmt > 0 && ` + ${money(taxAmt)} tax`}
+                  {feesAmt > 0 && ` + ${money(feesAmt)} fees`}
+                  {mealFeesAmt > 0 && ` + ${money(mealFeesAmt)} meal fees`}
                 </p>
               )}
             </div>
@@ -1176,17 +1222,21 @@ Rules:
         )}
         <button
           type="submit"
-          disabled={saving}
-          className="w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 transition disabled:opacity-50"
+          // A scan still running would add items after the save
+          disabled={saving || scanning}
+          className="w-full py-3 bg-accent-600 text-white font-semibold rounded-xl hover:bg-accent-700 active:bg-accent-700 transition disabled:opacity-50"
         >
-          {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Receipt'}
+          <StableLabel
+            current={saving ? 'Saving…' : scanning ? 'Waiting for scan…' : isEditing ? 'Save Changes' : 'Save Receipt'}
+            labels={['Saving…', 'Waiting for scan…', isEditing ? 'Save Changes' : 'Save Receipt']}
+          />
         </button>
 
         {isEditing && (
           <button
             type="button"
             onClick={handleDelete}
-            className="w-full py-2.5 border border-red-200 text-red-400 rounded-xl hover:bg-red-50 hover:text-red-500 transition text-sm font-medium"
+            className="w-full py-2.5 border border-red-200 text-red-500 rounded-xl hover:bg-red-50 active:bg-red-50 transition text-sm font-medium"
           >
             Delete receipt
           </button>

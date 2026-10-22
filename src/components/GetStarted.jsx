@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { appBaseUrl } from '../lib/supabase.js'
 import { useGroup } from '../lib/group.jsx'
 import { copyText } from '../lib/clipboard.js'
+import StableLabel from './StableLabel.jsx'
 
 // The first steps in a group: add a receipt, invite the roommates. Home
 // shows both while the group has no receipts, and just the invite while
@@ -37,8 +38,8 @@ export default function GetStarted({ showAddReceipt = true }) {
         <div className="flex gap-2 mt-3">
           <input readOnly value={inviteLink} onFocus={e => e.target.select()} aria-label="Invite link"
             className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-500 bg-gray-50" />
-          <button onClick={copy} className="px-4 py-2 text-sm font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700 transition shrink-0">
-            {copied ? 'Copied ✓' : 'Copy'}
+          <button onClick={copy} className="px-4 py-2 text-sm font-medium bg-accent-600 text-white rounded-lg hover:bg-accent-700 active:bg-accent-700 transition shrink-0">
+            <StableLabel current={copied ? 'Copied ✓' : 'Copy'} labels={['Copy', 'Copied ✓']} />
           </button>
         </div>
         <Link to="/group" className="inline-block mt-2 text-xs text-gray-400 hover:text-gray-600">

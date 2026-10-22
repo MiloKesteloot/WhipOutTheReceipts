@@ -19,6 +19,10 @@ import GlassTabBar from './components/GlassTabBar.jsx'
 import { LOGO_URL } from './lib/logo.js'
 import { useDialog } from './lib/useDialog.jsx'
 import { hasUnsavedChanges, leaveWithoutPrompt } from './lib/unsaved.jsx'
+import { useDismiss } from './lib/useDismiss.js'
+import { POPUP_PANEL, POPUP_ITEM, POPUP_HEADING, POPUP_DIVIDER } from './lib/popup.js'
+import { FullPageLoading } from './components/Loading.jsx'
+import LoadError from './components/LoadError.jsx'
 
 // Main sections. Receipt pages count as "Receipts"; the add form has no tab.
 const TABS = [
@@ -76,7 +80,7 @@ function TopNav() {
               <Link
                 key={tab.to}
                 to={tab.to}
-                className={`flex items-center gap-1.5 px-3 py-1.5 shrink-0 rounded-md text-sm font-medium transition-colors ${active ? 'text-accent-600' : 'text-gray-400 hover:text-gray-600'}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 shrink-0 rounded-md text-sm font-medium transition-colors ${active ? 'text-accent-600' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <TabIcon d={tab.icon} active={active} className="w-4 h-4" />
                 {tab.label}
@@ -101,7 +105,7 @@ function TopNav() {
 
 // Account + group menu: switch groups, add a group, settings, sign out
 function UserMenu() {
-  const { signOut } = useSession()
+  const { signOut, user } = useSession()
   const { memberships, group, switchGroup, myName } = useGroup()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -123,22 +127,28 @@ function UserMenu() {
   }
 
   useEffect(() => { setOpen(false) }, [pathname])
-  useEffect(() => {
-    if (!open) return
-    const onClick = e => { if (!ref.current?.contains(e.target)) setOpen(false) }
-    const onKey = e => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', onClick)
-    window.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('mousedown', onClick); window.removeEventListener('keydown', onKey) }
-  }, [open])
+  useDismiss(open, ref, () => setOpen(false))
+  const close = () => setOpen(false)
+
+  // Up/Down move between the menu's items (Down from the button enters it)
+  function onKeyDown(e) {
+    if (!open || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return
+    e.preventDefault()
+    const items = [...ref.current.querySelectorAll('[role=menuitem]')]
+    const at = items.indexOf(document.activeElement)
+    const next = at === -1 ? (e.key === 'ArrowDown' ? 0 : items.length - 1) : (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+    items[next]?.focus()
+  }
 
   return (
-    <div className="relative min-w-0" ref={ref}>
+    <div className="relative min-w-0" ref={ref} onKeyDown={onKeyDown}>
       {DialogUI}
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="Account menu"
-        className="flex items-center gap-2 max-w-full pl-2 pr-0 sm:px-3 py-1.5 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex items-center gap-2 max-w-full pl-2 pr-1 sm:px-3 py-1.5 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 ${open ? 'bg-gray-100 text-gray-700' : ''}`}
       >
         {/* Phones: current group next to the circle */}
         <span className="sm:hidden text-gray-600 truncate min-w-0">{group?.name}</span>
@@ -151,32 +161,42 @@ function UserMenu() {
         </span>
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50">
-          <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Groups</p>
+        <div role="menu" aria-label="Account" className={`animate-pop absolute right-0 top-full mt-2 w-64 z-50 ${POPUP_PANEL}`}>
+          {/* Who's signed in (on phones the bar only shows an initial) */}
+          <div className="flex items-center gap-3 px-3 pt-2 pb-2.5">
+            <span className="w-9 h-9 shrink-0 rounded-full bg-accent-100 text-accent-700 flex items-center justify-center text-sm font-bold">
+              {(myName || '?').slice(0, 1).toUpperCase()}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-gray-900 truncate">{myName}</span>
+              <span className="block text-xs text-gray-400 truncate">{user?.email}</span>
+            </span>
+          </div>
+          <div className={POPUP_DIVIDER} />
+          <p className={POPUP_HEADING}>Groups</p>
           {memberships.map(m => (
             <button
               key={m.group_id}
+              role="menuitemradio"
+              aria-checked={m.group_id === group?.id}
               onClick={() => pickGroup(m.group_id)}
-              className="w-full flex items-center justify-between px-4 py-2 text-sm text-left hover:bg-gray-50"
+              className={`flex items-center justify-between gap-2 ${POPUP_ITEM} ${m.group_id === group?.id ? 'font-medium text-gray-900' : 'text-gray-700'}`}
             >
-              <span className={`truncate ${m.group_id === group?.id ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>{m.groups.name}</span>
-              {m.group_id === group?.id && <span className="text-accent-600 shrink-0 ml-2">✓</span>}
+              <span className="truncate">{m.groups.name}</span>
+              {m.group_id === group?.id && <span className="text-accent-600 shrink-0">✓</span>}
             </button>
           ))}
-          <Link to="/group" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Group settings &amp; invite</Link>
-          <Link to="/groups/new" className="block px-4 py-2 text-sm text-accent-600 hover:bg-gray-50">+ Create or join a group</Link>
-          <div className="border-t border-gray-100 my-1" />
-          <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
-          <Link to="/settings" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Your settings</Link>
-          <button onClick={signOut} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Sign out</button>
+          <div className={POPUP_DIVIDER} />
+          {/* Links close the menu even when they're the page you're on */}
+          <Link role="menuitem" to="/group" onClick={close} className={`block ${POPUP_ITEM} text-gray-700`}>Group settings &amp; invite</Link>
+          <Link role="menuitem" to="/groups/new" onClick={close} className={`block ${POPUP_ITEM} text-accent-600`}>+ Create or join a group</Link>
+          <div className={POPUP_DIVIDER} />
+          <Link role="menuitem" to="/settings" onClick={close} className={`block ${POPUP_ITEM} text-gray-700`}>Your settings</Link>
+          <button role="menuitem" onClick={() => { close(); signOut() }} className={`${POPUP_ITEM} text-gray-700`}>Sign out</button>
         </div>
       )}
     </div>
   )
-}
-
-function FullPageLoading() {
-  return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-sm text-gray-400">Loading…</div>
 }
 
 // Invite links opened while signed out are remembered until after sign-in
@@ -202,7 +222,7 @@ function takePendingPath() {
 }
 
 function SignedInApp() {
-  const { loading, memberships, group } = useGroup()
+  const { loading, loadError, retryLoad, memberships, group } = useGroup()
   const { user } = useSession()
   const { pathname } = useLocation()
   const navigate = useNavigate()
@@ -224,6 +244,8 @@ function SignedInApp() {
   if (pathname.startsWith('/join/')) {
     return <Routes><Route path="/join/:code" element={<Join />} /></Routes>
   }
+  // Couldn't load your groups: say so (not "Set up your group")
+  if (loadError) return <div className="min-h-screen bg-gray-50 flex items-center"><LoadError onRetry={retryLoad} /></div>
   if (loading) return <FullPageLoading />
   if (memberships.length === 0 || pathname === '/groups/new') return <Onboarding />
 
@@ -261,7 +283,7 @@ function Redirect({ to }) {
 }
 
 function Gate() {
-  const { session, loading, profile, refreshProfile, recovering, finishRecovery } = useSession()
+  const { session, loading, profile, profileError, refreshProfile, recovering, finishRecovery } = useSession()
   const { pathname, search } = useLocation()
 
   // Guest links work for anyone with the link, signed in or not
@@ -279,6 +301,7 @@ function Gate() {
     if (pathname === '/') return <Landing />
     return <Auth key={pathname} initialMode={pathname === '/signup' ? 'signup' : 'signin'} />
   }
+  if (profileError && !profile) return <div className="min-h-screen bg-gray-50 flex items-center"><LoadError onRetry={refreshProfile} /></div>
   if (!profile?.first_name?.trim()) return <CompleteProfile profile={profile} onDone={refreshProfile} />
   return (
     <GroupProvider>

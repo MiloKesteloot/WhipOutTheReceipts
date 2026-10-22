@@ -7,6 +7,7 @@ export default function GlassTabBar({ tabs, TabIcon, PlusIcon }) {
 
   return (
     <nav
+      data-tabbar // Dropdowns (Select) measure it so they don't open underneath
       className="sm:hidden fixed left-0 right-0 z-40 px-5 flex items-center gap-3 select-none"
       style={{ bottom: 'max(12px, calc(var(--safe-bottom) - 9px))' }}
     >
@@ -17,7 +18,9 @@ export default function GlassTabBar({ tabs, TabIcon, PlusIcon }) {
             <Link
               key={t.to}
               to={t.to}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-full text-[10px] font-semibold transition-colors ${active ? 'bg-black/[0.06] text-accent-600' : 'text-gray-800'}`}
+              // The tab you're already on scrolls back to the top (like iOS)
+              onClick={e => { if (active) { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }) } }}
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-full text-[10px] font-semibold transition active:scale-95 active:bg-black/[0.08] ${active ? 'bg-black/[0.06] text-accent-600' : 'text-gray-800'}`}
             >
               <TabIcon d={t.icon} active={active} className="w-6 h-6" />
               {t.label}

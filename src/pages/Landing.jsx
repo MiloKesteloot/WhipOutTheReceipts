@@ -183,7 +183,7 @@ export default function Landing() {
         </Link>
         <nav className="flex items-center gap-2">
           <Link to="/signin" className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">Sign in</Link>
-          <Link to="/signup" className="px-4 py-2 rounded-lg bg-accent-600 text-white text-sm font-semibold hover:bg-accent-700 transition">Create a group</Link>
+          <Link to="/signup" className="px-4 py-2 rounded-lg bg-accent-600 text-white text-sm font-semibold hover:bg-accent-700 transition">Create account</Link>
         </nav>
       </header>
 
@@ -200,7 +200,7 @@ export default function Landing() {
               and the app figures out each person’s share, including tax and tip.
             </p>
             <div className="mt-6 sm:mt-8 flex gap-3 justify-center md:justify-start">
-              <Link to="/signup" className={`${primaryCta} flex-1 sm:flex-none`}>Create a group</Link>
+              <Link to="/signup" className={`${primaryCta} flex-1 sm:flex-none`}>Create account</Link>
               <Link to="/signin" className={`${secondaryCta} flex-1 sm:flex-none`}>Sign in</Link>
             </div>
             <p className="mt-2 translate-x-0.5 text-sm text-gray-500">Free to use, no ads</p>
@@ -312,9 +312,9 @@ export default function Landing() {
             </div>
             <div className="mt-12 pt-10 text-center">
               <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Start splitting your next grocery run</h2>
-              <p className="mt-4 text-lg text-gray-600">Create a group, invite your roommates, and add your first receipt.</p>
+              <p className="mt-4 text-lg text-gray-600">Make a free account, start a group, invite your roommates, and add your first receipt.</p>
               <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-                <Link to="/signup" className={primaryCta}>Create a group</Link>
+                <Link to="/signup" className={primaryCta}>Create account</Link>
                 <Link to="/signin" className={secondaryCta}>I already have an account</Link>
               </div>
             </div>
