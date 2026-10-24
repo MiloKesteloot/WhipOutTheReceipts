@@ -10,8 +10,10 @@ import UnclaimedItems from '../components/UnclaimedItems.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError, { StaleNotice } from '../components/LoadError.jsx'
 import GetStarted from '../components/GetStarted.jsx'
-import { PageLoading } from '../components/Loading.jsx'
+import { HomeSkeleton } from '../components/Skeletons.jsx'
+import { useSkeletonPreview } from '../lib/skeletonPreview.js'
 import { ChevronRight } from '../components/Icons.jsx'
+import { StoreIcon } from '../components/ReceiptViews.jsx'
 import { money } from '../lib/ui.js'
 
 // Home = what needs you: receipts to check off and where your balances stand.
@@ -20,9 +22,10 @@ export default function Home() {
   const { group, myName, myMember, members } = useGroup()
   const { loading, error, data, balances, reload } = useBalances()
   const { showAlert, DialogUI } = useDialog()
+  const skeletonPreview = useSkeletonPreview()
 
   if (error && !data) return <LoadError onRetry={reload} />
-  if (loading) return <PageLoading />
+  if (loading || skeletonPreview) return <HomeSkeleton />
 
   const unchecked = receiptsToCheckOff(data, checkedInByReceipt(data), myName)
     .sort((a, b) => (b.receipt_date || '').localeCompare(a.receipt_date || ''))
@@ -71,7 +74,7 @@ export default function Home() {
                 <li key={r.id}>
                   <Link to={`/receipt/${r.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition">
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-2 h-2 rounded-full shrink-0 bg-amber-400" />
+                      <StoreIcon name={r.store_name} className="w-6 h-6 text-lg shrink-0" />
                       <div className="min-w-0">
                         <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
                         <p className="text-xs text-gray-400">

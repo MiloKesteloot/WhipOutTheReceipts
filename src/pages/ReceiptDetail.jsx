@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase.js'
 import { calculateDebts, getItemizedBreakdown, splitsUnclaimed } from '../lib/splitLogic.js'
 import { getItemEmoji } from '../lib/itemEmoji.js'
 import { useDialog } from '../lib/useDialog.jsx'
-import { CATEGORIES, STORE_DOMAINS } from '../config.js'
+import { CATEGORIES } from '../config.js'
+import { getStoreLogo } from '../lib/storeLogo.js'
 import { useGroup, formatWaitingOn } from '../lib/group.jsx'
 import { receiptFromDb, claimFromDb, checkinFromDb, syncMyClaims, ensureCheckin, recordPayment, deletePayment } from '../lib/db.js'
 import { useBalances } from '../lib/useBalances.js'
@@ -18,7 +19,8 @@ import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
 import { invalidateSearch } from '../lib/search.jsx'
 import { money, choiceChip, SETTLE_SENT, SETTLE_RECEIVED } from '../lib/ui.js'
 import { LockIcon } from '../components/Icons.jsx'
-import { PageLoading } from '../components/Loading.jsx'
+import { ReceiptDetailSkeleton } from '../components/Skeletons.jsx'
+import { useSkeletonPreview } from '../lib/skeletonPreview.js'
 import StableLabel from '../components/StableLabel.jsx'
 import LoadError from '../components/LoadError.jsx'
 
@@ -28,14 +30,6 @@ const SWITCHED_KEY = 'switched-group-notice'
 const PILL = 'inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded-full'
 const PILL_WAITING = `${PILL} bg-amber-50 text-amber-700`
 const PILL_PAID = `${PILL} bg-accent-50 text-accent-700`
-
-function getStoreLogo(storeName) {
-  if (!storeName) return null
-  const lower = storeName.toLowerCase()
-  const match = STORE_DOMAINS.find(({ keywords }) => keywords.some(k => lower.includes(k)))
-  if (!match) return null
-  return `https://www.google.com/s2/favicons?domain=${match.domain}&sz=32`
-}
 
 export default function ReceiptDetail() {
   const { receiptId } = useParams()
@@ -77,6 +71,7 @@ export default function ReceiptDetail() {
   const { confirm, showAlert, DialogUI } = useDialog()
   const unsavedDialog = useUnsavedChanges(isDirty, "Your check-offs aren't saved yet. Leave without saving them?")
   const bal = useBalances()
+  const skeletonPreview = useSkeletonPreview()
 
   const loadData = useCallback(async () => {
     const [receiptRes, checkinRes] = await Promise.all([
@@ -370,6 +365,32 @@ export default function ReceiptDetail() {
   // Guest links only work for people still in the group
   const waitingGuests = guestsOnReceipt.filter(m => m.active && waitingOn.some(n => n.toLowerCase() === m.displayName.toLowerCase()))
 
+  // While it loads: what the Receipts tab already loaded for this receipt
+  // (useBalances' cache), so its header and items show at once and only who
+  // claimed what fills in. Read-only; check-offs wait for the real load.
+  function cachedPreview() {
+    const d = bal.data
+    const r = d?.receipts.find(x => x.id === receiptId)
+    if (!r) return null
+    const rItems = d.items.filter(i => i.receipt_id === receiptId)
+      // As the page orders them: position (unset last), then created_at
+      .sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity) || a.created_at.localeCompare(b.created_at))
+    const checked = new Set(d.checkins.filter(c => c.receipt_id === receiptId).map(c => c.roommate.toLowerCase()))
+    const waiting = (r.members || []).filter(m => !checked.has(m.toLowerCase()))
+    const guests = (members || []).filter(m => (!m.user_id || !m.active) && (r.member_ids || []).includes(m.id))
+    const hasItems = rItems.length > 0
+    return {
+      receipt: r,
+      items: rItems,
+      meals: d.meals.filter(m => m.receipt_id === receiptId)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)),
+      waitingOn: waiting.length > 0 && hasItems ? formatWaitingOn(waiting, myName) : null,
+      waitingGuests: guests.filter(m => m.active && waiting.some(n => n.toLowerCase() === m.displayName.toLowerCase())).map(m => m.displayName),
+      checkingOffFor: myName && hasItems && guests.length > 0 ? ['You', ...guests.map(m => m.displayName)] : null,
+      showTotal: !!myName && hasItems,
+    }
+  }
+
   const itemsByMeal = {}
   for (const item of items) {
     if (item.meal_id) {
@@ -379,7 +400,7 @@ export default function ReceiptDetail() {
   }
   const ungroupedItems = items.filter(i => !i.meal_id)
 
-  if (loading) return <PageLoading />
+  if (loading || skeletonPreview) return <ReceiptDetailSkeleton onBack={handleBack} preview={cachedPreview()} />
   if (loadFailed) return <LoadError onRetry={loadData} />
   if (otherGroup) {
     return (

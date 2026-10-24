@@ -4,7 +4,7 @@ import { useGroup } from './group.jsx'
 import { loadReceipts, loadItems, loadClaims, loadMeals } from './db.js'
 import { getItemEmoji } from './itemEmoji.js'
 import { splitsUnclaimed } from './splitLogic.js'
-import { STORE_DOMAINS } from '../config.js'
+import { getStoreLogo } from './storeLogo.js'
 import { money } from './ui.js'
 
 export const MIN_QUERY_LENGTH = 1
@@ -198,13 +198,6 @@ export function receiptLink(receipt) {
 function formatDate(dateStr) {
   if (!dateStr) return ''
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function getStoreLogo(storeName) {
-  if (!storeName) return null
-  const lower = storeName.toLowerCase()
-  const match = STORE_DOMAINS.find(({ keywords }) => keywords.some(k => lower.includes(k)))
-  return match ? `https://www.google.com/s2/favicons?domain=${match.domain}&sz=32` : null
 }
 
 // Bolds each matched search term within text

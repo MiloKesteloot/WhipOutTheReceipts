@@ -5,6 +5,7 @@ import { waitingOn } from '../lib/receiptStatus.js'
 import Modal from './Modal.jsx'
 import { ChevronRight } from './Icons.jsx'
 import { money } from '../lib/ui.js'
+import { getStoreLogo } from '../lib/storeLogo.js'
 
 // Calendar / Days / list views of a group's receipts (the Receipts tab).
 // Each takes already-filtered receipts plus checked-in and totals maps.
@@ -26,6 +27,24 @@ function EmptyState({ hiddenCount, onShowAll }) {
     )
   }
   return <div className="text-center py-16 text-gray-400 text-sm">No receipts yet.</div>
+}
+
+// The store's logo, or 🧾 for a store we don't have one for
+export function StoreIcon({ name, className = 'w-6 h-6 text-lg' }) {
+  const logo = getStoreLogo(name)
+  return logo
+    ? <img src={logo} alt="" width={24} height={24} className={`${className} rounded object-contain`} />
+    : <span className={`${className} flex items-center justify-center leading-none`}>🧾</span>
+}
+
+// A row's store icon, with an amber dot when it's waiting on someone
+function RowStoreIcon({ name, waiting }) {
+  return (
+    <span className="relative shrink-0">
+      <StoreIcon name={name} />
+      {waiting && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-white" />}
+    </span>
+  )
 }
 
 // Opens when a calendar day has 2+ receipts
@@ -66,6 +85,30 @@ function PhoneDayStores({ receipts, checkedIn }) {
   const shown = ordered.length > 2 ? ordered.slice(0, 1) : ordered
   const hidden = ordered.slice(shown.length)
   const line = waiting => `text-xs truncate ${waiting ? 'font-semibold text-amber-600' : 'text-gray-600'}`
+
+  // Any store with a logo: just icons, side by side, or two by two when
+  // there are 3+ (smaller, to fit). A store without one gets its first letter.
+  // Waiting receipts get an amber ring; past four, "+N".
+  if (ordered.some(r => getStoreLogo(r.store_name))) {
+    const tiles = ordered.length > 4 ? ordered.slice(0, 3) : ordered
+    const more = ordered.length - tiles.length
+    const small = ordered.length > 2
+    // Square at whatever width the column gets (phones squeeze it below the
+    // 1rem/1.25rem max), so a ring stays square and the logo centered
+    const tile = `${small ? 'text-[9px]' : 'text-[11px]'} w-full aspect-square rounded flex items-center justify-center font-semibold leading-none`
+    return (
+      <div className={`sm:hidden grid gap-[3px] pl-0.5 pt-0.5 ${small ? 'grid-cols-[repeat(2,minmax(0,1rem))]' : 'grid-cols-[repeat(2,minmax(0,1.25rem))]'}`}>
+        {tiles.map(r => {
+          const logo = getStoreLogo(r.store_name)
+          const ring = isWaiting(r) ? 'ring-2 ring-amber-400' : ''
+          return logo
+            ? <img key={r.id} src={logo} alt={r.store_name} width={16} height={16} className={`${tile} object-contain bg-white ${ring}`} />
+            : <span key={r.id} title={r.store_name} className={`${tile} bg-gray-100 text-gray-500 ${ring}`}>{(r.store_name || '?').trim().charAt(0).toUpperCase()}</span>
+        })}
+        {more > 0 && <span className={`${tile} ${ordered.slice(tiles.length).some(isWaiting) ? 'text-amber-600' : 'text-gray-500'}`}>+{more}</span>}
+      </div>
+    )
+  }
   return (
     <div className="sm:hidden space-y-0.5">
       {shown.map(r => <p key={r.id} className={line(isWaiting(r))}>{r.store_name}</p>)}
@@ -197,8 +240,12 @@ export function ReceiptCalendar({ receipts, checkedIn, totals }) {
                 {/* Desktop: every receipt, with a dot (amber = waiting on someone) */}
                 <div className="hidden sm:block space-y-1">
                   {dayReceipts.map(receipt => (
-                    <div key={receipt.id} className="flex items-center gap-1.5 text-xs text-gray-600">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${waitingOn(receipt, checkedIn).length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
+                    // Waiting on someone: amber, like on phones
+                    <div key={receipt.id} className={`flex items-center gap-1.5 text-xs ${waitingOn(receipt, checkedIn).length > 0 ? 'font-medium text-amber-600' : 'text-gray-600'}`}>
+                      {/* 🧾 is a smudge this small: a dot instead, in the icon's space */}
+                      {getStoreLogo(receipt.store_name)
+                        ? <StoreIcon name={receipt.store_name} className="w-3.5 h-3.5 shrink-0" />
+                        : <span className="w-3.5 h-3.5 shrink-0 flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-gray-300" /></span>}
                       <span className="truncate">{receipt.store_name}</span>
                     </div>
                   ))}
@@ -263,7 +310,7 @@ export function ReceiptDays({ receipts, checkedIn, totals, myName, hiddenCount, 
                     className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-accent-300 hover:shadow-sm active:bg-gray-50 transition text-left select-none"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${waiting.length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
+                      <RowStoreIcon name={r.store_name} waiting={waiting.length > 0} />
                       <div className="min-w-0">
                         <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
                         {waiting.length > 0 && (
@@ -305,7 +352,7 @@ export function ReceiptList({ receipts, checkedIn, totals, myName, hiddenCount, 
             className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 active:bg-gray-100 transition text-left"
           >
             <div className="flex items-center gap-3 min-w-0">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${waiting.length > 0 ? 'bg-amber-400' : 'bg-accent-500'}`} />
+              <RowStoreIcon name={r.store_name} waiting={waiting.length > 0} />
               <div className="min-w-0">
                 <p className="font-medium text-gray-900 truncate">{r.store_name || 'Receipt'}</p>
                 <p className="text-xs text-gray-400">

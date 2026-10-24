@@ -30,10 +30,10 @@ export function useBalances() {
 
   async function load() {
     const [receipts, items, claims, meals, checkins, payments, dismissals] = await Promise.all([
-      loadReceipts(group.id, nameOf, 'id, paid_by_member, member_ids, store_name, receipt_date, created_at, tip, tax, fees, splits_unclaimed'),
-      loadItems(group.id, 'id, receipt_id, meal_id, name, price, always_split'),
+      loadReceipts(group.id, nameOf, 'id, paid_by_member, member_ids, store_name, category, receipt_date, created_at, tip, tax, fees, splits_unclaimed'),
+      loadItems(group.id, 'id, receipt_id, meal_id, name, price, always_split, position, created_at'),
       loadClaims(memberIds, nameOf),
-      loadMeals(group.id, 'id, receipt_id, fee'),
+      loadMeals(group.id, 'id, receipt_id, name, fee, created_at'),
       loadCheckins(memberIds, nameOf),
       loadPayments(group.id, nameOf),
       loadDismissals(memberIds, nameOf),

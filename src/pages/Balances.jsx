@@ -7,7 +7,8 @@ import { useDialog } from '../lib/useDialog.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError, { StaleNotice } from '../components/LoadError.jsx'
 import { isOnReceipt } from '../lib/receiptStatus.js'
-import { PageLoading } from '../components/Loading.jsx'
+import { BalancesSkeleton } from '../components/Skeletons.jsx'
+import { useSkeletonPreview } from '../lib/skeletonPreview.js'
 import { money } from '../lib/ui.js'
 
 const fmtPaidAt = ts => ts ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
@@ -168,9 +169,10 @@ export default function Balances() {
   const { myName } = useGroup()
   const { loading, error, data, balances, reload } = useBalances()
   const { confirm, showAlert, DialogUI } = useDialog()
+  const skeletonPreview = useSkeletonPreview()
 
   if (error && !data) return <LoadError onRetry={reload} />
-  if (loading) return <PageLoading />
+  if (loading || skeletonPreview) return <BalancesSkeleton />
 
   const myBalances = myName ? balances.forPerson(myName).sort((a, b) => b.amount - a.amount) : []
   const iOweEntries = myBalances.filter(e => e.iOwe)

@@ -8,6 +8,8 @@ import { useGroup } from '../lib/group.jsx'
 import { useBalances } from '../lib/useBalances.js'
 import LoadError from '../components/LoadError.jsx'
 import { PageLoading } from '../components/Loading.jsx'
+import { ReceiptsSkeleton } from '../components/Skeletons.jsx'
+import { useSkeletonPreview } from '../lib/skeletonPreview.js'
 import { checkedInByReceipt, receiptTotals, isOnReceipt } from '../lib/receiptStatus.js'
 import { ReceiptCalendar, ReceiptDays, ReceiptList } from '../components/ReceiptViews.jsx'
 
@@ -77,6 +79,7 @@ export default function Receipts() {
   const recentKey = useRecentKey()
   const { loading, error, data, reload } = useBalances()
   const { myName } = useGroup()
+  const skeletonPreview = useSkeletonPreview()
 
   useEffect(() => { setInput(query) }, [query])
   useEffect(() => { window.getSelection()?.removeAllRanges() }, [view])
@@ -182,8 +185,8 @@ export default function Receipts() {
 
           {error && !data ? (
             <LoadError onRetry={reload} />
-          ) : loading ? (
-            <PageLoading />
+          ) : loading || skeletonPreview ? (
+            <ReceiptsSkeleton view={view} />
           ) : view === 'calendar' ? (
             <ReceiptCalendar {...viewProps} />
           ) : view === 'days' ? (
