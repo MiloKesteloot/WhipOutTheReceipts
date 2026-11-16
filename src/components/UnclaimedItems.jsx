@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { money } from '../lib/ui.js'
 import StableLabel from './StableLabel.jsx'
@@ -19,14 +19,31 @@ function listNames(names) {
 //   entries: unclaimedForMe(...)
 //   onMine / onNotMine(entry): save it (the page reloads its data after)
 //   receiptLink(receipt): where the receipt name goes (or onOpen for the guest page)
-export default function UnclaimedItems({ entries, myName, onMine, onNotMine, receiptLink, onOpen }) {
+//   explainGone(entry): why an item someone else took care of is done
+//     ("Alex claimed it"). Such items stay where they were, dimmed, until
+//     you leave the page, so the list doesn't shift under your finger (live
+//     updates); items you answer yourself go at once.
+export default function UnclaimedItems({ entries, myName, onMine, onNotMine, receiptLink, onOpen, explainGone }) {
   const [busy, setBusy] = useState(null) // item id being saved
   const [showAll, setShowAll] = useState(false)
-  if (!entries.length) return null
-  const shown = showAll ? entries : entries.slice(0, SHOWN)
+  const shownBefore = useRef([])
+  const answered = useRef(new Set()) // answered here
+
+  // What was shown stays in its place; gone ones dimmed; new ones at the end
+  const current = new Map(entries.map(e => [e.item.id, e]))
+  const list = shownBefore.current
+    .filter(e => current.has(e.item.id) || !answered.current.has(e.item.id))
+    .map(e => current.get(e.item.id) || { ...e, gone: true })
+  for (const e of entries) if (!list.some(x => x.item.id === e.item.id)) list.push(e)
+  shownBefore.current = list
+
+  if (!list.length) return null
+  const open = list.filter(e => !e.gone)
+  const shown = showAll ? list : list.slice(0, SHOWN)
   const me = (myName || '').toLowerCase()
 
   async function act(fn, entry) {
+    answered.current.add(entry.item.id)
     setBusy(entry.item.id)
     try { await fn(entry) } finally { setBusy(null) }
   }
@@ -35,7 +52,7 @@ export default function UnclaimedItems({ entries, myName, onMine, onNotMine, rec
     <section className="bg-white border border-amber-200 rounded-xl overflow-hidden">
       <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
         <h2 className="font-semibold text-amber-800">
-          {entries.length === 1 ? 'Nobody claimed this item' : `Nobody claimed ${entries.length} items`}
+          {open.length === 0 ? 'All taken care of' : open.length === 1 ? 'Nobody claimed this item' : `Nobody claimed ${open.length} items`}
         </h2>
         <p className="text-xs text-amber-700 mt-0.5">If it's yours, claim it. Otherwise it's split between everyone on the receipt.</p>
       </div>
@@ -48,7 +65,7 @@ export default function UnclaimedItems({ entries, myName, onMine, onNotMine, rec
           const label = `${receipt.store_name || 'Receipt'} · ${fmtDate(receipt.receipt_date)}`
           const saving = busy === item.id
           return (
-            <li key={item.id} className="px-4 py-3">
+            <li key={item.id} className={`px-4 py-3 ${entry.gone ? 'opacity-50' : ''}`} data-gone={entry.gone || undefined}>
               <div className="flex items-baseline justify-between gap-3">
                 <p className="font-medium text-gray-900 truncate">{item.name}</p>
                 <span className="text-sm font-semibold text-gray-900 tabular-nums shrink-0">{money(item.price)}</span>
@@ -66,6 +83,10 @@ export default function UnclaimedItems({ entries, myName, onMine, onNotMine, rec
               {others.length > 0 && (
                 <p className="text-xs text-gray-500 mt-1">{listNames(others)} {others.length === 1 ? 'says' : 'say'} it's not theirs.</p>
               )}
+              {entry.gone ? (
+                // Taken care of by someone else: no buttons (the row stays put)
+                <p className="text-sm font-medium text-gray-600 mt-2.5 h-9 flex items-center">{explainGone?.(entry) || 'Taken care of'}</p>
+              ) : (
               <div className="flex gap-2 mt-2.5">
                 <button
                   onClick={() => act(onMine, entry)}
@@ -82,13 +103,14 @@ export default function UnclaimedItems({ entries, myName, onMine, onNotMine, rec
                   Not mine
                 </button>
               </div>
+              )}
             </li>
           )
         })}
       </ul>
-      {entries.length > SHOWN && (
+      {list.length > SHOWN && (
         <button onClick={() => setShowAll(s => !s)} className="w-full px-4 py-3 text-sm font-medium text-accent-600 border-t border-gray-100 hover:bg-gray-50 active:bg-gray-100 transition">
-          {showAll ? 'Show fewer' : `Show ${entries.length - SHOWN} more`}
+          {showAll ? 'Show fewer' : `Show ${list.length - SHOWN} more`}
         </button>
       )}
     </section>

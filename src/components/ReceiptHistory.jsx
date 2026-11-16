@@ -76,7 +76,9 @@ function describe(e, { nameOf, itemName, mealName }) {
   }
 }
 
-export default function ReceiptHistory({ receiptId }) {
+// refreshKey: changes when the receipt does, to load the history again in
+// place (staying open if it is)
+export default function ReceiptHistory({ receiptId, refreshKey }) {
   const { group, members, nameOf } = useGroup()
   const [entries, setEntries] = useState(null)
   const [open, setOpen] = useState(false)
@@ -111,7 +113,7 @@ export default function ReceiptHistory({ receiptId }) {
     }
     load()
     return () => { cancelled = true }
-  }, [receiptId, group.id])
+  }, [receiptId, group.id, refreshKey])
 
   if (!entries) return null
 

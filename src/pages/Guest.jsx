@@ -142,6 +142,7 @@ export default function Guest() {
           guestName={shaped.name}
           onBack={closeReceipt}
           onSaved={async () => { await load(); setSavedId(open.id); leaveWithoutPrompt(); closeReceipt() }}
+          onRefresh={load}
         />
       </Shell>
     )
@@ -236,18 +237,38 @@ export default function Guest() {
   )
 }
 
-// One receipt: tick what you had, see your total, save
-function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
+// One receipt: tick what you had, see your total, save. Saving from an
+// out-of-date copy (someone changed the receipt since it was opened) is
+// refused: the page loads it again, keeping your checks, and anything new
+// asks Mine / Not mine before you can save.
+function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved, onRefresh }) {
   const mine = receipt.claims.filter(c => c.roommate === guestName).map(c => c.item_id)
   const locked = receipt.items.filter(i => i.always_split).map(i => i.id)
-  // First visit: everything checked (like the app); after that, exactly what was saved
+  const added = receipt.added_items || [] // added since you checked in
+  // First visit: everything checked (like the app); after that, exactly what
+  // was saved (asked to check in again counts as having checked in)
   const [checked, setChecked] = useState(() => new Set(
-    receipt.checkedIn || mine.length ? [...mine, ...locked] : receipt.items.map(i => i.id),
+    receipt.checkedIn || mine.length || added.length ? [...mine, ...locked] : receipt.items.map(i => i.id),
   ))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [changedNote, setChangedNote] = useState(false)
+  // Items shown when it opened; any others arrived since
+  const [openedWith] = useState(() => new Set(receipt.items.map(i => i.id)))
+  const [choices, setChoices] = useState({}) // new item id -> 'mine' | 'not'
+  const isNew = id => added.includes(id) || !openedWith.has(id)
+  const pending = receipt.items.filter(i => isNew(i.id) && !i.always_split && !choices[i.id]).map(i => i.id)
+  const choose = (id, choice) => {
+    setChoices(prev => ({ ...prev, [id]: choice }))
+    setChecked(prev => {
+      const next = new Set(prev)
+      if (choice === 'mine') next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
   const [initial] = useState(() => [...checked].sort().join())
-  const dirty = [...checked].sort().join() !== initial
+  const dirty = [...checked].sort().join() !== initial || Object.keys(choices).length > 0
   const unsavedDialog = useUnsavedChanges(dirty, "Your check-offs aren't saved yet. Leave without saving them?", { includeSearch: true })
 
   const toggle = item => {
@@ -267,8 +288,21 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
     .filter(d => d.debtor === guestName).reduce((s, d) => s + d.amount, 0)
 
   async function save() {
+    if (pending.length) {
+      setError(`${pending.length === 1 ? 'An item was' : `${pending.length} items were`} added since you last checked off. Choose Mine or Not mine for ${pending.length === 1 ? 'it' : 'each one'} first.`)
+      document.querySelector('[data-new-item]')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
     setSaving(true); setError('')
-    const { error } = await supabase.rpc('guest_save_claims', { p_token: token, p_receipt: receipt.id, p_item_ids: [...checked] })
+    const ids = [...checked].filter(id => receipt.items.some(i => i.id === id))
+    const { error } = await supabase.rpc('guest_save_claims', { p_token: token, p_receipt: receipt.id, p_item_ids: ids, p_version: receipt.version ?? null })
+    if (error?.code === 'RCPT1') {
+      // Changed since it was opened: show the changes; your checks stay
+      await onRefresh()
+      setChangedNote(true)
+      setSaving(false)
+      return
+    }
     if (error) { setError(error.message); setSaving(false); return }
     await onSaved()
   }
@@ -290,6 +324,11 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
       <h1 className="text-2xl font-bold text-gray-900">{receipt.store_name}</h1>
       <p className="text-sm text-gray-400 mt-0.5">{fmtDate(receipt.receipt_date)} · Paid by {receipt.paid_by === guestName ? 'you' : receipt.paid_by}</p>
       <p className="text-sm text-gray-500 mt-3">Check off everything you had. Shared items are split between everyone who checks them.</p>
+      {changedNote && (
+        <p className="mt-3 text-sm text-accent-800 bg-accent-50 border border-accent-200 rounded-xl px-4 py-2.5" role="status" data-changed-note>
+          Someone changed this receipt since you opened it, so it wasn't saved yet. Your checks are kept; have a look, then save again.
+        </p>
+      )}
 
       <TornPaper className="mt-4">
       <ul className="tear-rows-nested divide-y divide-gray-100">
@@ -300,6 +339,23 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
           return (
             <li key={item.id}>
               {header && <p className="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50">{header}</p>}
+              {pending.includes(item.id) ? (
+                // New since you checked off: answer it (no box to tick by accident)
+                <div data-new-item={item.id} className="flex items-center gap-3 px-4 py-3 bg-amber-50">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {item.name}
+                      {getItemEmoji(item.name) && <span className="ml-1.5">{getItemEmoji(item.name)}</span>}
+                    </p>
+                    <p className="text-xs text-amber-700">Added since you last checked off. Is it yours?</p>
+                    <div className="mt-2 flex gap-1.5">
+                      <button onClick={() => choose(item.id, 'mine')} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-600 text-white hover:bg-accent-700 active:bg-accent-700 transition">Mine</button>
+                      <button onClick={() => choose(item.id, 'not')} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition">Not mine</button>
+                    </div>
+                  </div>
+                  <span className="text-sm font-medium text-gray-700 shrink-0 tabular-nums">{money(item.price)}</span>
+                </div>
+              ) : (
               <button
                 onClick={() => toggle(item)}
                 role="checkbox"
@@ -322,6 +378,7 @@ function ReceiptCheckOff({ receipt, token, guestName, onBack, onSaved }) {
                 </div>
                 <span className="text-sm font-medium text-gray-700 shrink-0 tabular-nums">{money(item.price)}</span>
               </button>
+              )}
             </li>
           )
         })}

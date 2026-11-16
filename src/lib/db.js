@@ -90,6 +90,23 @@ export async function loadDismissals(memberIds, nameOf) {
   return rows.map(d => ({ ...d, roommate: nameOf(d.member_id) }))
 }
 
+// Unread "why this receipt changed" notices (receipt_notices, migration
+// 20261023000000): yours, and those of guests you check off for
+export async function loadNotices(memberIds, nameOf) {
+  if (!memberIds.length) return []
+  const rows = await selectAll(() =>
+    supabase.from('receipt_notices').select('id, receipt_id, member_id, actor_member, kind, item_id, old_price, new_price, created_at')
+      .in('member_id', memberIds).is('seen_at', null))
+  return rows.map(n => ({ ...n, roommate: nameOf(n.member_id), actor: n.actor_member ? nameOf(n.actor_member) : 'Someone' }))
+}
+
+// "Looks good" on notices
+export async function markNoticesSeen(ids) {
+  if (!ids.length) return
+  const { error } = await supabase.rpc('mark_notices_seen', { p_ids: ids })
+  if (error) throw error
+}
+
 // Say an unclaimed item isn't yours (no-op if already said)
 export async function dismissItem(memberId, itemId) {
   const { error } = await supabase.from('item_dismissals')

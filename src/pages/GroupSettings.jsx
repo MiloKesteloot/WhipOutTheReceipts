@@ -461,7 +461,7 @@ function LeaveGroup() {
     })) return
     const { error } = await supabase.rpc('leave_group', { p_group: group.id })
     if (error) { await showAlert(error.message, { title: 'Could not leave' }); return }
-    await refreshMemberships()
+    await refreshMemberships({ leftOnPurpose: group.id })
     // The left group's settings page is gone: Back shouldn't return to it
     navigate('/', { replace: true })
   }

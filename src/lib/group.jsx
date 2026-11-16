@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { supabase } from './supabase.js'
 import { useSession } from './session.jsx'
 import { computeDisplayNames } from './names.js'
+import { onLive, setLiveGroup, touchesTables } from './live.js'
 
 const GroupContext = createContext(null)
 const currentGroupKey = uid => `current-group-${uid}`
@@ -20,11 +21,15 @@ export function GroupProvider({ children }) {
   // A failed load: shown as "couldn't load" (not as having no groups, which
   // would send you to "Set up your group")
   const [loadError, setLoadError] = useState(false)
+  // The group you were looking at, when you're no longer in it (removed,
+  // or it was deleted): { name }, shown until dismissed
+  const [lostGroup, setLostGroup] = useState(null)
   // Already loaded: a failed refresh keeps showing what we have
   const loaded = useRef({})
   loaded.current = { memberships, members }
 
-  const loadMemberships = useCallback(async () => {
+  // { leftOnPurpose }: you left that group yourself, so it isn't "lost"
+  const loadMemberships = useCallback(async ({ leftOnPurpose } = {}) => {
     if (!uid) { setMemberships(null); return [] }
     setLoadError(false)
     const { data, error } = await supabase
@@ -36,6 +41,10 @@ export function GroupProvider({ children }) {
       return loaded.current.memberships || []
     }
     const list = (data || []).filter(m => m.groups).sort((a, b) => a.groups.name.localeCompare(b.groups.name))
+    const current = loaded.current.memberships?.find(m => m.group_id === groupIdRef.current)
+    if (current && current.group_id !== leftOnPurpose && !list.some(m => m.group_id === current.group_id)) {
+      setLostGroup({ name: current.groups.name })
+    }
     setMemberships(list)
     return list
   }, [uid])
@@ -62,6 +71,17 @@ export function GroupProvider({ children }) {
   }, [groupId])
 
   useEffect(() => { setMembers(null); loadMembers() }, [loadMembers])
+
+  // Live updates for the group being shown; its people and name change live too
+  useEffect(() => {
+    setLiveGroup(groupId)
+    return () => setLiveGroup(null)
+  }, [groupId])
+  useEffect(() => onLive(batch => {
+    if (!touchesTables(batch, ['group_members', 'groups'])) return
+    loadMembers()
+    loadMemberships()
+  }), [loadMembers, loadMemberships])
 
   function switchGroup(id) {
     localStorage.setItem(currentGroupKey(uid), id)
@@ -118,6 +138,8 @@ export function GroupProvider({ children }) {
       refreshMemberships: loadMemberships,
       members: withNames,
       refreshMembers: loadMembers,
+      lostGroup,
+      dismissLostGroup: () => setLostGroup(null),
       myMember,
       myName: myMember ? names.get(myMember.id) : '',
       // Non-guest, active people: the default roster for new receipts and Stats
@@ -127,7 +149,7 @@ export function GroupProvider({ children }) {
       idOf,
       ensureMemberIds,
     }
-  }, [members, memberships, groupId, uid, loadMembers, loadMemberships, loadError])
+  }, [members, memberships, groupId, uid, loadMembers, loadMemberships, loadError, lostGroup])
 
   return <GroupContext.Provider value={value}>{children}</GroupContext.Provider>
 }

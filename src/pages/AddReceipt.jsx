@@ -22,6 +22,10 @@ import { parseAmount, amountOrZero, toggleSign } from '../lib/amount.js'
 import { useGoBack, canGoBack } from '../lib/useGoBack.js'
 import { useUnsavedChanges, leaveWithoutPrompt } from '../lib/unsaved.jsx'
 import { invalidateSearch } from '../lib/search.jsx'
+import { merge3, toSaveData, fromDb } from '../lib/receiptMerge.js'
+import { useEditors } from '../lib/editLock.js'
+import { onLive } from '../lib/live.js'
+import MergeConflicts from '../components/MergeConflicts.jsx'
 import { UNGROUPED, containerFromDropId, SortableRow, DragHandle, DropZone, ItemDragPreview } from '../components/ItemDrag.jsx'
 
 function newItem(dbId = null) {
@@ -77,8 +81,15 @@ export default function AddReceipt() {
   const autoAddedPayer = useRef(null)
   const [lineItems, setLineItems] = useState([newItem()])
   const [meals, setMeals] = useState([])
-  const [originalDbIds, setOriginalDbIds] = useState(new Set())
-  const [originalMealDbIds, setOriginalMealDbIds] = useState(new Set())
+  // Editing: the receipt as opened (what your changes are compared with when
+  // someone else saved meanwhile) and its version
+  const baseRef = useRef(null)
+  const versionRef = useRef(null)
+  const [conflictAsk, setConflictAsk] = useState(null)
+  // Someone else saved this receipt while it's open here
+  const [theyChanged, setTheyChanged] = useState(false)
+  // Opened while someone else was editing it: view-only, unless "Edit anyway"
+  const [editAnyway, setEditAnyway] = useState(false)
   const [category, setCategory] = useState('Groceries')
   const [receiptDate, setReceiptDate] = useState(() => {
     if (!receiptId) return searchParams.get('date') || localToday()
@@ -107,7 +118,6 @@ export default function AddReceipt() {
   mealIdsRef.current = meals.map(m => m.local_id)
   const loadComplete = useRef(false)
   const formRef = useRef(null)
-  const checkinResetPending = useRef(false)
   // Picked by hand: a scan doesn't change it
   const categoryPicked = useRef(false)
   const { confirm, showAlert, DialogUI } = useDialog()
@@ -128,6 +138,7 @@ export default function AddReceipt() {
           else setLoadError(true)
           return
         }
+        versionRef.current = row.version
         const receipt = row && receiptFromDb(row, nameOf)
         if (receipt) {
           setStoreName(receipt.store_name)
@@ -154,7 +165,8 @@ export default function AddReceipt() {
           fee: m.fee ? String(m.fee) : '',
         }))
         setMeals(loadedMeals)
-        setOriginalMealDbIds(new Set(loadedMeals.map(m => m.dbId)))
+        baseRef.current = fromDb(row, existingItems || [], existingMeals || [])
+        setTheyChanged(false)
 
         const dbIdToLocalId = new Map(loadedMeals.map(m => [m.dbId, m.local_id]))
 
@@ -164,10 +176,8 @@ export default function AddReceipt() {
           name: item.name,
           price: String(item.price),
           always_split: item.always_split || false,
-          wasAlwaysSplit: item.always_split || false,
           meal_local_id: item.meal_id ? (dbIdToLocalId.get(item.meal_id) || null) : null,
         }))
-        setOriginalDbIds(new Set(loaded.map(i => i.dbId)))
         setLineItems(withBlankRows(loaded, loadedMeals.map(m => m.local_id)))
       } else {
         if (myName) setPaidBy(myName)
@@ -179,6 +189,37 @@ export default function AddReceipt() {
     }
     load()
   }, [receiptId, isEditing, group.id, loadAttempt])
+
+  // Who else has this receipt open in the editor (lib/editLock.js). The
+  // first to open it edits; anyone after sees it view-only until they're
+  // done, or taps "Edit anyway" (then saving combines both edits). Already
+  // typing when you find out (the list arrives a moment after opening):
+  // you keep editing.
+  const editors = useEditors(isEditing ? receiptId : null, { editing: isEditing && !!myMember, memberId: myMember?.id })
+  const myIndex = editors.findIndex(e => e.mine)
+  const lockedBy = isEditing && !editAnyway && !isDirty && myIndex > 0 ? editors[0] : null
+  const lastOtherEditor = useRef(null)
+  const otherNow = editors.find(e => !e.mine)
+  if (otherNow) lastOtherEditor.current = otherNow
+
+  // The lock just freed up (they saved or left): load the receipt again, so
+  // you start from their changes
+  const wasLocked = useRef(false)
+  useEffect(() => {
+    if (lockedBy) { wasLocked.current = true; return }
+    if (wasLocked.current) { wasLocked.current = false; setLoadAttempt(n => n + 1) }
+  }, [!!lockedBy])
+
+  // Someone else saved it while it's open here (your save combines both)
+  const savingRef = useRef(false)
+  savingRef.current = saving
+  useEffect(() => {
+    if (!isEditing) return
+    return onLive(batch => {
+      const bumped = batch.events.some(e => e.table === 'receipts' && e.row?.id === receiptId && versionRef.current != null && e.row.version > versionRef.current)
+      if (bumped && !savingRef.current) setTheyChanged(true)
+    })
+  }, [isEditing, receiptId])
 
   function markDirty() {
     if (loadComplete.current) setIsDirty(true)
@@ -590,60 +631,44 @@ Rules:
     return errs
   }
 
-  // Every database step is checked: a failure stops the save and says so,
-  // instead of half-saving and moving on as if it worked
-  async function must(query, what) {
-    const { data, error } = await query
-    if (error) throw new Error(`${what}: ${error.message}`)
-    return data
-  }
-
-  // Editing: rows saved before a later step fails keep their database ids, so
-  // "try again" updates them instead of adding them a second time
-  function rememberSaved(kind, localToDbId) {
-    if (!isEditing || localToDbId.size === 0) return
-    const ids = [...localToDbId.values()]
-    if (kind === 'meals') {
-      setMeals(prev => prev.map(m => localToDbId.has(m.local_id) ? { ...m, dbId: localToDbId.get(m.local_id) } : m))
-      setOriginalMealDbIds(prev => new Set([...prev, ...ids]))
-    } else {
-      setLineItems(prev => prev.map(i => localToDbId.has(i.id) ? { ...i, dbId: localToDbId.get(i.id) } : i))
-      setOriginalDbIds(prev => new Set([...prev, ...ids]))
+  // The form as a receipt for save_receipt / merging (lib/receiptMerge.js).
+  // Meals and items keep their database ids; new ones are known by their
+  // form ids.
+  function formAsReceipt(paidById, memberIds) {
+    const namedMeals = meals.filter(m => m.name.trim())
+    return {
+      fields: {
+        store_name: storeName.trim(), paid_by_member: paidById, category,
+        tip: amountOrZero(tip), tax: amountOrZero(tax), fees: amountOrZero(fees), receipt_date: receiptDate,
+      },
+      member_ids: memberIds,
+      meals: namedMeals.map(m => ({ id: m.dbId || null, key: m.local_id, name: m.name.trim(), fee: amountOrZero(m.fee) })),
+      items: filledItems().map(item => {
+        const meal = namedMeals.find(m => m.local_id === item.meal_local_id)
+        return {
+          id: item.dbId || null, key: item.id, name: item.name.trim(), price: parseAmount(item.price), always_split: item.always_split,
+          meal: meal?.dbId || null, meal_key: meal && !meal.dbId ? meal.local_id : null,
+        }
+      }),
     }
   }
 
-  async function saveMeals(receiptDbId) {
-    const mealLocalToDbId = new Map()
-    const newMeals = meals.filter(m => m.name.trim() && !m.dbId)
-    const existingMeals = meals.filter(m => m.name.trim() && m.dbId)
-
-    // Insert new meals one at a time: meals are listed by when they were
-    // created, so each gets its own time and they keep the order shown here
-    for (const m of newMeals) {
-      const row = await must(supabase.from('meals')
-        .insert({ receipt_id: receiptDbId, name: m.name.trim(), fee: amountOrZero(m.fee) })
-        .select().single(), 'Could not save meals')
-      mealLocalToDbId.set(m.local_id, row.id)
-      rememberSaved('meals', new Map([[m.local_id, row.id]]))
-    }
-
-    // Update existing meals
-    for (const meal of existingMeals) {
-      await must(supabase.from('meals').update({ name: meal.name.trim(), fee: amountOrZero(meal.fee) }).eq('id', meal.dbId), 'Could not update a meal')
-      mealLocalToDbId.set(meal.local_id, meal.dbId)
-    }
-
-    return mealLocalToDbId
+  // The receipt as it is now in the database (someone saved meanwhile)
+  async function loadCurrent() {
+    const [{ data: row, error }, { data: items, error: itemsError }, { data: mealRows, error: mealsError }] = await Promise.all([
+      supabase.from('receipts').select('*').eq('id', receiptId).single(),
+      supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null),
+      supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null),
+    ])
+    if (error || itemsError || mealsError) throw new Error((error || itemsError || mealsError).message)
+    return { receipt: fromDb(row, items || [], mealRows || []), version: row.version, deleted: !!row.deleted_at }
   }
 
-  const itemRow = (item, receiptDbId, mealLocalToDbId, position) => ({
-    receipt_id: receiptDbId,
-    name: item.name.trim(),
-    price: parseAmount(item.price),
-    always_split: item.always_split,
-    meal_id: item.meal_local_id ? (mealLocalToDbId.get(item.meal_local_id) || null) : null,
-    position,
-  })
+  // Who else is (or was just) editing, for "Alex saved changes…"
+  const otherEditorName = () => {
+    const other = editors.find(e => !e.mine && e.member_id !== myMember?.id) || lastOtherEditor.current
+    return other ? nameOf(other.member_id) : 'Someone'
+  }
 
   async function handleSave(e) {
     e.preventDefault()
@@ -674,101 +699,55 @@ Rules:
       await showAlert(err.message, { title: 'Error saving people' }); setSaving(false); return
     }
 
-    const receiptFields = {
-      store_name: storeName.trim(), paid_by_member: paidById, category,
-      tip: amountOrZero(tip), tax: amountOrZero(tax), fees: amountOrZero(fees),
-      receipt_date: receiptDate, member_ids: memberIds,
-    }
-
-    if (isEditing) {
-      try {
-        await must(supabase.from('receipts').update(receiptFields).eq('id', receiptId), 'Could not update the receipt')
-        const mealLocalToDbId = await saveMeals(receiptId)
-
-        // Delete removed meals
-        const survivingMealDbIds = new Set(meals.filter(m => m.dbId).map(m => m.dbId))
-        const mealsToDelete = [...originalMealDbIds].filter(id => !survivingMealDbIds.has(id))
-        if (mealsToDelete.length > 0) {
-          await must(supabase.from('meals').update({ deleted_at: new Date().toISOString() }).in('id', mealsToDelete), 'Could not remove meals')
+    // One database call: it all saves, or (on an error) none of it does.
+    // Editing: it only saves over the version opened here. If someone saved
+    // in between, their changes and these are combined (asking about
+    // anything you both changed) and saved over theirs.
+    const mine = formAsReceipt(paidById, memberIds)
+    let toSave = mine
+    let version = versionRef.current
+    let choices = {}
+    try {
+      for (let attempt = 0; ; attempt++) {
+        const { data: saved, error } = await supabase.rpc('save_receipt', {
+          p_group: group.id, p_receipt: isEditing ? receiptId : null, p_version: isEditing ? version : null, p_data: toSaveData(toSave),
+        })
+        if (!error) {
+          invalidateSearch(group.id)
+          leaveWithoutPrompt()
+          // A new receipt takes the form's place, so Back from it doesn't reopen the form
+          if (isEditing) leave()
+          else navigate(`/receipt/${saved.id}`, { replace: true })
+          return
         }
-
-        const filled = filledItems()
-        const position = new Map(filled.map((item, i) => [item.id, i]))
-        const toUpdate = filled.filter(i => i.dbId)
-        for (const item of toUpdate) {
-          const { receipt_id, ...fields } = itemRow(item, receiptId, mealLocalToDbId, position.get(item.id))
-          await must(supabase.from('items').update(fields).eq('id', item.dbId), `Could not update "${item.name.trim()}"`)
+        if (error.code === 'RCPT2') {
+          await showAlert('Someone deleted this receipt while you were editing it, so your changes weren\'t saved. To bring it back, open it and tap Restore.', { title: 'This receipt was deleted' })
+          setSaving(false)
+          return
         }
+        if (error.code !== 'RCPT1' || !isEditing || attempt >= 4) throw new Error(error.message)
 
-        const toInsert = filled.filter(i => !i.dbId)
-        if (toInsert.length > 0) {
-          const rows = await must(supabase.from('items')
-            .insert(toInsert.map(item => itemRow(item, receiptId, mealLocalToDbId, position.get(item.id))))
-            .select('id'), 'Could not add new items')
-          rememberSaved('items', new Map(toInsert.map((item, i) => [item.id, rows[i].id])))
+        const current = await loadCurrent()
+        let merged = merge3(baseRef.current, mine, current.receipt, choices)
+        const open = merged.conflicts.filter(c => !choices[c.key])
+        if (open.length) {
+          const picked = await askConflicts(open, current.receipt)
+          if (!picked) { setSaving(false); return }
+          choices = { ...choices, ...picked }
+          merged = merge3(baseRef.current, mine, current.receipt, choices)
         }
-
-        const survivingDbIds = new Set(toUpdate.map(i => i.dbId))
-        const toDelete = [...originalDbIds].filter(id => !survivingDbIds.has(id))
-        if (toDelete.length > 0) {
-          await must(supabase.from('items').update({ deleted_at: new Date().toISOString() }).in('id', toDelete), 'Could not remove items')
-        }
-
-        // People taken off the receipt: their check-offs and check-in go too,
-        // so they don't keep owing on it. An empty list means everyone is on
-        // it, so nobody is taken off; otherwise anyone not on the new list is
-        // (including people who were on it only because the list was empty).
-        const onReceipt = [...new Set([...memberIds, paidById])]
-        if (memberIds.length > 0 && originalDbIds.size > 0) {
-          const notOn = `(${onReceipt.join(',')})`
-          await must(supabase.from('claims').delete().not('member_id', 'in', notOn).in('item_id', [...originalDbIds]), `Could not clear removed people's check-offs`)
-          await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).not('member_id', 'in', notOn), `Could not clear removed people's check-ins`)
-        }
-
-        // New items, or items newly locked 🔒 (split with everyone): everyone
-        // else checks in again, so they see them and their split includes them
-        // (Remembered across a failed attempt: on "try again" the new items
-        // are already saved, but everyone still needs to check in again.)
-        const newlyLocked = toUpdate.filter(i => i.always_split && !i.wasAlwaysSplit)
-        if (toInsert.length > 0 || newlyLocked.length > 0) checkinResetPending.current = true
-        if (checkinResetPending.current && myMember) {
-          await must(supabase.from('checkins').delete().eq('receipt_id', receiptId).neq('member_id', myMember.id), 'Could not ask everyone to check in again')
-          checkinResetPending.current = false
-        }
-      } catch (err) {
-        await showAlert(`${err.message}. Some changes may not have saved; check the receipt and try again.`, { title: 'Error saving receipt' })
-        setSaving(false)
-        return
+        toSave = merged.result
+        version = current.version
       }
-      invalidateSearch(group.id)
-      leaveWithoutPrompt()
-      leave()
-      return
-    }
-
-    let receipt
-    try {
-      receipt = await must(supabase.from('receipts').insert({ group_id: group.id, ...receiptFields }).select().single(), 'Could not save the receipt')
     } catch (err) {
-      await showAlert(err.message, { title: 'Error saving receipt' }); setSaving(false); return
-    }
-    try {
-      const mealLocalToDbId = await saveMeals(receipt.id)
-      await must(supabase.from('items').insert(filledItems().map((item, i) => itemRow(item, receipt.id, mealLocalToDbId, i))), 'Could not save the items')
-    } catch (err) {
-      // Undo the half-made receipt and stay on the form, so everything typed
-      // is still here to try again
-      const { error: undoError } = await supabase.from('receipts').update({ deleted_at: new Date().toISOString() }).eq('id', receipt.id)
-      await showAlert(undoError
-        ? `${err.message}. The receipt may have been partly saved: check your receipts before trying again.`
-        : `${err.message}. The receipt wasn't saved; try again.`, { title: 'Error saving receipt' })
+      await showAlert(`${err.message}. Nothing was saved; try again.`, { title: 'Error saving receipt' })
       setSaving(false)
-      return
     }
-    // The new receipt takes the form's place, so Back from it doesn't reopen the form
-    invalidateSearch(group.id)
-    leaveWithoutPrompt()
-    navigate(`/receipt/${receipt.id}`, { replace: true })
+  }
+
+  // Ask about edits that collide; resolves with the choices, or null
+  function askConflicts(conflicts, theirs) {
+    return new Promise(resolve => setConflictAsk({ conflicts, theirs, resolve }))
   }
 
   async function handleDelete() {
@@ -879,7 +858,7 @@ Rules:
         <button
           type="button"
           onClick={() => scanInputRef.current?.click()}
-          disabled={scanning}
+          disabled={scanning || !!lockedBy}
           className="flex items-center gap-1.5 px-3 py-1.5 border border-accent-200 text-accent-600 text-sm font-medium rounded-lg hover:bg-accent-50 transition disabled:opacity-50"
         >
           {scanning ? (
@@ -910,13 +889,44 @@ Rules:
         />
       </div>
 
-      {isEditing && (
+      {lockedBy ? (
+        // Someone opened it first: view-only until they're done
+        <div className="mb-5 bg-gray-900 text-white rounded-xl px-4 py-3 text-sm" role="status" data-edit-lock>
+          <p className="font-medium">
+            {lockedBy.member_id === myMember?.id ? "You're already editing this receipt in another tab or device." : `${nameOf(lockedBy.member_id)} is editing this receipt right now.`}
+          </p>
+          <p className="text-white/70 mt-0.5">You can edit it when they're done; this page will show their changes.</p>
+          <button type="button" onClick={() => setEditAnyway(true)} className="mt-2 text-xs text-white/70 underline underline-offset-2 hover:text-white">
+            Edit anyway (both changes will be combined)
+          </button>
+        </div>
+      ) : theyChanged ? (
+        <div className="mb-5 bg-accent-50 border border-accent-200 rounded-xl px-4 py-3 text-sm text-accent-800" role="status" data-they-changed>
+          {otherEditorName()} changed this receipt while you were editing. When you save, your changes and theirs are combined (you'll be asked about anything you both changed).
+        </div>
+      ) : isEditing && (
         <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-          Everyone's check-offs are kept. If you add items, everyone else will need to check in again. Taking someone off the receipt clears their check-offs.
+          Everyone's check-offs are kept. If you add items, everyone else checks in again (they're told what you added). Price changes are shown to whoever checked that item off. Taking someone off the receipt clears their check-offs.
         </div>
       )}
 
-      <form ref={formRef} onSubmit={handleSave} onKeyDown={handleFormKeyDown} className="space-y-5">
+      {conflictAsk && (
+        <MergeConflicts
+          conflicts={conflictAsk.conflicts}
+          who={otherEditorName()}
+          nameOf={nameOf}
+          mealName={ref => {
+            const all = [...(conflictAsk.theirs?.meals || []), ...meals.map(m => ({ id: m.dbId, key: m.local_id, name: m.name }))]
+            const id = ref.startsWith('new:') ? null : ref
+            const key = ref.startsWith('new:') ? ref.slice(4) : null
+            return all.find(m => (id && m.id === id) || (key && m.key === key))?.name || 'a meal'
+          }}
+          onDone={choices => { const { resolve } = conflictAsk; setConflictAsk(null); resolve(choices) }}
+        />
+      )}
+
+      <form ref={formRef} onSubmit={handleSave} onKeyDown={handleFormKeyDown}>
+      <fieldset disabled={!!lockedBy} className="space-y-5 min-w-0">
         {/* Date */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
@@ -1241,6 +1251,7 @@ Rules:
             Delete receipt
           </button>
         )}
+      </fieldset>
       </form>
     </div>
     </>

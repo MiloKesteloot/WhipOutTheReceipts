@@ -56,6 +56,20 @@ if (guestBody?.code === 'PGRST202') {
   process.exit(1)
 }
 
+// And live updates (migration 20261023000000_live_updates.sql): receipts are
+// saved through save_receipt(). Signed-out calls are refused, so this only
+// tells whether it exists.
+const saveCheck = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/rpc/save_receipt`, {
+  method: 'POST', headers: { apikey: env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+  body: '{"p_group":null,"p_receipt":null,"p_version":null,"p_data":{}}',
+})
+const saveBody = await saveCheck.json().catch(() => ({}))
+if (saveBody?.code === 'PGRST202') {
+  console.error('\n✗ Not deploying: the production database is missing save_receipt() (live updates).')
+  console.error('  Apply supabase/migrations/20261023000000_live_updates.sql first.\n')
+  process.exit(1)
+}
+
 const data = JSON.parse(readFileSync(versionFile, 'utf8'))
 data.version += 1
 writeFileSync(versionFile, JSON.stringify(data, null, 2) + '\n')
@@ -68,7 +82,11 @@ console.log(`\nBuilding and deploying version ${data.version}...\n`)
 const outDir = 'node_modules/.deploy-build'
 
 try {
-  execSync(`vite build --outDir ${outDir} --emptyOutDir && gh-pages -d ${outDir}`, { stdio: 'inherit', shell: true })
+  execSync(`vite build --outDir ${outDir} --emptyOutDir`, { stdio: 'inherit', shell: true })
+  // Open copies of the app check this to offer "New version, tap to refresh"
+  // (lib/appVersion.js)
+  writeFileSync(join(__dirname, '..', outDir, 'version.json'), JSON.stringify({ version: data.version }) + '\n')
+  execSync(`gh-pages -d ${outDir}`, { stdio: 'inherit', shell: true })
   console.log(`\n✓ Deployed version ${data.version}\n`)
 } catch {
   data.version -= 1

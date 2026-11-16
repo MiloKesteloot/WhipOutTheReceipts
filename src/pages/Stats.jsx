@@ -9,6 +9,7 @@ import { PageLoading } from '../components/Loading.jsx'
 import { CheckOrPlus } from '../components/Icons.jsx'
 import { money, toggleChip } from '../lib/ui.js'
 import { dayValue, dateTicks, formatTick, formatDay } from '../lib/chartDates.js'
+import { onLive, touchesTables } from '../lib/live.js'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Legend, LineChart, Line, PieChart, Pie, Cell,
@@ -118,6 +119,11 @@ export default function Stats() {
   const [selectedCategories, setSelectedCategories] = useState(null)
   const [showAllStores, setShowAllStores] = useState(false)
   const [showAllItems, setShowAllItems] = useState(false)
+
+  // Live updates load it again
+  useEffect(() => onLive(batch => {
+    if (touchesTables(batch, ['receipts', 'items', 'meals', 'claims', 'group_members'])) setRetries(n => n + 1)
+  }), [])
 
   useEffect(() => {
     async function load() {

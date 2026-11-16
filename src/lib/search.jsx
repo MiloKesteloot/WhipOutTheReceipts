@@ -6,6 +6,8 @@ import { getItemEmoji } from './itemEmoji.js'
 import { splitsUnclaimed } from './splitLogic.js'
 import { getStoreLogo } from './storeLogo.js'
 import { money } from './ui.js'
+import { onLive, touchesTables } from './live.js'
+import { whenIdle, cancelIdle } from './idle.js'
 
 export const MIN_QUERY_LENGTH = 1
 
@@ -83,20 +85,30 @@ function dedupeNames(names) {
   })
 }
 
+// Live updates load it again (applied once you're not mid-tap, lib/idle.js)
 export function useSearchData() {
   const { group, nameOf, memberIds } = useGroup()
   const [data, setData] = useState(() => cache.get(group.id) || null)
+  const [liveCount, setLiveCount] = useState(0)
+  useEffect(() => onLive(batch => {
+    if (!touchesTables(batch, ['receipts', 'items', 'meals', 'claims', 'group_members'])) return
+    invalidateSearch(group.id)
+    setLiveCount(n => n + 1)
+  }), [group.id])
   useEffect(() => {
     let cancelled = false
+    const live = liveCount > 0
     fetchSearchData(group.id, nameOf, memberIds).then(d => {
       cache.set(group.id, d)
-      if (!cancelled) setData(d)
+      if (cancelled) return
+      if (live) whenIdle(`search-${group.id}`, () => { if (!cancelled) setData(d) })
+      else setData(d)
     }, () => {
       // Nothing cached: show that it failed instead of loading forever
       if (!cancelled && !cache.has(group.id)) setData({ failed: true, receipts: [], items: [] })
     })
-    return () => { cancelled = true }
-  }, [group.id])
+    return () => { cancelled = true; cancelIdle(`search-${group.id}`) }
+  }, [group.id, liveCount])
   return data
 }
 

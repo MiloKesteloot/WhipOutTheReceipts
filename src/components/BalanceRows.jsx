@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useGroup } from '../lib/group.jsx'
 import { recordPayment } from '../lib/db.js'
@@ -105,8 +105,15 @@ function PersonBalance({ entry, showDirection, expanded, onToggle, onSettle, onM
 // "You owe X" / "X owes you" for lists that mix both directions.
 export default function BalanceRows({ entries, reload, showDirection = false }) {
   const { group, myName, idOf } = useGroup()
-  const { showAlert, DialogUI } = useDialog()
+  const { confirm, showAlert, DialogUI } = useDialog()
   const [busy, setBusy] = useState(false)
+  // The balances as of the last render, to check a payment against what's
+  // owed right before saving it (the other person may have marked it too)
+  const entriesRef = useRef(entries)
+  entriesRef.current = entries
+  const rendered = useRef(null)
+  useEffect(() => { rendered.current?.(); rendered.current = null })
+  const afterRender = () => new Promise(resolve => { rendered.current = resolve; setTimeout(resolve, 50) })
   const [settle, setSettle] = useState(null) // { from, to, amount, title }
   const [expanded, setExpanded] = useState(new Set())
 
@@ -123,15 +130,53 @@ export default function BalanceRows({ entries, reload, showDirection = false }) 
     await reload()
   }
 
-  // "Mark sent" on one receipt: pay what's left on it
+  // Load the latest balances; what's owed with this person now (0 if nothing)
+  async function owedNow(person, iOwe) {
+    await reload()
+    await afterRender()
+    const now = entriesRef.current.find(e => e.person === person && e.iOwe === iOwe)
+    return now || null
+  }
+
+  // "Mark sent" on one receipt: pay what's left on it (asks first, and
+  // checks it's still owed)
   async function markReceiptPaid(entry, open) {
+    const amount = open.remaining / 100
+    if (!await confirm(`${money(amount)} to ${entry.person}, for ${open.label}.`, { title: 'Mark as sent?', confirmLabel: 'Mark sent' })) return
     setBusy(true)
     try {
-      await savePayment({ from: myName, to: entry.person, amount: open.remaining / 100, receiptId: open.receiptId })
+      const now = await owedNow(entry.person, true)
+      const stillOpen = now?.open.find(o => o.receiptId === open.receiptId)
+      if (!stillOpen) {
+        await showAlert(`${open.label} is already paid, so nothing more was recorded.`, { title: 'Already paid' })
+        return
+      }
+      let pay = stillOpen.remaining / 100
+      if (Math.abs(pay - amount) > 0.005 && !await confirm(`What's left on ${open.label} changed to ${money(pay)}.`, { title: `Mark ${money(pay)} sent?`, confirmLabel: 'Mark sent' })) return
+      await savePayment({ from: myName, to: entry.person, amount: pay, receiptId: open.receiptId })
     } catch (err) {
       await showAlert(err.message, { title: 'Could not save payment' })
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
+  }
+
+  // The settle-up dialog's Save: if the balance changed while it was open,
+  // say so before recording (a payment can still be recorded on purpose)
+  async function saveSettle({ amount, note }) {
+    const iOwe = settle.from === myName
+    const person = iOwe ? settle.to : settle.from
+    const now = await owedNow(person, iOwe)
+    const owed = now ? now.amount : 0
+    if (Math.abs(owed - settle.amount) > 0.005) {
+      const ok = await confirm(owed > 0.005
+        ? `What's owed changed from ${money(settle.amount)} to ${money(owed)} (a receipt or payment changed meanwhile). Record ${money(amount)} anyway?`
+        : `This was already settled meanwhile. Record ${money(amount)} anyway?`,
+      { title: 'The balance changed', confirmLabel: 'Record it' })
+      if (!ok) { setSettle(null); return }
+    }
+    await savePayment({ ...settle, amount, note })
+    setSettle(null)
   }
 
   function openSettle(entry) {
@@ -147,7 +192,7 @@ export default function BalanceRows({ entries, reload, showDirection = false }) 
         <SettleUpDialog
           {...settle}
           onClose={() => setSettle(null)}
-          onSave={async ({ amount, note }) => { await savePayment({ ...settle, amount, note }); setSettle(null) }}
+          onSave={saveSettle}
         />
       )}
       <ul className="space-y-1.5">

@@ -7,6 +7,7 @@ import { claimItem, dismissItem } from '../lib/db.js'
 import { invalidateSearch } from '../lib/search.jsx'
 import { useDialog } from '../lib/useDialog.jsx'
 import UnclaimedItems from '../components/UnclaimedItems.jsx'
+import PriceNotices from '../components/PriceNotices.jsx'
 import BalanceRows from '../components/BalanceRows.jsx'
 import LoadError, { StaleNotice } from '../components/LoadError.jsx'
 import GetStarted from '../components/GetStarted.jsx'
@@ -30,6 +31,34 @@ export default function Home() {
   const unchecked = receiptsToCheckOff(data, checkedInByReceipt(data), myName)
     .sort((a, b) => (b.receipt_date || '').localeCompare(a.receipt_date || ''))
   const unclaimed = unclaimedForMe(data, myName)
+
+  // Unread notices for me (not guests I check off for), on items and
+  // receipts that are still there
+  const itemById = new Map(data.items.map(i => [i.id, i]))
+  const receiptById = new Map(data.receipts.map(r => [r.id, r]))
+  const myNotices = (data.notices || [])
+    .filter(n => n.member_id === myMember?.id && itemById.has(n.item_id) && receiptById.has(n.receipt_id))
+    .map(n => ({ ...n, item: itemById.get(n.item_id), receipt: receiptById.get(n.receipt_id) }))
+  const priceNotices = myNotices.filter(n => n.kind === 'price')
+  // Why a receipt is back on your list: "Niko added Eggs and Juice"
+  function reopenedBecause(receiptId) {
+    const mine = myNotices.filter(n => n.receipt_id === receiptId && (n.kind === 'added' || n.kind === 'shared'))
+    if (!mine.length) return null
+    const byActor = {}
+    for (const n of mine) (byActor[n.actor] ||= { added: [], shared: [] })[n.kind].push(n.item.name)
+    const list = names => names.length > 2 ? `${names.length} items` : names.join(' and ')
+    return Object.entries(byActor).map(([actor, { added, shared }]) => [
+      added.length && `${actor} added ${list(added)}`,
+      shared.length && `${actor} made ${list(shared)} split by everyone`,
+    ].filter(Boolean).join(', ')).join('; ')
+  }
+  // An unclaimed item someone else took care of while you're here
+  function explainGone(entry) {
+    const claimers = data.claims.filter(c => c.item_id === entry.item.id).map(c => c.roommate)
+    if (claimers.length) return `${claimers.join(' and ')} claimed it`
+    if (!itemById.has(entry.item.id)) return 'It was taken off the receipt'
+    return 'Taken care of'
+  }
 
   // "It's mine" / "Not mine" on an unclaimed item, then fresh balances
   async function save(fn, entry, what) {
@@ -56,6 +85,7 @@ export default function Home() {
       {DialogUI}
       {error && <StaleNotice onRetry={reload} />}
       {(noReceipts || alone) && <GetStarted showAddReceipt={noReceipts} />}
+      <PriceNotices notices={priceNotices} onSeen={reload} />
 
       {/* Receipts to check off */}
       {unchecked.length > 0 && (
@@ -80,6 +110,7 @@ export default function Home() {
                         <p className="text-xs text-gray-400">
                           {date} · Paid by {r.paid_by}
                         </p>
+                        {reopenedBecause(r.id) && <p className="text-xs text-amber-700" data-reopened>{reopenedBecause(r.id)}</p>}
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-gray-300 ml-3" />
@@ -98,6 +129,7 @@ export default function Home() {
         receiptLink={r => `/receipt/${r.id}`}
         onMine={entry => save(claimItem, entry, 'claim it')}
         onNotMine={entry => save(dismissItem, entry, 'save that')}
+        explainGone={explainGone}
       />
 
       {/* Where you stand: who you owe and who owes you */}

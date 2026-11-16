@@ -13,6 +13,7 @@ import GroupSettings from './pages/GroupSettings.jsx'
 import Receipts from './pages/Receipts.jsx'
 import Balances from './pages/Balances.jsx'
 import Privacy from './pages/Privacy.jsx'
+import Admin, { useIsAdmin } from './pages/Admin.jsx'
 import { SessionProvider, useSession } from './lib/session.jsx'
 import { GroupProvider, useGroup } from './lib/group.jsx'
 import GlassTabBar from './components/GlassTabBar.jsx'
@@ -23,6 +24,7 @@ import { useDismiss } from './lib/useDismiss.js'
 import { POPUP_PANEL, POPUP_ITEM, POPUP_HEADING, POPUP_DIVIDER } from './lib/popup.js'
 import { FullPageLoading } from './components/Loading.jsx'
 import LoadError from './components/LoadError.jsx'
+import { NewVersionBar, LostGroupNotice } from './components/AppNotices.jsx'
 
 // Main sections. Receipt pages count as "Receipts"; the add form has no tab.
 const TABS = [
@@ -112,6 +114,7 @@ function UserMenu() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { confirm, DialogUI } = useDialog()
+  const isAdmin = useIsAdmin()
 
   // Switching reloads every page, so unsaved work would be lost: ask first.
   // Home replaces the current page, so Back doesn't reopen the old group's.
@@ -192,6 +195,7 @@ function UserMenu() {
           <Link role="menuitem" to="/groups/new" onClick={close} className={`block ${POPUP_ITEM} text-accent-600`}>+ Create or join a group</Link>
           <div className={POPUP_DIVIDER} />
           <Link role="menuitem" to="/settings" onClick={close} className={`block ${POPUP_ITEM} text-gray-700`}>Your settings</Link>
+          {isAdmin && <Link role="menuitem" to="/admin" onClick={close} className={`block ${POPUP_ITEM} text-gray-700`}>Admin</Link>}
           <button role="menuitem" onClick={() => { close(); signOut() }} className={`${POPUP_ITEM} text-gray-700`}>Sign out</button>
         </div>
       )}
@@ -247,7 +251,7 @@ function SignedInApp() {
   // Couldn't load your groups: say so (not "Set up your group")
   if (loadError) return <div className="min-h-screen bg-gray-50 flex items-center"><LoadError onRetry={retryLoad} /></div>
   if (loading) return <FullPageLoading />
-  if (memberships.length === 0 || pathname === '/groups/new') return <Onboarding />
+  if (memberships.length === 0 || pathname === '/groups/new') return <><LostGroupNotice /><Onboarding /></>
 
   // The add/edit form hides the tab bar so a stray tap can't drop a draft
   const showTabs = pathname !== '/receipt/new' && !pathname.endsWith('/edit')
@@ -255,6 +259,7 @@ function SignedInApp() {
   return (
     <div className={`min-h-screen bg-gray-50 pt-topnav sm:pb-12 ${showTabs ? 'pb-tabbar' : 'pb-12'}`}>
       <TopNav />
+      <LostGroupNotice />
       {/* Keyed by group so every page reloads its data when switching groups */}
       <Routes key={group?.id}>
         <Route path="/" element={<Home />} />
@@ -266,6 +271,7 @@ function SignedInApp() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/group" element={<GroupSettings />} />
+        <Route path="/admin" element={<Admin />} />
         {/* Old routes */}
         <Route path="/search" element={<Redirect to="/receipts" />} />
         <Route path="/payments" element={<Redirect to="/balances" />} />
@@ -316,6 +322,7 @@ export default function App() {
       {/* New pages start at the top; Back returns to where you were */}
       <ScrollRestoration />
       <Gate />
+      <NewVersionBar />
     </SessionProvider>
   )
 }

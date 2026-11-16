@@ -9,6 +9,9 @@ import { getStoreLogo } from '../lib/storeLogo.js'
 import { useGroup, formatWaitingOn } from '../lib/group.jsx'
 import { receiptFromDb, claimFromDb, checkinFromDb, syncMyClaims, ensureCheckin, recordPayment, deletePayment } from '../lib/db.js'
 import { useBalances } from '../lib/useBalances.js'
+import { onLive, touchesReceipt } from '../lib/live.js'
+import { whenIdle, cancelIdle } from '../lib/idle.js'
+import { useEditors } from '../lib/editLock.js'
 import ReceiptHistory from '../components/ReceiptHistory.jsx'
 import { guestLinkUrl } from './GroupSettings.jsx'
 import BackButton from '../components/BackButton.jsx'
@@ -41,6 +44,11 @@ export default function ReceiptDetail() {
   const [meals, setMeals] = useState([])
   const [claims, setClaims] = useState([])
   const [dismissals, setDismissals] = useState([]) // "Not mine" on unclaimed items
+  const [notices, setNotices] = useState([]) // unread "why it changed", see receipt_notices
+  // New items you have to answer Mine / Not mine for before saving: added
+  // since you checked in (notices), or while you had unsaved check-offs
+  const [arrivedItems, setArrivedItems] = useState(new Set())
+  const [newItemChoices, setNewItemChoices] = useState({}) // item id -> 'mine' | 'not'
   const { group, memberships, switchGroup, myName, myMember, nameOf, idOf, members, refreshMembers } = useGroup()
   // { id, name } of the group this receipt belongs to, when it isn't the current one
   const [otherGroup, setOtherGroup] = useState(null)
@@ -72,22 +80,40 @@ export default function ReceiptDetail() {
   const unsavedDialog = useUnsavedChanges(isDirty, "Your check-offs aren't saved yet. Leave without saving them?")
   const bal = useBalances()
   const skeletonPreview = useSkeletonPreview()
+  // Anyone with this receipt open in the editor right now (lib/editLock.js)
+  const editingNow = useEditors(receiptId)
+  // The debts as of the last render, for checking a payment against
+  // what's owed right before saving it
+  const latestDebts = useRef({ debts: [], debtState: null })
 
-  const loadData = useCallback(async () => {
+  // Loads the receipt and everything on it, then shows it all at once. Live
+  // updates load it again (`live`): applied once you're not mid-tap
+  // (lib/idle.js), and a failed one keeps showing what's here. Only the
+  // newest load may update the page.
+  const loadSeq = useRef(0)
+  // Items shown, to spot ones added while you have unsaved check-offs
+  const shownItemIds = useRef(null)
+  const dirtyRef = useRef(false)
+  dirtyRef.current = isDirty
+  const loadData = useCallback(async ({ live = false } = {}) => {
+    const seq = ++loadSeq.current
+    const stale = () => seq !== loadSeq.current
     const [receiptRes, checkinRes] = await Promise.all([
       supabase.from('receipts').select('*').eq('id', receiptId).single(),
       supabase.from('checkins').select('*').eq('receipt_id', receiptId),
     ])
+    if (stale()) return
 
     // PGRST116 = no row: it doesn't exist or we can't see it. Anything else
     // is a failed load, which can be retried.
-    const failed = () => { setLoadFailed(true); setLoading(false) }
+    const failed = () => { if (!live) { setLoadFailed(true); setLoading(false) } }
     if (receiptRes.error) {
       if (receiptRes.error.code !== 'PGRST116') return failed()
       setError('Receipt not found.'); setLoading(false); return
     }
     // Shared link to a receipt in another of my groups: switch to that group
     if (receiptRes.data.group_id !== group.id) {
+      if (live) return
       const other = memberships.find(m => m.group_id === receiptRes.data.group_id)
       if (!other) { setError('Receipt not found.'); setLoading(false); return }
       if (!canGoBack()) {
@@ -97,41 +123,66 @@ export default function ReceiptDetail() {
       }
       setOtherGroup({ id: other.group_id, name: other.groups.name }); setLoading(false); return
     }
-    setReceipt(receiptFromDb(receiptRes.data, nameOf))
-    setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
 
     const [itemRes, mealRes] = await Promise.all([
       supabase.from('items').select('*').eq('receipt_id', receiptId).is('deleted_at', null)
         .order('position', { ascending: true, nullsFirst: false }).order('created_at'),
       supabase.from('meals').select('*').eq('receipt_id', receiptId).is('deleted_at', null).order('created_at').order('id'),
     ])
+    if (stale()) return
     if (itemRes.error || mealRes.error || checkinRes.error) return failed()
     const allItems = itemRes.data || []
-    setItems(allItems)
-    setMeals(mealRes.data || [])
 
+    let claimRows = [], dismissRows = [], noticeRows = []
     if (allItems.length > 0) {
       const ids = allItems.map(i => i.id)
-      const [{ data: claimData, error: claimError }, { data: dismissData }] = await Promise.all([
+      const [{ data: claimData, error: claimError }, { data: dismissData }, { data: noticeData }] = await Promise.all([
         supabase.from('claims').select('*').in('item_id', ids).order('id'),
         // Who said an unclaimed item isn't theirs (only shown, so a failure isn't fatal)
         supabase.from('item_dismissals').select('item_id, member_id').in('item_id', ids),
+        // Items added since you (or a guest you check off for) checked in
+        supabase.from('receipt_notices').select('id, item_id, member_id, kind, actor_member').eq('receipt_id', receiptId).is('seen_at', null),
       ])
+      if (stale()) return
       if (claimError) return failed()
-      setClaims((claimData || []).map(c => claimFromDb(c, nameOf)))
-      setDismissals((dismissData || []).map(d => ({ ...d, roommate: nameOf(d.member_id) })))
-    } else {
-      setClaims([])
-      setDismissals([])
+      claimRows = claimData || []
+      dismissRows = dismissData || []
+      noticeRows = noticeData || []
     }
 
-    setLoadFailed(false)
-    setLoading(false)
+    const apply = () => {
+      if (stale()) return
+      // Added while you had unsaved check-offs: you choose for each
+      if (shownItemIds.current && dirtyRef.current) {
+        const fresh = allItems.filter(i => !shownItemIds.current.has(i.id)).map(i => i.id)
+        if (fresh.length) setArrivedItems(prev => new Set([...prev, ...fresh]))
+      }
+      shownItemIds.current = new Set(allItems.map(i => i.id))
+      setReceipt(receiptFromDb(receiptRes.data, nameOf))
+      setCheckins((checkinRes.data || []).map(x => checkinFromDb(x, nameOf)))
+      setItems(allItems)
+      setMeals(mealRes.data || [])
+      setClaims(claimRows.map(c => claimFromDb(c, nameOf)))
+      setDismissals(dismissRows.map(d => ({ ...d, roommate: nameOf(d.member_id) })))
+      setNotices(noticeRows)
+      setLoadFailed(false)
+      setLoading(false)
+    }
+    if (live) whenIdle(`receipt-${receiptId}`, apply)
+    else apply()
   }, [receiptId, nameOf, group.id])
 
   useEffect(() => {
     loadData()
+    return () => cancelIdle(`receipt-${receiptId}`)
   }, [loadData])
+
+  // Live: anything changed on this receipt (its items, check-offs, check-ins…)
+  const itemIdsRef = useRef(new Set())
+  itemIdsRef.current = new Set(items.map(i => i.id))
+  useEffect(() => onLive(batch => {
+    if (touchesReceipt(batch, receiptId, itemIdsRef.current)) loadData({ live: true })
+  }), [loadData, receiptId])
 
   // Whose check-offs myClaims was last set from; fresh data for the same
   // person (e.g. a reload after copying a guest link) keeps unsaved changes
@@ -145,7 +196,10 @@ export default function ReceiptDetail() {
     // Checked in before (on any device: the check-in is in the database) →
     // show exactly what I claimed. Only a first visit starts with everything checked.
     const checkedIn = checkins.some(c => c.member_id === actor.id)
-    const hasEverSaved = checkedIn || !!localStorage.getItem(`claimed-receipt-${receiptId}-${actor.id}`)
+    // (Asked to check in again because items were added: they had, even if
+    // that check-in is gone and it was on another device)
+    const reopened = notices.some(n => n.member_id === actor.id && (n.kind === 'added' || n.kind === 'shared'))
+    const hasEverSaved = checkedIn || reopened || !!localStorage.getItem(`claimed-receipt-${receiptId}-${actor.id}`)
     if (mine.length > 0 || hasEverSaved) {
       setMyClaims(new Set([...mine, ...alwaysSplitIds]))
     } else {
@@ -153,7 +207,7 @@ export default function ReceiptDetail() {
     }
     claimsLoadedRef.current = true
     setIsDirty(false)
-  }, [myName, actingForId, claims, items, checkins, receiptId])
+  }, [myName, actingForId, claims, items, checkins, receiptId, notices])
 
   function toggleClaim(itemId) {
     if (!actor) return
@@ -170,7 +224,8 @@ export default function ReceiptDetail() {
 
   function toggleMealGroup(mealId, mealItems) {
     if (!actor) return
-    const toggleableIds = mealItems.filter(i => !i.always_split).map(i => i.id)
+    // (New items not answered yet are left alone: they need their own answer)
+    const toggleableIds = mealItems.filter(i => !i.always_split && !pendingIds.includes(i.id)).map(i => i.id)
     const allChecked = toggleableIds.every(id => myClaims.has(id))
     setMyClaims(prev => {
       const next = new Set(prev)
@@ -198,9 +253,38 @@ export default function ReceiptDetail() {
     })
   }
 
+  // A new item answered: Mine checks it, Not mine leaves it unchecked
+  function chooseNewItem(itemId, choice) {
+    setNewItemChoices(prev => ({ ...prev, [itemId]: choice }))
+    setMyClaims(prev => {
+      const next = new Set(prev)
+      if (choice === 'mine') next.add(itemId)
+      else next.delete(itemId)
+      return next
+    })
+    setSaved(false)
+    setIsDirty(true)
+  }
+
   async function saveClaims() {
     if (!actor) return
+    if (pendingIds.length) {
+      const who = actingForId ? actor.name : 'you'
+      await showAlert(`${pendingIds.length === 1 ? 'An item was' : `${pendingIds.length} items were`} added to this receipt since ${who} last checked in. Choose Mine or Not mine for ${pendingIds.length === 1 ? 'it' : 'each one'} before saving.`, { title: 'New items to check' })
+      document.querySelector('[data-new-item]')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
     setSaving(true)
+    // Changed since it was loaded here (a live update could have been
+    // missed): show the changes first instead of saving check-offs over them.
+    // Your check-offs stay; anything new asks Mine / Not mine.
+    const { data: fresh } = await supabase.from('receipts').select('version').eq('id', receiptId).single()
+    if (fresh && receipt.version != null && fresh.version !== receipt.version) {
+      await loadData()
+      setSaving(false)
+      await showAlert('Someone changed this receipt since you opened it. Your check-offs are kept; have a look, then save again.', { title: 'This receipt changed' })
+      return
+    }
     const itemIds = items.map(i => i.id)
     const currentMine = new Set(claims.filter(c => c.roommate === actor.name).map(c => c.item_id))
     try {
@@ -235,6 +319,8 @@ export default function ReceiptDetail() {
     setSaving(false)
     setSaved(true)
     setIsDirty(false)
+    setNewItemChoices({})
+    setArrivedItems(new Set())
     // The saved claims' ids decide who gets leftover cents; fetch them
     loadData()
   }
@@ -255,15 +341,38 @@ export default function ReceiptDetail() {
     return { status, remaining, linked }
   }
 
+  // Asks first (it records a payment), then checks it's still owed: the
+  // other person may have marked it from their side meanwhile
   async function markSent(d, amount) {
+    const iPay = myName === d.debtor
+    if (!await confirm(iPay ? `${money(amount)} to ${d.creditor}, for this receipt.` : `${money(amount)} from ${d.debtor}, for this receipt.`, {
+      title: iPay ? 'Mark as sent?' : 'Mark as received?', confirmLabel: iPay ? 'Mark sent' : 'Mark received',
+    })) return
     setSettling(true)
     try {
+      await Promise.all([bal.reload(), loadData()])
+      // Let the fresh data render, then read what's owed now
+      await new Promise(resolve => setTimeout(resolve, 0))
+      const { debts: nowDebts, debtState: stateNow } = latestDebts.current
+      const now = nowDebts.find(x => x.debtor === d.debtor && x.creditor === d.creditor)
+      const remaining = now && stateNow ? stateNow(now).remaining : 0
+      if (remaining <= 0.005) {
+        await showAlert(`This has already been marked as paid, so nothing more was recorded.`, { title: 'Already paid' })
+        return
+      }
+      if (Math.abs(remaining - amount) > 0.005) {
+        if (!await confirm(`What's owed changed to ${money(remaining)} (the receipt or a payment changed meanwhile).`, {
+          title: `Mark ${money(remaining)} ${iPay ? 'sent' : 'received'}?`, confirmLabel: iPay ? 'Mark sent' : 'Mark received',
+        })) return
+        amount = remaining
+      }
       await recordPayment({ groupId: group.id, fromId: idOf(d.debtor), toId: idOf(d.creditor), amount, receiptId })
       await bal.reload()
     } catch (err) {
       await showAlert(err.message, { title: 'Could not save payment' })
+    } finally {
+      setSettling(false)
     }
-    setSettling(false)
   }
 
   // Undo: remove the most recent payment made for this receipt
@@ -287,6 +396,8 @@ export default function ReceiptDetail() {
     if (id === actingForId) return
     if (isDirty && !await confirm('Your unsaved check-offs will be lost.', { title: 'Switch person?', confirmLabel: 'Switch', danger: true })) return
     setSaved(false)
+    setNewItemChoices({})
+    setArrivedItems(new Set())
     setActingForId(id)
   }
 
@@ -352,6 +463,7 @@ export default function ReceiptDetail() {
         .reduce((s, d) => s + d.amount, 0)
     : 0
   const debts = calculateDebts(receiptArr, items, countedClaims, meals)
+  latestDebts.current = { debts, debtState }
   const breakdown = getItemizedBreakdown(receiptArr, items, countedClaims, meals)
 
   const checkinNames = new Set(checkins.map(c => c.roommate.toLowerCase()))
@@ -400,6 +512,22 @@ export default function ReceiptDetail() {
   }
   const ungroupedItems = items.filter(i => !i.meal_id)
 
+  // New items to answer Mine / Not mine for, as whoever you're checking off
+  // for: added since they checked in, or while their check-offs were unsaved
+  const addedForActor = new Set(notices.filter(n => n.kind === 'added' && n.member_id === actor?.id).map(n => n.item_id))
+  const isNewItem = id => addedForActor.has(id) || arrivedItems.has(id)
+  const pendingIds = actor ? items.filter(i => isNewItem(i.id) && !i.always_split && !newItemChoices[i.id]).map(i => i.id) : []
+  const whoAdded = id => {
+    const n = notices.find(x => x.item_id === id && x.kind === 'added' && x.actor_member)
+    return n ? nameOf(n.actor_member) : null
+  }
+  // A meal holding one opens, so it's seen
+  const pendingMealKey = items.filter(i => i.meal_id && pendingIds.includes(i.id)).map(i => i.meal_id).join(',')
+  useEffect(() => {
+    if (!pendingMealKey) return
+    setExpandedMeals(prev => new Set([...prev, ...pendingMealKey.split(',')]))
+  }, [pendingMealKey])
+
   if (loading || skeletonPreview) return <ReceiptDetailSkeleton onBack={handleBack} preview={cachedPreview()} />
   if (loadFailed) return <LoadError onRetry={loadData} />
   if (otherGroup) {
@@ -422,7 +550,38 @@ export default function ReceiptDetail() {
     )
   }
 
+  // A new item you haven't answered yet: Mine / Not mine instead of a box
+  function renderNewItemRow(item, indent) {
+    const by = whoAdded(item.id)
+    const since = actingForId ? `after ${actor.name} checked in` : 'after you checked in'
+    return (
+      <li key={item.id} data-new-item={item.id} className={`flex items-center gap-3 ${indent ? 'pl-10 pr-4 py-2.5' : 'px-4 py-3'} bg-amber-50`}>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">
+            {item.name}
+            {getItemEmoji(item.name) && <span className="ml-1.5">{getItemEmoji(item.name)}</span>}
+          </p>
+          <p className="text-xs text-amber-700">
+            {addedForActor.has(item.id) ? `${by || 'Someone'} added this ${since}.` : `${by || 'Someone'} just added this.`} Is it {actingForId ? `${actor.name}'s` : 'yours'}?
+          </p>
+          <div className="mt-2 flex gap-1.5">
+            <button type="button" onClick={() => chooseNewItem(item.id, 'mine')}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-600 text-white hover:bg-accent-700 active:bg-accent-700 transition">
+              {actingForId ? `${actor.name}'s` : 'Mine'}
+            </button>
+            <button type="button" onClick={() => chooseNewItem(item.id, 'not')}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 active:bg-gray-100 transition">
+              {actingForId ? `Not ${actor.name}'s` : 'Not mine'}
+            </button>
+          </div>
+        </div>
+        <span className="text-sm font-medium text-gray-700 shrink-0 tabular-nums">{money(item.price)}</span>
+      </li>
+    )
+  }
+
   function renderItemRow(item, indent = false) {
+    if (pendingIds.includes(item.id)) return renderNewItemRow(item, indent)
     const claimerList = claims.filter(c => c.item_id === item.id).map(c => c.roommate)
     const isMine = myClaims.has(item.id)
     const locked = item.always_split
@@ -455,6 +614,7 @@ export default function ReceiptDetail() {
             {item.name}
             {getItemEmoji(item.name) && <span className="ml-1.5">{getItemEmoji(item.name)}</span>}
             {locked && <LockIcon className="w-3.5 h-3.5 text-gray-400 inline ml-1.5 -mt-0.5" />}
+            {isNewItem(item.id) && <span className="ml-1.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 rounded px-1 py-0.5">New</span>}
           </p>
           {claimerList.length > 0 ? (
             <p className="text-xs text-gray-400 truncate">{claimerList.join(', ')}</p>
@@ -556,6 +716,12 @@ export default function ReceiptDetail() {
           </p>
         )}
         <p className="text-sm text-gray-500 mt-0.5">Paid by {receipt.paid_by}</p>
+        {editingNow.length > 0 && (
+          <p className="text-sm text-accent-700 mt-1" data-editing-now>
+            {[...new Set(editingNow.map(e => e.member_id === myMember?.id ? 'You' : nameOf(e.member_id)))].join(' and ')}{' '}
+            {editingNow.length === 1 && editingNow[0].member_id !== myMember?.id ? 'is' : 'are'} editing this receipt right now
+          </p>
+        )}
       </div>
 
       {receipt.deleted_at && (
@@ -855,7 +1021,8 @@ export default function ReceiptDetail() {
         </div>
       )}
 
-      <ReceiptHistory receiptId={receiptId} key={`${saved}-${receipt.deleted_at}-${bal.data?.payments?.length}`} />
+      {/* Loads again when anything on the receipt changes (yours or, live, anyone's) */}
+      <ReceiptHistory receiptId={receiptId} refreshKey={`${saved}-${receipt.deleted_at}-${receipt.version}-${claims.length}-${checkins.length}-${bal.data?.payments?.length}`} />
     </div>
     </>
   )
