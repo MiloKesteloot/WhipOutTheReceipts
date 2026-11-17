@@ -12,11 +12,12 @@ const MEMBERS = [
 ]
 const link = (over = {}) => ({
   user_id: ME, discord_id: 'd-me', broken_at: null,
-  notify_new_receipt: true, notify_items_added: true, notify_price_up: true, notify_payment: false, ...over,
+  notify_new_receipt: true, notify_items_added: true, notify_price_up: true, notify_payment: false, detail: 'everything', ...over,
 })
 const receipt = (over = {}) => ({
   id: 'r1', group_id: G, store_name: 'Safeway', receipt_date: '2026-11-14', deleted_at: null,
-  member_ids: [], paid_by_member: 'm-niko', total: 84.2, ...over,
+  member_ids: [], paid_by_member: 'm-niko', total: 84.2, tax: 1.2, tip: 0, fees: 0,
+  items: [{ name: 'Eggs', price: 4 }, { name: 'Steak', price: 79 }], ...over,
 })
 
 function ctx({ links = [link()], receipts = [receipt()], members = MEMBERS, checkins = [], notices = [], payments = [] } = {}) {
@@ -33,6 +34,23 @@ function ctx({ links = [link()], receipts = [receipt()], members = MEMBERS, chec
 let nextId = 1
 const row = over => ({ id: nextId++, user_id: ME, receipt_id: 'r1', notice_id: null, payment_id: null, actor_member: 'm-niko', ...over })
 const skipped = (out, reason) => out.skips.find(s => s.reason === reason)?.ids ?? []
+// Everything a message says, and every link in it, wherever Discord puts it
+// (plain text, an embed, or a card's parts)
+function textOf(body) {
+  const out = []
+  const walk = x => {
+    if (Array.isArray(x)) return x.forEach(walk)
+    if (x && typeof x === 'object') {
+      for (const k of ['content', 'name', 'value', 'title', 'label']) if (typeof x[k] === 'string') out.push(x[k])
+      Object.values(x).forEach(walk)
+    }
+  }
+  walk(body)
+  return out.join('\n')
+}
+function urlsOf(body) {
+  return JSON.stringify(body).match(/https?:[^"\)]+/g) || []
+}
 
 describe('new receipt', () => {
   it('sends one DM with who added it, the store, total and a link', () => {
@@ -42,8 +60,10 @@ describe('new receipt', () => {
     expect(out.sends).toHaveLength(1)
     const s = out.sends[0]
     expect(s).toMatchObject({ userId: ME, discordId: 'd-me', ids: [r.id] })
-    expect(s.body.content).toContain('**Niko** added a receipt: **Safeway** (Nov 14) · $84.20')
-    expect(s.body.components[0].components[0].url).toBe(`${APP.replace(/\/$/, '')}/#/receipt/r1`)
+    const t = textOf(s.body)
+    expect(t).toContain('### Safeway\nNiko added a receipt · Sat, Nov 14')
+    expect(t).toContain('## $84.20\n-# Paid by Niko')
+    expect(urlsOf(s.body)).toContain(`${APP.replace(/\/$/, '')}/#/receipt/r1`)
   })
 
   it('is skipped when the receipt was deleted meanwhile', () => {
@@ -84,7 +104,67 @@ describe('new receipt', () => {
     const out = planSends(rows, ctx({ notices }))
     expect(out.sends).toHaveLength(1)
     expect(out.sends[0].ids).toEqual(rows.map(r => r.id))
-    expect(out.sends[0].body.content).toContain('added a receipt')
+    expect(textOf(out.sends[0].body)).toContain('added a receipt')
+  })
+})
+
+describe('how much messages include', () => {
+  const URL = `${APP.replace(/\/$/, '')}/#/receipt/r1`
+  const send = (detail, rows = [row({ kind: 'new_receipt' })], extra = {}) =>
+    planSends(rows, ctx({ links: [link({ detail, notify_payment: true })], ...extra })).sends[0].body
+
+  it('everything: a card listing every item with its price, then tax and the total', () => {
+    const t = textOf(send('everything'))
+    expect(t).toContain([
+      '```',
+      'Eggs                    4.00',
+      'Steak                  79.00',
+      '----------------------------',
+      'Tax                     1.20',
+      '```',
+    ].join('\n'))
+    expect(t).toContain('$84.20')
+    expect(t).not.toContain('*')
+  })
+
+  it('everything: a long receipt lists the first 25 items, then how many more', () => {
+    const items = Array.from({ length: 30 }, (_, i) => ({ name: `Item ${i}`, price: 1 }))
+    const t = textOf(send('everything', undefined, { receipts: [receipt({ items })] }))
+    expect(t).toContain('Item 24')
+    expect(t).not.toContain('Item 25 ')
+    expect(t).toContain('…and 5 more')
+  })
+
+  it('minimal: store, total, who paid, the date and how many items, but not the items', () => {
+    const body = send('minimal')
+    const e = body.embeds[0]
+    expect(e.author.name).toBe('Niko added a receipt')
+    expect(e.title).toBe('Safeway · $84.20')
+    expect(e.url).toBe(URL)
+    expect(e.fields.map(f => `${f.name}: ${f.value}`)).toEqual(['Paid by: Niko', 'Date: Sat, Nov 14', 'Items: 2'])
+    expect(textOf(body)).not.toContain('Steak')
+    expect(e.footer).toBeUndefined()
+  })
+
+  it('none: one line with a link, and no link preview', () => {
+    expect(send('none')).toEqual({ flags: 4, content: `You were added to a [receipt](${URL}).` })
+  })
+
+  it('none applies to every kind of message', () => {
+    const notices = [{ id: 'n1', kind: 'added', item_name: 'Eggs', seen_at: null },
+                     { id: 'n2', kind: 'price', item_name: 'Eggs', old_price: 1, new_price: 2, seen_at: null }]
+    const payments = [{ id: 'p1', group_id: G, from_member: 'm-niko', to_member: 'm-me', amount: 5, note: 'hi', receipt_id: null, deleted_at: null }]
+    expect(send('none', [row({ kind: 'items_added', notice_id: 'n1' })], { notices }).content).toBe(`Items were added to a [receipt](${URL}) you checked in on.`)
+    expect(send('none', [row({ kind: 'price_up', notice_id: 'n2' })], { notices }).content).toBe(`A price went up on a [receipt](${URL}) you checked off.`)
+    expect(send('none', [row({ kind: 'payment', payment_id: 'p1', receipt_id: null })], { payments }).content)
+      .toBe(`You were sent a [payment](${APP.replace(/\/$/, '')}/#/balances).`)
+    expect(msg.reminder({ appUrl: APP, receipts: [{ id: 'r1' }, { id: 'r2' }], detail: 'none' }).content)
+      .toBe(`2 receipts are waiting on you in [OurReceipts](${APP.replace(/\/$/, '')}/#/).`)
+  })
+
+  it("people's text can't break the card's receipt block", () => {
+    const t = textOf(send('everything', undefined, { receipts: [receipt({ items: [{ name: '```oops```', price: 1 }] })] }))
+    expect(t.match(/```/g)).toHaveLength(2)
   })
 })
 

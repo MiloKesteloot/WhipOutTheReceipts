@@ -1,9 +1,19 @@
 // What the OurReceipts bot says in a DM. No Discord or database here (plain
 // JS, so the Edge Function and the unit tests share it):
-// supabase/functions/discord/messages.test.js.
+// supabase/functions/discord/plan.test.js.
 //
-// Each builder returns a Discord message body: { content, components }.
-// Links open the app at the receipt (the app switches to its group).
+// Each builder returns a Discord message body. Links open the app at the
+// receipt (the app switches to its group).
+//
+// detail is the person's "how much to include" setting:
+//   everything  a new receipt shows as a card with its items
+//   minimal     a new receipt shows as a compact card (no items)
+//   none        every message is one line with a link, nothing else
+export const DETAILS = ['everything', 'minimal', 'none']
+
+const GREEN = 0x16A34A // the app's accent (accent-600)
+const V2 = 1 << 15 // Discord's newer card layout (no `content` with it)
+const NO_PREVIEW = 1 << 2 // no link preview under a plain message
 
 export const money = n => `$${(Math.round(Number(n || 0) * 100) / 100).toFixed(2)}`
 
@@ -28,6 +38,31 @@ export function shortDate(d) {
 export const receiptUrl = (appUrl, id) => `${appUrl.replace(/\/+$/, '')}/#/receipt/${id}`
 
 const button = (label, url) => ({ type: 1, components: [{ type: 2, style: 5, label, url }] })
+const linkButton = (label, url) => ({ type: 2, style: 5, label, url })
+const text = content => ({ type: 10, content })
+const divider = { type: 14, divider: true, spacing: 1 }
+const home = appUrl => `${appUrl.replace(/\/+$/, '')}/#/`
+const iconUrl = appUrl => `${appUrl.replace(/\/+$/, '')}/icon-192.png`
+// "none": one line, one link
+const bare = (line, url, label) => ({ flags: NO_PREVIEW, content: line.replace('{link}', `[${label}](${url})`) })
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+// "Sat, Nov 16"
+export function longDate(d) {
+  if (!d) return ''
+  const [y, m, day] = String(d).slice(0, 10).split('-').map(Number)
+  return `${WEEKDAYS[new Date(Date.UTC(y, m - 1, day)).getUTCDay()]}, ${MONTHS[m - 1]} ${day}`
+}
+
+// Monospace receipt lines: name on the left, price on the right
+export const RECEIPT_WIDTH = 28
+export function receiptLine(left, right, w = RECEIPT_WIDTH) {
+  const room = w - right.length - 1
+  const name = String(left ?? '').replace(/`/g, "'").replace(/\s+/g, ' ').trim()
+  const l = name.length > room ? `${name.slice(0, room - 1)}…` : name
+  return l + ' '.repeat(Math.max(1, w - l.length - right.length)) + right
+}
+const plain = n => (Math.round(Number(n || 0) * 100) / 100).toFixed(2)
 
 // "Safeway (Oct 4)" or "Safeway"
 function receiptName(r) {
@@ -43,16 +78,56 @@ export function listNames(names, max = 3) {
   return `${n.slice(0, max - 1).join(', ')} and ${n.length - max + 1} more`
 }
 
-// A new receipt you're on
-export function newReceipt({ appUrl, receipt, actor, total }) {
+// A new receipt you're on.
+//   items: [{ name, price }] in order; payer: who paid (a first name)
+export function newReceipt({ appUrl, receipt, actor, payer, total, items = [], detail = 'everything', maxItems = 25 }) {
+  const url = receiptUrl(appUrl, receipt.id)
+  if (detail === 'none') return bare('You were added to a {link}.', url, 'receipt')
+  const date = longDate(receipt.receipt_date)
+
+  if (detail === 'minimal') {
+    return {
+      embeds: [{
+        color: GREEN,
+        // (embed author and title text isn't markdown: no escaping)
+        author: { name: actor ? `${actor} added a receipt` : 'New receipt', icon_url: iconUrl(appUrl) },
+        title: `${clip(receipt.store_name, 80)} · ${money(total)}`,
+        url,
+        fields: [
+          payer && { name: 'Paid by', value: esc(payer), inline: true },
+          date && { name: 'Date', value: date, inline: true },
+          { name: 'Items', value: String(items.length), inline: true },
+        ].filter(Boolean),
+      }],
+    }
+  }
+
+  // everything
+  const by = actor ? `${esc(actor)} added a receipt` : 'New receipt'
+  const lines = items.slice(0, maxItems).map(i => receiptLine(i.name, plain(i.price)))
+  if (items.length > maxItems) lines.push(`…and ${items.length - maxItems} more`)
+  const extras = [['Tax', receipt.tax], ['Tip', receipt.tip], ['Fees', receipt.fees]].filter(([, v]) => Number(v))
+  if (extras.length) {
+    lines.push('-'.repeat(RECEIPT_WIDTH))
+    for (const [name, v] of extras) lines.push(receiptLine(name, plain(v)))
+  }
   return {
-    content: `🧾 ${actor ? `**${esc(actor)}** added` : 'New'} a receipt: ${receiptName(receipt)} · ${money(total)}\nCheck off what's yours.`,
-    components: [button('Open receipt', receiptUrl(appUrl, receipt.id))],
+    flags: V2,
+    components: [{ type: 17, accent_color: GREEN, components: [
+      { type: 9, components: [text(`### ${esc(clip(receipt.store_name))}\n${by}${date ? ` · ${date}` : ''}`)],
+        accessory: { type: 11, media: { url: iconUrl(appUrl) } } },
+      divider,
+      text('```\n' + (lines.join('\n') || ' ') + '\n```'),
+      divider,
+      { type: 9, components: [text(`## ${money(total)}${payer ? `\n-# Paid by ${esc(payer)}` : ''}`)],
+        accessory: linkButton('Check off yours', url) },
+    ] }],
   }
 }
 
 // Items added (or newly split by everyone) after you checked in
-export function itemsAdded({ appUrl, receipt, actor, items }) {
+export function itemsAdded({ appUrl, receipt, actor, items, detail }) {
+  if (detail === 'none') return bare('Items were added to a {link} you checked in on.', receiptUrl(appUrl, receipt.id), 'receipt')
   const what = items.length ? listNames(items) : 'items'
   return {
     content: `➕ ${actor ? `**${esc(actor)}**` : 'Someone'} added ${what} to ${receiptName(receipt)}.\nCheck in again so your total is right.`,
@@ -61,7 +136,8 @@ export function itemsAdded({ appUrl, receipt, actor, items }) {
 }
 
 // Prices that went up on things you checked off: [{ name, old_price, new_price }]
-export function pricesUp({ appUrl, receipt, actor, changes }) {
+export function pricesUp({ appUrl, receipt, actor, changes, detail }) {
+  if (detail === 'none') return bare('A price went up on a {link} you checked off.', receiptUrl(appUrl, receipt.id), 'receipt')
   const who = actor ? `**${esc(actor)}**` : 'Someone'
   const lines = changes.map(c => `• ${esc(clip(c.name, 60))}: ${money(c.old_price)} → ${money(c.new_price)}`)
   return {
@@ -71,7 +147,8 @@ export function pricesUp({ appUrl, receipt, actor, changes }) {
 }
 
 // Someone recorded a payment to you
-export function paymentToYou({ appUrl, actor, from, amount, receipt, note }) {
+export function paymentToYou({ appUrl, actor, from, amount, receipt, note, detail }) {
+  if (detail === 'none') return bare('You were sent a {link}.', `${home(appUrl)}balances`, 'payment')
   const payer = from || actor
   const forWhat = receipt ? ` for ${receiptName(receipt)}` : ''
   const by = actor && from && actor !== from ? ` (recorded by ${esc(actor)})` : ''
@@ -82,7 +159,9 @@ export function paymentToYou({ appUrl, actor, from, amount, receipt, note }) {
 }
 
 // Receipts still waiting on you to check off: [{ id, store_name, receipt_date, total }]
-export function reminder({ appUrl, receipts, max = 10 }) {
+export function reminder({ appUrl, receipts, max = 10, detail }) {
+  const waiting = receipts.length === 1 ? 'A receipt is' : `${receipts.length} receipts are`
+  if (detail === 'none') return bare(`${waiting} waiting on you in {link}.`, home(appUrl), 'OurReceipts')
   const shown = receipts.slice(0, max)
   const lines = shown.map(r => {
     const date = shortDate(r.receipt_date)
@@ -90,8 +169,9 @@ export function reminder({ appUrl, receipts, max = 10 }) {
   })
   if (receipts.length > max) lines.push(`…and ${receipts.length - max} more`)
   return {
-    content: `⏰ ${receipts.length === 1 ? 'A receipt is' : `${receipts.length} receipts are`} waiting on you to check off what's yours:\n${lines.join('\n')}`,
-    components: [button('Open OurReceipts', `${appUrl.replace(/\/+$/, '')}/#/`)],
+    flags: NO_PREVIEW, // (its receipt links would each get a preview)
+    content: `⏰ ${waiting} waiting on you to check off what's yours:\n${lines.join('\n')}`,
+    components: [button('Open OurReceipts', home(appUrl))],
   }
 }
 
@@ -99,13 +179,6 @@ export function welcome({ appUrl }) {
   return {
     content: "👋 You're connected! I'll message you here about receipts in OurReceipts. You can choose what I message you about in Settings.",
     components: [button('Notification settings', `${appUrl.replace(/\/+$/, '')}/#/settings`)],
-  }
-}
-
-export function test({ appUrl }) {
-  return {
-    content: '✅ This is a test message from OurReceipts. Notifications will show up here.',
-    components: [button('Open OurReceipts', `${appUrl.replace(/\/+$/, '')}/#/`)],
   }
 }
 

@@ -72,6 +72,19 @@ const server = createServer(async (req, res) => {
 })
 await new Promise(r => server.listen(FAKE_PORT, '0.0.0.0', r))
 const dmsTo = id => fake.dms.filter(d => d.to === id)
+// All the text in a DM, wherever Discord puts it (plain, embed, card)
+function textOf(body) {
+  const out = []
+  const walk = x => {
+    if (Array.isArray(x)) return x.forEach(walk)
+    if (x && typeof x === 'object') {
+      for (const k of ['content', 'name', 'value', 'title', 'label']) if (typeof x[k] === 'string') out.push(x[k])
+      Object.values(x).forEach(walk)
+    }
+  }
+  walk(body)
+  return out.join('\n')
+}
 
 // ── The function, served locally ────────────────────────────────
 const work = join(root, '.supabase-ui')
@@ -213,12 +226,33 @@ try {
     out = await sendNow()
     const dm = dmsTo('2002').at(-1)
     check(out.sent === 1 && dmsTo('2002').length === before + 1, 'then Alex gets one DM')
-    check(dm?.content.startsWith('🧾 **Milo** added a receipt: **Discord e2e Safeway** · $9.50'), 'saying who added what, and the total')
-    check(dm?.components?.[0]?.components?.[0]?.url === `${APP_URL}#/receipt/${rid}`, 'with a button that opens the receipt')
+    const t = textOf(dm)
+    check(t.includes('### Discord e2e Safeway\nMilo added a receipt') && t.includes('## $9.50') && t.includes('Paid by Milo'),
+      'a card saying who added what, who paid and the total')
+    check(/Eggs\s+4\.00\nMilk\s+5\.50/.test(t), 'listing the items (everything is the default)')
+    check(JSON.stringify(dm).includes(`"url":"${APP_URL}#/receipt/${rid}"`), 'with a button that opens the receipt')
+    check(JSON.stringify(dm).includes(`${APP_URL}icon-192.png`), 'and the app icon')
     check(JSON.stringify(dm?.allowed_mentions) === '{"parse":[]}', 'and it can never ping @everyone')
     check(dmsTo('2001').length === miloBefore, 'Milo (who added it) gets nothing')
     check(psql(`select count(*) from notification_outbox where receipt_id = '${rid}' and sent_at is not null and skip_reason is null`) === '1', 'the row is marked sent')
     check((await sendNow()).sent === 0, 'and is not sent twice')
+  }
+
+  {
+    // Minimal, then none (Alex's setting)
+    await alex.client.from('discord_links').update({ detail: 'minimal' }).eq('user_id', alex.userId)
+    const rid = await newReceipt(milo, 'Discord e2e Minimal')
+    makeDue(); await sendNow()
+    const e = dmsTo('2002').at(-1).embeds?.[0]
+    check(e?.title === 'Discord e2e Minimal · $9.50' && e.url === `${APP_URL}#/receipt/${rid}` && !textOf(dmsTo('2002').at(-1)).includes('Eggs'),
+      'Alex chose minimal: a compact card without the items')
+    await alex.client.from('discord_links').update({ detail: 'none' }).eq('user_id', alex.userId)
+    const rid2 = await newReceipt(milo, 'Discord e2e None')
+    makeDue(); await sendNow()
+    const dm = dmsTo('2002').at(-1)
+    check(dm.content === `You were added to a [receipt](${APP_URL}#/receipt/${rid2}).` && !dm.embeds && !dm.components,
+      'Alex chose none: one line with a link')
+    await alex.client.from('discord_links').update({ detail: 'everything' }).eq('user_id', alex.userId)
   }
 
   {
@@ -276,12 +310,14 @@ try {
     const out = await sendNow()
     check(out.skipped === 1 && out.failed === 0, "Alex has DMs off: the ping is skipped, not retried forever")
     check(!!linkOf(alex.userId).broken_at, '…and Settings will say the bot cannot message Alex')
-    const res = await call('/test', { jwt: alex.jwt })
-    check(res.status === 409 && (await res.json()).error.includes("won't let the bot message you"), 'Send a test explains why it failed')
+    await newReceipt(milo, 'Discord e2e Blocked again')
+    makeDue()
+    const again = await sendNow()
+    check(again.skipped === 1 && again.sent === 0, "while it can't, later pings are skipped without trying")
     fake.blocked.delete('2002')
-    const ok = await call('/test', { jwt: alex.jwt })
-    check(ok.status === 200 && !linkOf(alex.userId).broken_at, 'once DMs work again, a test clears the warning')
-    check(dmsTo('2002').at(-1).content.includes('test message'), '…and arrives')
+    const r = await callback({ code: 'alex', state: await startState(alex) })
+    check(r.location.endsWith('discord=connected') && !linkOf(alex.userId).broken_at, 'connecting again clears the warning')
+    check(dmsTo('2002').at(-1).content.includes("You're connected"), '…and the welcome arrives')
   }
 
   // ── Reminders ─────────────────────────────────────────────────
@@ -312,7 +348,7 @@ try {
     psql('select discord_wake()')
     let arrived = false
     for (let i = 0; i < 20 && !arrived; i++) { await sleep(500); arrived = dmsTo('2002').length > before }
-    check(arrived && dmsTo('2002').at(-1).content.includes('Discord e2e Cron'), 'the database wakes the function, and the DM goes out')
+    check(arrived && textOf(dmsTo('2002').at(-1)).includes('Discord e2e Cron'), 'the database wakes the function, and the DM goes out')
     psql(`delete from vault.secrets where name in ('discord_function_url', 'discord_cron_secret')`)
   }
 
@@ -326,7 +362,7 @@ try {
     await newReceipt(milo, 'Discord e2e After')
     makeDue(); await sendNow()
     check(dmsTo('2002').length === before, 'and nothing more is sent to Alex')
-    check((await call('/test', { jwt: alex.jwt })).status === 400, "a test says Discord isn't connected")
+    check((await call('/test', { jwt: alex.jwt })).status === 404, 'there is no test-message route anymore')
   }
 } catch (e) {
   failed++

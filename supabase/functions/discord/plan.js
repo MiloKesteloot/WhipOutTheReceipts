@@ -20,7 +20,7 @@ const PREF = {
   payment: 'notify_payment',
 }
 
-// ctx: { appUrl, links: Map(userId → link), receipts: Map(id → receipt with total),
+// ctx: { appUrl, links: Map(userId → link), receipts: Map(id → receipt with total and items [{ name, price }]),
 //        members: Map(memberId → member), checkins: Set('receiptId:memberId'),
 //        notices: Map(id → notice with item_name), payments: Map(id → payment) }
 // → { sends: [{ userId, discordId, ids, body }], skips: [{ ids, reason }] }
@@ -77,7 +77,7 @@ export function planSends(rows, ctx) {
       const receipt = p.receipt_id ? ctx.receipts.get(p.receipt_id) : null
       sends.push({ userId: first.user_id, discordId: link.discord_id, ids: [first.id],
         body: msg.paymentToYou({ appUrl: ctx.appUrl, actor: nameOf(first.actor_member), from: nameOf(p.from_member),
-          amount: p.amount, note: p.note, receipt: receipt && !receipt.deleted_at ? receipt : null }) })
+          amount: p.amount, note: p.note, receipt: receipt && !receipt.deleted_at ? receipt : null, detail: link.detail }) })
       continue
     }
 
@@ -85,21 +85,22 @@ export function planSends(rows, ctx) {
     const fresh = group.filter(x => x.kind === 'new_receipt')
     if (fresh.length) {
       sends.push({ userId: first.user_id, discordId: link.discord_id, ids: group.map(x => x.id),
-        body: msg.newReceipt({ appUrl: ctx.appUrl, receipt, actor: nameOf(fresh[0].actor_member), total: receipt.total }) })
+        body: msg.newReceipt({ appUrl: ctx.appUrl, receipt, actor: nameOf(fresh[0].actor_member),
+          payer: nameOf(receipt.paid_by_member), total: receipt.total, items: receipt.items || [], detail: link.detail }) })
       continue
     }
     const added = group.filter(x => x.kind === 'items_added')
     if (added.length) {
       const items = [...new Set(added.map(x => ctx.notices.get(x.notice_id).item_name).filter(Boolean))]
       sends.push({ userId: first.user_id, discordId: link.discord_id, ids: added.map(x => x.id),
-        body: msg.itemsAdded({ appUrl: ctx.appUrl, receipt, actor: latestActor(added), items }) })
+        body: msg.itemsAdded({ appUrl: ctx.appUrl, receipt, actor: latestActor(added), items, detail: link.detail }) })
     }
     const prices = group.filter(x => x.kind === 'price_up')
     if (prices.length) {
       const byNotice = new Map(prices.map(x => [x.notice_id, ctx.notices.get(x.notice_id)]))
       const changes = [...byNotice.values()].map(n => ({ name: n.item_name, old_price: n.old_price, new_price: n.new_price }))
       sends.push({ userId: first.user_id, discordId: link.discord_id, ids: prices.map(x => x.id),
-        body: msg.pricesUp({ appUrl: ctx.appUrl, receipt, actor: latestActor(prices), changes }) })
+        body: msg.pricesUp({ appUrl: ctx.appUrl, receipt, actor: latestActor(prices), changes, detail: link.detail }) })
     }
   }
 

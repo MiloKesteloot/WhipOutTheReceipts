@@ -72,6 +72,11 @@ select pg_temp.expect_error(format($$insert into discord_links (user_id, discord
 select pg_temp.expect_error($$update discord_links set time_zone = 'Mars/Olympus'$$, 'an unknown time zone is refused');
 select pg_temp.expect_error($$update discord_links set remind_every_days = 31$$, 'reminders at most every 30 days');
 select pg_temp.expect_error($$update discord_links set remind_hour = 24$$, 'the reminder hour is 0 to 23');
+select pg_temp.check((select detail from discord_links) = 'everything', 'messages include everything unless you choose less');
+update discord_links set detail = 'none';
+select pg_temp.check((select detail from discord_links) = 'none', 'you can choose how much messages include');
+select pg_temp.expect_error($$update discord_links set detail = 'lots'$$, 'only everything, minimal or none');
+update discord_links set detail = 'everything';
 select pg_temp.expect_error('delete from discord_links', 'deleting goes through Disconnect (the function), not straight to the table');
 reset role;
 select pg_temp.check((select count(*) from discord_links) = 2, 'both links are still there');
@@ -131,12 +136,7 @@ select pg_temp.check(pg_temp.queued(:m3) = '', 'people without Discord connected
 reset role;
 insert into discord_links select * from alex_link;
 
--- ── Items added after you checked in ─────────────────────────
--- Alex has the eggs and checks in
-select pg_temp.act_as(:'alex_user');
-insert into claims (item_id, member_id) select id, :'alex' from items where receipt_id = :'rid' and name = 'Eggs';
-insert into checkins (receipt_id, member_id) values (:'rid', :'alex');
-
+-- ── Edits before you've opened it ────────────────────────────
 reset role;
 create function pg_temp.current(rid uuid) returns jsonb language sql as $$
   select jsonb_build_object(
@@ -156,6 +156,25 @@ $$;
 create function pg_temp.save(rid uuid, data jsonb) returns jsonb language sql as $$
   select save_receipt((select group_id from receipts where id = rid), rid, (select version from receipts where id = rid), data)
 $$;
+
+-- Alex was pinged about the new receipt but hasn't opened it: edits
+-- (an item added, a price up, then both undone) ping nobody. The first
+-- ping still stands, and the receipt shows the latest when Alex opens it.
+select pg_temp.mark() as m4a \gset
+select pg_temp.act_as(:'milo_user');
+select pg_temp.save(:'rid', jsonb_set(pg_temp.current(:'rid'), '{items}',
+  pg_temp.current(:'rid')->'items' || jsonb_build_array(jsonb_build_object('id', null, 'name', 'Butter', 'price', 4, 'position', 5))));
+select pg_temp.save(:'rid', pg_temp.set_price(pg_temp.current(:'rid'), 'Eggs', 5.99));
+select pg_temp.check(pg_temp.queued(:m4a) = '', 'editing a receipt Alex has not opened yet sends Alex no second ping');
+select pg_temp.save(:'rid', jsonb_set(pg_temp.set_price(pg_temp.current(:'rid'), 'Eggs', 3.99), '{items}',
+  (select jsonb_agg(e) from jsonb_array_elements(pg_temp.set_price(pg_temp.current(:'rid'), 'Eggs', 3.99)->'items') e where e->>'name' <> 'Butter')));
+reset role;
+
+-- ── Items added after you checked in ─────────────────────────
+-- Alex has the eggs and checks in
+select pg_temp.act_as(:'alex_user');
+insert into claims (item_id, member_id) select id, :'alex' from items where receipt_id = :'rid' and name = 'Eggs';
+insert into checkins (receipt_id, member_id) values (:'rid', :'alex');
 
 select pg_temp.mark() as m4 \gset
 select pg_temp.act_as(:'milo_user');

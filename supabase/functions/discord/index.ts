@@ -6,7 +6,6 @@
 //                     to the OurReceipts server (bots can only DM people they
 //                     share a server with), says hi, and sends you back to
 //                     Settings
-//   POST /test        (signed in) a test DM
 //   POST /disconnect  (signed in) forget your link, leave the server
 //   POST /send        (pg_cron, x-cron-secret) send what's due in
 //                     notification_outbox; { reminders: true } on the hour
@@ -147,26 +146,8 @@ async function callback(url: URL) {
   if (error && state.tz) ({ error } = await db.from('discord_links').upsert(row, { onConflict: 'user_id' })) // unknown time zone
   if (error) return back('discord=error&reason=save')
 
-  try { await sendDM(me.id, msg.welcome({ appUrl: APP_URL })) } catch { /* they're connected; Settings can send a test */ }
+  try { await sendDM(me.id, msg.welcome({ appUrl: APP_URL })) } catch { /* they're connected; a welcome isn't worth failing over */ }
   return back('discord=connected')
-}
-
-async function test(req: Request) {
-  const user = await userFrom(req)
-  if (!user) return json({ error: 'Not signed in' }, 401)
-  const { data: link } = await db.from('discord_links').select('discord_id').eq('user_id', user.id).maybeSingle()
-  if (!link) return json({ error: "Discord isn't connected" }, 400)
-  try {
-    await sendDM(link.discord_id, msg.test({ appUrl: APP_URL }))
-  } catch (e) {
-    if (e instanceof DiscordError && e.code !== null && UNREACHABLE.has(e.code)) {
-      await db.from('discord_links').update({ broken_at: new Date().toISOString() }).eq('user_id', user.id)
-      return json({ error: "Discord won't let the bot message you. Connect again to rejoin the OurReceipts server, and check that DMs from server members are allowed." }, 409)
-    }
-    return json({ error: 'Discord had a problem sending it. Try again in a minute.' }, 502)
-  }
-  await db.from('discord_links').update({ broken_at: null }).eq('user_id', user.id)
-  return json({ ok: true })
 }
 
 async function disconnect(req: Request) {
@@ -196,18 +177,23 @@ async function loadContext(rows: Array<Record<string, any>>) {
   const receiptIds = inList([...rows.map(r => r.receipt_id), ...(payments ?? []).map(p => p.receipt_id)])
   const [{ data: receipts }, { data: items }, { data: checkins }] = await Promise.all([
     db.from('receipts').select('id, group_id, store_name, receipt_date, deleted_at, member_ids, paid_by_member, tax, tip, fees').in('id', receiptIds),
-    db.from('items').select('receipt_id, price').in('receipt_id', receiptIds).is('deleted_at', null),
+    db.from('items').select('receipt_id, name, price, position').in('receipt_id', receiptIds).is('deleted_at', null).order('position'),
     db.from('checkins').select('receipt_id, member_id').in('receipt_id', receiptIds),
   ])
   const groupIds = inList([...(receipts ?? []).map(r => r.group_id), ...(payments ?? []).map(p => p.group_id)])
   const { data: members } = await db.from('group_members').select('id, group_id, user_id, first_name, active').in('group_id', groupIds)
 
   const totals = new Map<string, number>()
-  for (const i of items ?? []) totals.set(i.receipt_id, (totals.get(i.receipt_id) ?? 0) + Number(i.price))
+  const itemsOf = new Map<string, Array<{ name: string, price: number }>>()
+  for (const i of items ?? []) {
+    totals.set(i.receipt_id, (totals.get(i.receipt_id) ?? 0) + Number(i.price))
+    if (!itemsOf.has(i.receipt_id)) itemsOf.set(i.receipt_id, [])
+    itemsOf.get(i.receipt_id)!.push({ name: i.name, price: Number(i.price) })
+  }
   return {
     appUrl: APP_URL,
     links: new Map((links ?? []).map(l => [l.user_id, l])),
-    receipts: new Map((receipts ?? []).map(r => [r.id, { ...r, total: (totals.get(r.id) ?? 0) + Number(r.tax) + Number(r.tip) + Number(r.fees) }])),
+    receipts: new Map((receipts ?? []).map(r => [r.id, { ...r, items: itemsOf.get(r.id) ?? [], total: (totals.get(r.id) ?? 0) + Number(r.tax) + Number(r.tip) + Number(r.fees) }])),
     members: new Map((members ?? []).map(m => [m.id, m])),
     checkins: new Set((checkins ?? []).map(c => `${c.receipt_id}:${c.member_id}`)),
     notices: new Map((notices ?? []).map(n => [n.id, { ...n, item_name: (n as any).items?.name ?? null }])),
@@ -262,9 +248,11 @@ async function send(req: Request) {
   if (reminders) {
     const { data: due, error } = await db.rpc('discord_reminders_due')
     if (error) throw error
+    const { data: details } = await db.from('discord_links').select('user_id, detail').in('user_id', (due ?? []).map(d => d.user_id))
+    const detailOf = new Map((details ?? []).map(d => [d.user_id, d.detail]))
     for (const d of due ?? []) {
       try {
-        await sendDM(d.discord_id, msg.reminder({ appUrl: APP_URL, receipts: d.receipts }))
+        await sendDM(d.discord_id, msg.reminder({ appUrl: APP_URL, receipts: d.receipts, detail: detailOf.get(d.user_id) }))
         await db.from('discord_links').update({ last_reminded_at: new Date().toISOString() }).eq('user_id', d.user_id)
         result.reminded++
       } catch (e) {
@@ -283,7 +271,6 @@ Deno.serve(async req => {
   try {
     if (req.method === 'POST' && route === '/start') return await start(req)
     if (req.method === 'GET' && route === '/callback') return await callback(url)
-    if (req.method === 'POST' && route === '/test') return await test(req)
     if (req.method === 'POST' && route === '/disconnect') return await disconnect(req)
     if (req.method === 'POST' && route === '/send') return await send(req)
     return json({ error: 'Not found' }, 404)

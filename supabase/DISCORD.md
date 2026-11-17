@@ -3,7 +3,7 @@
 The OurReceipts bot DMs people about receipts. Pieces:
 
 - `supabase/migrations/20261116000000_discord_notifications.sql`: links, the outbox, the triggers that fill it, and the pg_cron job that wakes the function
-- `supabase/functions/discord/`: the Edge Function (connecting, test message, disconnecting, sending)
+- `supabase/functions/discord/`: the Edge Function (connecting, disconnecting, sending)
 - `src/components/DiscordSettings.jsx`: Settings → Discord notifications
 - `scripts/discord-setup.mjs`: makes the server a single read-only #about channel
 
@@ -90,7 +90,7 @@ Until those exist, the cron job does nothing: pings are queued but not sent.
 
 ## Checking on it
 
-- Settings → Discord notifications → **Send a test**.
+- Connecting sends a welcome DM, so connecting is the quickest check that DMs work.
 - What's queued or failed: `select kind, created_at, sent_at, skip_reason, attempts, last_error from notification_outbox order by id desc limit 50;`
 - Function logs: Supabase dashboard → Edge Functions → discord → Logs.
 - pg_cron runs: `select * from cron.job_run_details order by start_time desc limit 20;`

@@ -13,7 +13,6 @@ import Select from './Select.jsx'
 const card = 'bg-white border border-gray-200 rounded-xl p-4'
 const sectionTitle = 'text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3'
 const buttonBase = 'inline-flex items-center justify-center shrink-0 h-11 sm:h-10 px-3 text-sm rounded-lg transition disabled:opacity-50'
-const smallButton = `${buttonBase} border border-gray-200 text-gray-600 hover:bg-gray-50 active:bg-gray-100`
 const dangerSmall = `${buttonBase} border border-red-200 text-red-500 hover:bg-red-50 active:bg-red-50`
 const discordButton = `${buttonBase} w-full font-medium bg-[#5865F2] text-white hover:bg-[#4752C4] active:bg-[#4752C4]`
 
@@ -22,6 +21,12 @@ const EVENTS = [
   ['notify_items_added', 'Items added', 'Something was added after you checked in, so you need to check in again'],
   ['notify_price_up', 'Price went up', 'On something you checked off'],
   ['notify_payment', 'Payments to you', 'Someone marked money as sent to you'],
+]
+// How much each message includes (messages.js in the function builds them)
+const DETAIL = [
+  { value: 'everything', label: 'Everything', hint: 'The store, total and every item' },
+  { value: 'minimal', label: 'Minimal', hint: 'The store, total and who paid' },
+  { value: 'none', label: 'None', hint: 'Just a link to the receipt' },
 ]
 const EVERY = [
   { value: 0, label: 'Off' }, { value: 1, label: 'Every day' }, { value: 2, label: 'Every 2 days' },
@@ -70,7 +75,7 @@ export default function DiscordSettings() {
   const { confirm, showAlert, DialogUI } = useDialog()
   const [params, setParams] = useSearchParams()
   const [link, setLink] = useState(undefined) // undefined: loading, null: not connected
-  const [busy, setBusy] = useState(null) // 'connect' | 'test' | 'disconnect'
+  const [busy, setBusy] = useState(null) // 'connect' | 'disconnect'
   const [note, setNote] = useState(null)
 
   async function load() {
@@ -107,18 +112,6 @@ export default function DiscordSettings() {
     setLink({ ...link, ...changes })
     const { error } = await supabase.from('discord_links').update(changes).eq('user_id', session.user.id)
     if (error) { setLink(before); await showAlert(error.message, { title: "Couldn't save that" }) }
-  }
-
-  async function sendTest() {
-    setBusy('test'); setNote(null)
-    try {
-      await callFn('test')
-      setNote({ ok: true, text: 'Sent! Check your Discord DMs.' })
-    } catch (e) {
-      setNote({ ok: false, text: e.message })
-    }
-    await load()
-    setBusy(null)
   }
 
   async function disconnect() {
@@ -158,16 +151,18 @@ export default function DiscordSettings() {
           </>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-gray-700 min-w-0 truncate">Connected as <span className="font-medium">@{link.discord_username}</span></p>
-              <button onClick={sendTest} disabled={!!busy} className={smallButton}>{busy === 'test' ? 'Sending…' : 'Send a test'}</button>
-            </div>
+            <p className="text-sm text-gray-700 truncate">Connected as <span className="font-medium">@{link.discord_username}</span></p>
             {link.broken_at && (
               <div className="text-sm bg-amber-50 text-amber-800 rounded-lg px-3 py-2">
                 <p>The bot can't message you. You may have left the OurReceipts server, or turned off DMs from its members.</p>
                 <button onClick={connect} disabled={!!busy} className="mt-1 font-medium underline">Connect again</button>
               </div>
             )}
+            <div className="pt-1">
+              <p className="text-sm font-medium text-gray-800">What messages include</p>
+              <p className="text-xs text-gray-400 mt-0.5 mb-2">{DETAIL.find(d => d.value === link.detail)?.hint}</p>
+              <Select small value={link.detail} onChange={v => update({ detail: v })} options={DETAIL} ariaLabel="What messages include" />
+            </div>
             <div className="space-y-4 pt-1">
               {EVENTS.map(([key, label, hint]) => (
                 <Toggle key={key} on={link[key]} onChange={v => update({ [key]: v })} label={label} hint={hint} />
