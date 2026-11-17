@@ -7,6 +7,7 @@ import { useGoBack } from '../lib/useGoBack.js'
 import { FIELD } from '../lib/ui.js'
 import BackButton from '../components/BackButton.jsx'
 import StableLabel from '../components/StableLabel.jsx'
+import DiscordSettings from '../components/DiscordSettings.jsx'
 
 // Used by AddReceipt for receipt scanning: the signed-in user's own key.
 // Throws if it can't be read, so a failed load isn't taken for "no key yet".
@@ -257,6 +258,7 @@ export default function Settings() {
         <YourName />
         <Account />
         <GeminiKey />
+        <DiscordSettings />
         <Preferences />
       </div>
     </div>

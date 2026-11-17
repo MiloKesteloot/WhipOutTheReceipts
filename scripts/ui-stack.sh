@@ -22,7 +22,8 @@ DEFAULT_APPLY_AFTER="20261017020000"
 sync_config() {
   mkdir -p "$WORKDIR/supabase"
   rm -rf "$WORKDIR/supabase/migrations" "$WORKDIR/supabase/templates"
-  cp -r supabase/migrations supabase/templates "$WORKDIR/supabase/"
+  rm -rf "$WORKDIR/supabase/functions"
+  cp -r supabase/migrations supabase/templates supabase/functions "$WORKDIR/supabase/"
   sed -e 's/^project_id = .*/project_id = "WOTR-ui"/' \
       -e 's/= 54321$/= 54421/; s/= 54322$/= 54422/; s/= 54320$/= 54420/; s/= 54329$/= 54429/' \
       -e 's/= 54323$/= 54423/; s/= 54324$/= 54424/; s/= 54327$/= 54427/; s/= 8083$/= 8183/' \

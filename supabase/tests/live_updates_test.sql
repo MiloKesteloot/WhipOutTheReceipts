@@ -62,7 +62,9 @@ select pg_temp.check(not exists (
     and t.tablename not in ('receipts', 'items', 'meals', 'claims', 'checkins', 'payments', 'item_dismissals',
                             'group_members', 'groups', 'receipt_notices',
                             -- not shown live: history is loaded on open; the rest aren't shown or are gone
-                            'audit_log', 'profiles', 'user_secrets', 'settlements')
+                            'audit_log', 'profiles', 'user_secrets', 'settlements',
+                            -- Discord: settings are loaded on open; the outbox is the bot's alone
+                            'discord_links', 'notification_outbox')
 ), 'no table is missing from that decision (add new tables to the publication or to this list)');
 
 -- ── Creating a receipt ───────────────────────────────────────

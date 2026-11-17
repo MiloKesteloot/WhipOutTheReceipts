@@ -294,7 +294,7 @@ policy = "oneshot"
 # Port to attach the Chrome inspector for debugging edge functions.
 inspector_port = 8083
 # The Deno major version to use.
-deno_version = 1
+deno_version = 2
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
@@ -317,3 +317,8 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+# The Discord bot (supabase/functions/discord, setup in supabase/DISCORD.md).
+# It checks sign-in itself: Discord's redirect back to it carries no JWT.
+[functions.discord]
+verify_jwt = false

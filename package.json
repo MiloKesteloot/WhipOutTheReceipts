@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:e2e": "node e2e/app.e2e.mjs",
     "test:e2e:live": "node e2e/live.e2e.mjs",
+    "test:e2e:discord": "node e2e/discord.e2e.mjs",
     "deploy": "node scripts/deploy.mjs",
     "screenshots": "node showcase/take-screenshots.mjs",
     "ui:start": "bash scripts/ui-stack.sh start",
