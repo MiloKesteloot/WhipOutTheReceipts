@@ -15,6 +15,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 import * as msg from './messages.js'
 import { planSends } from './plan.js'
+import { findStore, storeLogoUrl } from '../_shared/stores.js'
 
 const env = (k: string) => Deno.env.get(k) ?? ''
 const CLIENT_ID = env('DISCORD_CLIENT_ID')
@@ -176,7 +177,7 @@ async function loadContext(rows: Array<Record<string, any>>) {
   ])
   const receiptIds = inList([...rows.map(r => r.receipt_id), ...(payments ?? []).map(p => p.receipt_id)])
   const [{ data: receipts }, { data: items }, { data: checkins }] = await Promise.all([
-    db.from('receipts').select('id, group_id, store_name, receipt_date, deleted_at, member_ids, paid_by_member, tax, tip, fees').in('id', receiptIds),
+    db.from('receipts').select('id, group_id, store_name, receipt_date, created_at, deleted_at, member_ids, paid_by_member, tax, tip, fees').in('id', receiptIds),
     db.from('items').select('receipt_id, name, price, position').in('receipt_id', receiptIds).is('deleted_at', null).order('position'),
     db.from('checkins').select('receipt_id, member_id').in('receipt_id', receiptIds),
   ])
@@ -201,6 +202,46 @@ async function loadContext(rows: Array<Record<string, any>>) {
   }
 }
 
+// ── Store logos ─────────────────────────────────────────────────
+// A receipt card shows its store's logo inline, as one of the bot's own
+// emoji (application emoji: only the bot can use them). A store from the
+// list in _shared/stores.js gets its emoji the first time it's needed;
+// other stores use the app's icon. If anything fails, the card just has no
+// logo (it never stops a message going out).
+const emojiName = (domain: string) => `store_${domain.replace(/\.[a-z]+$/i, '').replace(/[^a-z0-9]/gi, '_')}`.slice(0, 32)
+let emojiIds: Map<string, string> | null = null
+
+function base64(buf: ArrayBuffer) {
+  const bytes = new Uint8Array(buf)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+async function storeIcon(storeName: string) {
+  const store = findStore(storeName)
+  const appIcon = `${APP_URL.replace(/\/+$/, '')}/icon-192.png`
+  const url = store ? storeLogoUrl(store.domain, 64) : appIcon
+  const name = store ? emojiName(store.domain) : 'ourreceipts'
+  try {
+    if (!emojiIds) {
+      const list = await discord(`/applications/${CLIENT_ID}/emojis`)
+      emojiIds = new Map((list.items ?? []).map((e: { name: string, id: string }) => [e.name, e.id]))
+    }
+    if (!emojiIds.has(name)) {
+      const res = await fetch(store ? storeLogoUrl(store.domain, 128) : appIcon)
+      if (!res.ok) throw new Error(`logo ${res.status}`)
+      const image = `data:${res.headers.get('content-type') ?? 'image/png'};base64,${base64(await res.arrayBuffer())}`
+      const e = await discord(`/applications/${CLIENT_ID}/emojis`, { method: 'POST', body: JSON.stringify({ name, image }) })
+      emojiIds.set(name, e.id)
+    }
+    return { emoji: `<:${name}:${emojiIds.get(name)}>`, url }
+  } catch (e) {
+    console.error('store logo', name, e)
+    return { emoji: '', url }
+  }
+}
+
 async function markBroken(userId: string) {
   await db.from('discord_links').update({ broken_at: new Date().toISOString() }).eq('user_id', userId)
 }
@@ -215,7 +256,13 @@ async function send(req: Request) {
     const { data: rows, error } = await db.rpc('discord_claim_due', { p_limit: 100 })
     if (error) throw error
     if (!rows?.length) break
-    const { sends, skips } = planSends(rows, await loadContext(rows))
+    const ctx = await loadContext(rows)
+    // Logos only for new-receipt cards
+    const cardReceipts = [...new Set(rows.filter(r => r.kind === 'new_receipt').map(r => r.receipt_id))]
+      .map(id => ctx.receipts.get(id)).filter(Boolean)
+    const icons = new Map()
+    for (const r of cardReceipts) icons.set(r.id, await storeIcon(r.store_name))
+    const { sends, skips } = planSends(rows, { ...ctx, icons })
     for (const s of skips) {
       await db.rpc('discord_finish', { p_ids: s.ids, p_skip: s.reason })
       result.skipped += s.ids.length

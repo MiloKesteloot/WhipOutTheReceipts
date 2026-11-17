@@ -20,8 +20,9 @@ const receipt = (over = {}) => ({
   items: [{ name: 'Eggs', price: 4 }, { name: 'Steak', price: 79 }], ...over,
 })
 
-function ctx({ links = [link()], receipts = [receipt()], members = MEMBERS, checkins = [], notices = [], payments = [] } = {}) {
+function ctx({ links = [link()], receipts = [receipt()], members = MEMBERS, checkins = [], notices = [], payments = [], icons } = {}) {
   return {
+    icons,
     appUrl: APP,
     links: new Map(links.map(l => [l.user_id, l])),
     receipts: new Map(receipts.map(r => [r.id, r])),
@@ -61,8 +62,9 @@ describe('new receipt', () => {
     const s = out.sends[0]
     expect(s).toMatchObject({ userId: ME, discordId: 'd-me', ids: [r.id] })
     const t = textOf(s.body)
-    expect(t).toContain('### Safeway\nNiko added a receipt · Sat, Nov 14')
-    expect(t).toContain('## $84.20\n-# Paid by Niko')
+    expect(t).toContain('**Niko** added **Safeway** · Sat, Nov 14')
+    expect(t).toMatch(/TOTAL\s+\$84\.20/)
+    expect(t).toContain('-# Paid by Niko · <t:')
     expect(urlsOf(s.body)).toContain(`${APP.replace(/\/$/, '')}/#/receipt/r1`)
   })
 
@@ -104,7 +106,7 @@ describe('new receipt', () => {
     const out = planSends(rows, ctx({ notices }))
     expect(out.sends).toHaveLength(1)
     expect(out.sends[0].ids).toEqual(rows.map(r => r.id))
-    expect(textOf(out.sends[0].body)).toContain('added a receipt')
+    expect(textOf(out.sends[0].body)).toContain('added **Safeway**')
   })
 })
 
@@ -119,12 +121,27 @@ describe('how much messages include', () => {
       '```',
       'Eggs                    4.00',
       'Steak                  79.00',
-      '----------------------------',
       'Tax                     1.20',
+      '============================',
+      'TOTAL                 $84.20',
       '```',
     ].join('\n'))
-    expect(t).toContain('$84.20')
-    expect(t).not.toContain('*')
+    const block = t.split('```')[1]
+    expect(block).not.toContain('*') // (no "split by everyone" marks)
+    expect(t).not.toMatch(/split/i)
+  })
+
+  it('everything: only the names are bold, after the store logo; a live "x ago" from when it was added', () => {
+    const icons = new Map([['r1', { emoji: '<:store_safeway:42>', url: 'https://logo/safeway' }]])
+    const body = send('everything', undefined, { icons, receipts: [receipt({ created_at: '2026-11-14T18:00:00Z' })] })
+    const t = textOf(body)
+    expect(t).toContain('<:store_safeway:42> **Niko** added **Safeway** · Sat, Nov 14')
+    expect(t).toContain(`<t:${Date.parse('2026-11-14T18:00:00Z') / 1000}:R>`)
+    expect(JSON.stringify(body)).toContain('"label":"Open"')
+  })
+
+  it('everything: no logo emoji (it could not be made) still reads right', () => {
+    expect(textOf(send('everything'))).toMatch(/^\*\*Niko\*\* added \*\*Safeway\*\*/m)
   })
 
   it('everything: a long receipt lists the first 25 items, then how many more', () => {
@@ -141,9 +158,15 @@ describe('how much messages include', () => {
     expect(e.author.name).toBe('Niko added a receipt')
     expect(e.title).toBe('Safeway · $84.20')
     expect(e.url).toBe(URL)
-    expect(e.fields.map(f => `${f.name}: ${f.value}`)).toEqual(['Paid by: Niko', 'Date: Sat, Nov 14', 'Items: 2'])
+    expect(e.fields.map(f => `${f.name}: ${f.value}`)).toEqual(['Paid by: Niko', 'Items: 2', 'Date: Sat, Nov 14'])
     expect(textOf(body)).not.toContain('Steak')
     expect(e.footer).toBeUndefined()
+    expect(e.author.icon_url).toBe(`${APP.replace(/\/$/, '')}/icon-192.png`)
+  })
+
+  it("minimal: the store's logo beside who added it", () => {
+    const icons = new Map([['r1', { emoji: '<:store_safeway:42>', url: 'https://logo/safeway' }]])
+    expect(send('minimal', undefined, { icons }).embeds[0].author.icon_url).toBe('https://logo/safeway')
   })
 
   it('none: one line with a link, and no link preview', () => {
@@ -282,5 +305,15 @@ describe('messages', () => {
     const receipts = Array.from({ length: 50 }, (_, i) => ({ id: `r${i}`, store_name: long, receipt_date: null, total: 1 }))
     expect(msg.reminder({ appUrl: APP, receipts }).content.length).toBeLessThanOrEqual(2000)
     expect(msg.ABOUT_TEXT.length).toBeLessThanOrEqual(2000)
+  })
+})
+
+describe('store logos', async () => {
+  const { findStore, storeLogoUrl } = await import('../_shared/stores.js')
+  it('finds a store from its receipt name, like the website does', () => {
+    expect(findStore('SAFEWAY #1234')?.domain).toBe('safeway.com')
+    expect(findStore('Costco Wholesale')?.domain).toBe('costco.com')
+    expect(findStore('Corner Market')).toBeNull()
+    expect(storeLogoUrl('costco.com', 64)).toBe('https://www.google.com/s2/favicons?domain=costco.com&sz=64')
   })
 })

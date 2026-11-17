@@ -6,7 +6,8 @@
 // receipt (the app switches to its group).
 //
 // detail is the person's "how much to include" setting:
-//   everything  a new receipt shows as a card with its items
+//   everything  a new receipt shows as a card with its items, the store's
+//               logo and a live "x minutes ago"
 //   minimal     a new receipt shows as a compact card (no items)
 //   none        every message is one line with a link, nothing else
 export const DETAILS = ['everything', 'minimal', 'none']
@@ -40,7 +41,6 @@ export const receiptUrl = (appUrl, id) => `${appUrl.replace(/\/+$/, '')}/#/recei
 const button = (label, url) => ({ type: 1, components: [{ type: 2, style: 5, label, url }] })
 const linkButton = (label, url) => ({ type: 2, style: 5, label, url })
 const text = content => ({ type: 10, content })
-const divider = { type: 14, divider: true, spacing: 1 }
 const home = appUrl => `${appUrl.replace(/\/+$/, '')}/#/`
 const iconUrl = appUrl => `${appUrl.replace(/\/+$/, '')}/icon-192.png`
 // "none": one line, one link
@@ -80,7 +80,9 @@ export function listNames(names, max = 3) {
 
 // A new receipt you're on.
 //   items: [{ name, price }] in order; payer: who paid (a first name)
-export function newReceipt({ appUrl, receipt, actor, payer, total, items = [], detail = 'everything', maxItems = 25 }) {
+//   icon: { emoji: '<:store_safeway:123>' or '', url: the store's logo }
+//   (the function finds the store's logo and its emoji; see index.ts)
+export function newReceipt({ appUrl, receipt, actor, payer, total, items = [], detail = 'everything', icon = {}, maxItems = 25 }) {
   const url = receiptUrl(appUrl, receipt.id)
   if (detail === 'none') return bare('You were added to a {link}.', url, 'receipt')
   const date = longDate(receipt.receipt_date)
@@ -90,37 +92,36 @@ export function newReceipt({ appUrl, receipt, actor, payer, total, items = [], d
       embeds: [{
         color: GREEN,
         // (embed author and title text isn't markdown: no escaping)
-        author: { name: actor ? `${actor} added a receipt` : 'New receipt', icon_url: iconUrl(appUrl) },
+        author: { name: actor ? `${actor} added a receipt` : 'New receipt', icon_url: icon.url || iconUrl(appUrl) },
         title: `${clip(receipt.store_name, 80)} · ${money(total)}`,
         url,
         fields: [
           payer && { name: 'Paid by', value: esc(payer), inline: true },
-          date && { name: 'Date', value: date, inline: true },
           { name: 'Items', value: String(items.length), inline: true },
+          date && { name: 'Date', value: date, inline: true },
         ].filter(Boolean),
       }],
     }
   }
 
-  // everything
-  const by = actor ? `${esc(actor)} added a receipt` : 'New receipt'
+  // everything: "[logo] **Niko** added **Safeway** · Sat, Nov 14", the
+  // receipt, then who paid and a live "x minutes ago" beside an Open button
+  const store = `**${esc(clip(receipt.store_name))}**`
+  const header = `${icon.emoji ? `${icon.emoji} ` : ''}${actor ? `**${esc(actor)}** added ${store}` : `New receipt: ${store}`}${date ? ` · ${date}` : ''}`
   const lines = items.slice(0, maxItems).map(i => receiptLine(i.name, plain(i.price)))
   if (items.length > maxItems) lines.push(`…and ${items.length - maxItems} more`)
-  const extras = [['Tax', receipt.tax], ['Tip', receipt.tip], ['Fees', receipt.fees]].filter(([, v]) => Number(v))
-  if (extras.length) {
-    lines.push('-'.repeat(RECEIPT_WIDTH))
-    for (const [name, v] of extras) lines.push(receiptLine(name, plain(v)))
+  for (const [name, v] of [['Tax', receipt.tax], ['Tip', receipt.tip], ['Fees', receipt.fees]]) {
+    if (Number(v)) lines.push(receiptLine(name, plain(v)))
   }
+  lines.push('='.repeat(RECEIPT_WIDTH), receiptLine('TOTAL', money(total)))
+  const added = Math.floor(new Date(receipt.created_at || Date.now()).getTime() / 1000)
   return {
     flags: V2,
     components: [{ type: 17, accent_color: GREEN, components: [
-      { type: 9, components: [text(`### ${esc(clip(receipt.store_name))}\n${by}${date ? ` · ${date}` : ''}`)],
-        accessory: { type: 11, media: { url: iconUrl(appUrl) } } },
-      divider,
-      text('```\n' + (lines.join('\n') || ' ') + '\n```'),
-      divider,
-      { type: 9, components: [text(`## ${money(total)}${payer ? `\n-# Paid by ${esc(payer)}` : ''}`)],
-        accessory: linkButton('Check off yours', url) },
+      text(header),
+      text('```\n' + lines.join('\n') + '\n```'),
+      { type: 9, components: [text(`-# ${payer ? `Paid by ${esc(payer)} · ` : ''}<t:${added}:R>`)],
+        accessory: linkButton('Open', url) },
     ] }],
   }
 }

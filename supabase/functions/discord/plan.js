@@ -22,7 +22,8 @@ const PREF = {
 
 // ctx: { appUrl, links: Map(userId → link), receipts: Map(id → receipt with total and items [{ name, price }]),
 //        members: Map(memberId → member), checkins: Set('receiptId:memberId'),
-//        notices: Map(id → notice with item_name), payments: Map(id → payment) }
+//        notices: Map(id → notice with item_name), payments: Map(id → payment),
+//        icons: Map(receiptId → { emoji, url }) (the store's logo, optional) }
 // → { sends: [{ userId, discordId, ids, body }], skips: [{ ids, reason }] }
 export function planSends(rows, ctx) {
   const skips = new Map() // reason → ids
@@ -86,7 +87,8 @@ export function planSends(rows, ctx) {
     if (fresh.length) {
       sends.push({ userId: first.user_id, discordId: link.discord_id, ids: group.map(x => x.id),
         body: msg.newReceipt({ appUrl: ctx.appUrl, receipt, actor: nameOf(fresh[0].actor_member),
-          payer: nameOf(receipt.paid_by_member), total: receipt.total, items: receipt.items || [], detail: link.detail }) })
+          payer: nameOf(receipt.paid_by_member), total: receipt.total, items: receipt.items || [], detail: link.detail,
+          icon: ctx.icons?.get(receipt.id) }) })
       continue
     }
     const added = group.filter(x => x.kind === 'items_added')

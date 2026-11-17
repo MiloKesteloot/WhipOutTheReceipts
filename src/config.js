@@ -39,36 +39,5 @@ export const DEFAULT_CATEGORY = 'Groceries'
 export const GEMINI_MODEL = 'gemini-3.8-flash'
 
 // ── Known store logos ─────────────────────────────────────────
-// Maps store name keywords → domain for favicon lookup.
-// Add rows here to support more stores.
-export const STORE_DOMAINS = [
-  { keywords: ['trader joe', "trader joe's"],                domain: 'traderjoes.com' },
-  { keywords: ['whole foods', 'wholefoods'],                 domain: 'wholefoodsmarket.com' },
-  { keywords: ['walmart', 'wal-mart', 'wal mart'],           domain: 'walmart.com' },
-  { keywords: ['target'],                                    domain: 'target.com' },
-  { keywords: ['costco'],                                    domain: 'costco.com' },
-  { keywords: ['kroger'],                                    domain: 'kroger.com' },
-  { keywords: ['safeway'],                                   domain: 'safeway.com' },
-  { keywords: ['aldi'],                                      domain: 'aldi.us' },
-  { keywords: ['publix'],                                    domain: 'publix.com' },
-  { keywords: ['sprouts'],                                   domain: 'sprouts.com' },
-  { keywords: ['wegmans'],                                   domain: 'wegmans.com' },
-  { keywords: ['heb', 'h-e-b', 'h.e.b'],                    domain: 'heb.com' },
-  { keywords: ['meijer'],                                    domain: 'meijer.com' },
-  { keywords: ['food lion'],                                 domain: 'foodlion.com' },
-  { keywords: ['shoprite'],                                  domain: 'shoprite.com' },
-  { keywords: ['starbucks'],                                 domain: 'starbucks.com' },
-  { keywords: ['chipotle'],                                  domain: 'chipotle.com' },
-  { keywords: ["mcdonald's", 'mcdonalds'],                   domain: 'mcdonalds.com' },
-  { keywords: ['doordash'],                                  domain: 'doordash.com' },
-  { keywords: ['uber eats', 'ubereats'],                     domain: 'ubereats.com' },
-  { keywords: ['amazon'],                                    domain: 'amazon.com' },
-  { keywords: ['cvs'],                                       domain: 'cvs.com' },
-  { keywords: ['walgreens'],                                 domain: 'walgreens.com' },
-  { keywords: ['instacart'],                                 domain: 'instacart.com' },
-  { keywords: ['stop & shop', 'stop and shop'],              domain: 'stopandshop.com' },
-  { keywords: ['giant'],                                     domain: 'giantfood.com' },
-  { keywords: ['hannaford'],                                 domain: 'hannaford.com' },
-  { keywords: ['ralphs', "ralph's"],                         domain: 'ralphs.com' },
-  { keywords: ['jewel', 'jewel osco', 'jewel-osco'],         domain: 'jewelosco.com' },
-]
+// The list lives with the Discord bot, which shows the same logos.
+export { STORE_DOMAINS } from '../supabase/functions/_shared/stores.js'

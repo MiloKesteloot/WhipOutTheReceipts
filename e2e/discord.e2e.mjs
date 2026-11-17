@@ -37,7 +37,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // ── Fake Discord ────────────────────────────────────────────────
 const USERS = { milo: { id: '2001', username: 'milo_d' }, alex: { id: '2002', username: 'alex_d' }, full: { id: '2009', username: 'full_d' } }
-const fake = { joined: [], left: [], dms: [], blocked: new Set() }
+const fake = { joined: [], left: [], dms: [], blocked: new Set(), emojis: [] }
 const server = createServer(async (req, res) => {
   let body = ''
   for await (const chunk of req) body += chunk
@@ -61,6 +61,13 @@ const server = createServer(async (req, res) => {
       fake.joined.push({ id: m[2], token: JSON.parse(body).access_token }); return send(201, {})
     }
     if (req.method === 'DELETE') { fake.left.push(m[2]); return send(204) }
+  }
+  if (path === '/applications/client-1/emojis') {
+    if (req.method === 'GET') return send(200, { items: fake.emojis.map(({ id, name }) => ({ id, name })) })
+    const { name, image } = JSON.parse(body)
+    if (!/^[a-z0-9_]{2,32}$/i.test(name) || !/^data:image\/[a-z]+;base64,.{20,}/.test(image)) return send(400, { code: 50035, message: 'Invalid Form Body' })
+    const e = { id: String(9000 + fake.emojis.length), name }
+    fake.emojis.push(e); return send(201, e)
   }
   if (req.method === 'POST' && path === '/users/@me/channels') return send(200, { id: `dm-${JSON.parse(body).recipient_id}` })
   if ((m = path.match(/^\/channels\/dm-([^/]+)\/messages$/)) && req.method === 'POST') {
@@ -227,15 +234,20 @@ try {
     const dm = dmsTo('2002').at(-1)
     check(out.sent === 1 && dmsTo('2002').length === before + 1, 'then Alex gets one DM')
     const t = textOf(dm)
-    check(t.includes('### Discord e2e Safeway\nMilo added a receipt') && t.includes('## $9.50') && t.includes('Paid by Milo'),
-      'a card saying who added what, who paid and the total')
-    check(/Eggs\s+4\.00\nMilk\s+5\.50/.test(t), 'listing the items (everything is the default)')
-    check(JSON.stringify(dm).includes(`"url":"${APP_URL}#/receipt/${rid}"`), 'with a button that opens the receipt')
-    check(JSON.stringify(dm).includes(`${APP_URL}icon-192.png`), 'and the app icon')
+    const logo = fake.emojis.find(e => e.name === 'store_safeway')
+    check(!!logo, "Safeway's logo was made into one of the bot's emoji (the first time a Safeway receipt came up)")
+    check(t.includes(`<:store_safeway:${logo?.id}> **Milo** added **Discord e2e Safeway**`), 'a card: [logo] **Milo** added **Discord e2e Safeway**')
+    check(/Eggs\s+4\.00\nMilk\s+5\.50\n=+\nTOTAL\s+\$9\.50/.test(t), 'listing the items and the total (everything is the default)')
+    check(/-# Paid by Milo · <t:\d+:R>/.test(t), 'who paid, and a live "x minutes ago"')
+    check(JSON.stringify(dm).includes(`"url":"${APP_URL}#/receipt/${rid}"`), 'with an Open button for the receipt')
     check(JSON.stringify(dm?.allowed_mentions) === '{"parse":[]}', 'and it can never ping @everyone')
     check(dmsTo('2001').length === miloBefore, 'Milo (who added it) gets nothing')
     check(psql(`select count(*) from notification_outbox where receipt_id = '${rid}' and sent_at is not null and skip_reason is null`) === '1', 'the row is marked sent')
     check((await sendNow()).sent === 0, 'and is not sent twice')
+    const uploads = fake.emojis.length
+    await newReceipt(milo, 'Discord e2e Safeway again')
+    makeDue(); await sendNow()
+    check(fake.emojis.length === uploads && textOf(dmsTo('2002').at(-1)).includes(`<:store_safeway:${logo?.id}>`), 'the next Safeway receipt reuses that emoji')
   }
 
   {
@@ -244,6 +256,7 @@ try {
     const rid = await newReceipt(milo, 'Discord e2e Minimal')
     makeDue(); await sendNow()
     const e = dmsTo('2002').at(-1).embeds?.[0]
+    check(e?.author?.icon_url === `${APP_URL}icon-192.png`, "a store without a known logo shows the app's icon")
     check(e?.title === 'Discord e2e Minimal · $9.50' && e.url === `${APP_URL}#/receipt/${rid}` && !textOf(dmsTo('2002').at(-1)).includes('Eggs'),
       'Alex chose minimal: a compact card without the items')
     await alex.client.from('discord_links').update({ detail: 'none' }).eq('user_id', alex.userId)
